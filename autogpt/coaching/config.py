@@ -28,6 +28,11 @@ class CoachingConfig(metaclass=Singleton):
         self.google_redirect_uri: str = os.getenv("GOOGLE_REDIRECT_URI", "")
         # Telegram bot
         self.telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        # WhatsApp Business Cloud API
+        self.whatsapp_access_token: str = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+        self.whatsapp_phone_number_id: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+        self.whatsapp_app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "")
+        self.whatsapp_verify_token: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
         # Demo page — separate key so the main API key isn't exposed in the browser
         self.demo_key: str = os.getenv("COACHING_DEMO_KEY", "")
         # Public URL of this service (used to build the demo page's API_BASE).

@@ -12,12 +12,17 @@ RUN pip install --no-cache-dir \
     "python-dotenv>=1.0.0" \
     "requests>=2.32.0" \
     "urllib3>=2.0.0" \
-    "charset-normalizer>=3.0.0"
+    "charset-normalizer>=3.0.0" \
+    "python-telegram-bot>=20.0" \
+    "slowapi>=0.1.9"
 
 # Copy only the coaching module and singleton helper
-COPY autogpt/__init__.py ./autogpt/__init__.py
 COPY autogpt/singleton.py ./autogpt/singleton.py
 COPY autogpt/coaching/ ./autogpt/coaching/
+
+# Write a minimal autogpt package init (same as main Dockerfile)
+RUN printf 'from dotenv import load_dotenv\nload_dotenv(override=True)\n' \
+    > ./autogpt/__init__.py
 
 EXPOSE 8000
 

@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="ABN Consulting AI Co-Navigator",
     description="Executive change management coaching API",
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
