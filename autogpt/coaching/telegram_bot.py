@@ -216,13 +216,13 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Capture phone number, register the user as pending, link their Telegram ID."""
+    import re as _re
     tg_id = update.effective_user.id
     raw = update.message.text.strip()
     lang = context.user_data.get("lang", detect_lang(raw))
     name = context.user_data.get("temp_name", "")
 
     # Basic normalisation — allow digits, +, spaces, dashes, parens
-    import re as _re
     phone = _re.sub(r"[\s\-()]", "", raw)
     if not _re.match(r"^\+?\d{7,15}$", phone):
         await update.message.reply_text(t(lang, "invalid_phone"))
@@ -236,57 +236,72 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     )
     from autogpt.coaching.models import AccountStatus
 
-    # If phone already exists — link this Telegram ID to that account
-    existing = get_user_by_phone(phone)
-    if existing:
-        link_telegram(existing.user_id, tg_id)
-        st = existing.account_status.value if hasattr(existing.account_status, "value") else str(existing.account_status)
-        if st == "active":
-            await update.message.reply_text(
-                t(lang, "linked_existing", name=existing.name),
-                parse_mode="Markdown",
-            )
-            await _start_coaching_session(update, context, tg_id,
-                                          existing.user_id, existing.name, lang)
-            return CHATTING
-        else:
-            await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
-            return ConversationHandler.END
-
-    # New user — register as pending
     try:
-        user = register_user_by_phone(
-            name=name,
-            phone_number=phone,
-            account_status=AccountStatus.PENDING,
-        )
-    except ValueError:
-        await update.message.reply_text(t(lang, "phone_taken"))
-        return WAITING_PHONE
+        # If phone already exists — link this Telegram ID to that account
+        existing = get_user_by_phone(phone)
+        if existing:
+            try:
+                link_telegram(existing.user_id, tg_id)
+            except Exception:
+                logger.warning("Could not link telegram to existing user %s", existing.user_id)
+            st = existing.account_status.value if hasattr(existing.account_status, "value") else str(existing.account_status)
+            if st == "active":
+                await update.message.reply_text(
+                    t(lang, "linked_existing", name=existing.name),
+                    parse_mode="Markdown",
+                )
+                await _start_coaching_session(update, context, tg_id,
+                                              existing.user_id, existing.name, lang)
+                return CHATTING
+            else:
+                await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
+                return ConversationHandler.END
 
-    link_telegram(user.user_id, tg_id)
-    context.user_data.clear()
-
-    await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
-
-    # Notify admin
-    if coaching_config.admin_telegram_id:
+        # New user — register as pending
         try:
-            tg_username = update.effective_user.username or ""
-            tg_display = f"@{tg_username}" if tg_username else f"tg_id:{tg_id}"
-            await update.get_bot().send_message(
-                chat_id=coaching_config.admin_telegram_id,
-                text=(
-                    f"🆕 *New registration pending approval*\n\n"
-                    f"*Name:* {name}\n"
-                    f"*Phone:* {phone}\n"
-                    f"*Telegram:* {tg_display}\n\n"
-                    f"Visit the admin dashboard to approve."
-                ),
-                parse_mode="Markdown",
+            user = register_user_by_phone(
+                name=name,
+                phone_number=phone,
+                account_status=AccountStatus.PENDING,
             )
+        except ValueError:
+            await update.message.reply_text(t(lang, "phone_taken"))
+            return WAITING_PHONE
+
+        # Link telegram ID (best-effort — don't block registration if column missing)
+        try:
+            link_telegram(user.user_id, tg_id)
         except Exception:
-            pass
+            logger.warning("Could not link telegram_user_id for user %s — column may not exist in DB", user.user_id)
+
+        context.user_data.clear()
+        await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
+
+        # Notify admin
+        if coaching_config.admin_telegram_id:
+            try:
+                tg_username = update.effective_user.username or ""
+                tg_display = f"@{tg_username}" if tg_username else f"tg_id:{tg_id}"
+                await update.get_bot().send_message(
+                    chat_id=coaching_config.admin_telegram_id,
+                    text=(
+                        f"🆕 *New registration pending approval*\n\n"
+                        f"*Name:* {name}\n"
+                        f"*Phone:* {phone}\n"
+                        f"*Telegram:* {tg_display}\n\n"
+                        f"Visit the admin dashboard to approve."
+                    ),
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
+
+    except Exception:
+        logger.exception("Error in receive_phone for tg_id=%s phone=%s", tg_id, phone)
+        await update.message.reply_text(
+            "Sorry, something went wrong registering you. Please try again with /start."
+        )
+        return ConversationHandler.END
 
     return ConversationHandler.END
 

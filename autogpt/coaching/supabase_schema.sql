@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ============================================================
 -- 1. USER PROFILES
 -- Phone number is MANDATORY for every user regardless of sign-up method.
--- account_status: active | suspended | archived
+-- account_status: active | pending | suspended | archived
 -- ============================================================
 CREATE TABLE IF NOT EXISTS user_profiles (
   user_id           UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   whatsapp_user_id  TEXT    UNIQUE,                -- linked WhatsApp number (normalized E.164)
   is_admin          BOOLEAN NOT NULL DEFAULT FALSE,
   account_status    TEXT    NOT NULL DEFAULT 'active'
-                            CHECK (account_status IN ('active','suspended','archived')),
+                            CHECK (account_status IN ('active','pending','suspended','archived')),
   language          TEXT    NOT NULL DEFAULT 'en'
                             CHECK (language IN ('en','he')),
   suspended_at      TIMESTAMPTZ,
@@ -249,3 +249,18 @@ CREATE POLICY service_only ON invites               USING (auth.role() = 'servic
 ALTER TABLE user_profiles
   ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en'
              CHECK (language IN ('en', 'he'));
+
+-- M002: Telegram registration — add telegram_user_id column (if not present from schema v1)
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS telegram_user_id BIGINT UNIQUE;
+
+CREATE INDEX IF NOT EXISTS idx_user_telegram ON user_profiles(telegram_user_id);
+
+-- M003: pending approval workflow — extend account_status check constraint to include 'pending'
+--       Run this in your Supabase SQL Editor if you get a CHECK constraint violation on account_status.
+ALTER TABLE user_profiles
+  DROP CONSTRAINT IF EXISTS user_profiles_account_status_check;
+
+ALTER TABLE user_profiles
+  ADD CONSTRAINT user_profiles_account_status_check
+  CHECK (account_status IN ('active','pending','suspended','archived'));
