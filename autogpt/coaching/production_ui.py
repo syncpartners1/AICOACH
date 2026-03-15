@@ -95,8 +95,15 @@ footer a{{color:#6b7280;text-decoration:none}}
   </p>
 
   <div class="cta-group">
-    {telegram_button}
     {google_button}
+    {telegram_button}
+    <div class="divider"><div class="divider-line"></div><div class="divider-text">or</div><div class="divider-line"></div></div>
+    <a href="/register" class="btn btn-calendly" style="background:#16a34a">
+      ✏️&nbsp; Sign Up with Phone
+    </a>
+    <a href="/login" class="btn btn-google" style="font-size:14px">
+      Already registered? <strong style="margin-left:4px">Sign In →</strong>
+    </a>
     <a href="{calendly_url}" target="_blank" rel="noopener" class="btn btn-calendly">
       📅&nbsp; Book a session with {coach_name}
     </a>

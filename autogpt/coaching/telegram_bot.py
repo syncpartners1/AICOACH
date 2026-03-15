@@ -114,6 +114,11 @@ def _check_active(user, lang: str = "en") -> Optional[str]:
     if user is None:
         return None
     st = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
+    if st == "pending":
+        return (
+            "⏳ Your account is *pending approval* by the coach. "
+            "You'll be notified once it's activated."
+        )
     if st == "suspended":
         return t(lang, "suspended_msg")
     if st == "archived":
@@ -813,6 +818,32 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reload objectives and account status from the database."""
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user)
+
+    if not user:
+        await update.message.reply_text(
+            "No linked account found. Use /link to connect your account."
+        )
+        return
+
+    # Reload fresh profile from DB
+    try:
+        from autogpt.coaching.storage import get_user_objectives, get_past_sessions
+        objectives = get_user_objectives(user.user_id)
+        await update.message.reply_text(
+            f"✅ Synced! You have *{len(objectives)}* active objective(s). "
+            "Use /start to begin a fresh session with updated data.",
+            parse_mode="Markdown",
+        )
+    except Exception:
+        logger.exception("Refresh failed for telegram user %s", tg_id)
+        await update.message.reply_text("Could not refresh data. Please try again.")
+
+
 # ── Summary formatter ─────────────────────────────────────────────────────────
 
 def _format_summary(summary) -> str:
@@ -910,6 +941,7 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("resume", resume_self))
     app.add_handler(CommandHandler("lang", set_language))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("refresh", refresh_command))
 
     # Admin commands
     app.add_handler(CommandHandler("users", admin_users))
@@ -927,19 +959,30 @@ def _build_app(token: str) -> Application:
 
 
 async def run_polling(token: str) -> None:
-    """Start the bot in polling mode."""
-    application = _build_app(token)
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling(drop_pending_updates=True)
-    logger.info("Telegram bot polling started")
-    try:
-        while True:
-            await asyncio.sleep(3600)
-    except asyncio.CancelledError:
-        pass
-    finally:
-        await application.updater.stop()
-        await application.stop()
-        await application.shutdown()
-        logger.info("Telegram bot stopped")
+    """Start the bot in polling mode with automatic restart on errors."""
+    retry_delay = 5
+    while True:
+        application = _build_app(token)
+        try:
+            await application.initialize()
+            await application.start()
+            await application.updater.start_polling(drop_pending_updates=True)
+            logger.info("Telegram bot polling started")
+            retry_delay = 5  # reset on successful start
+            while True:
+                await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            logger.info("Telegram bot stopping (cancelled)")
+            break
+        except Exception as exc:
+            logger.error("Telegram bot error: %s — restarting in %ds", exc, retry_delay)
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 120)
+        finally:
+            try:
+                await application.updater.stop()
+                await application.stop()
+                await application.shutdown()
+            except Exception:
+                pass
+    logger.info("Telegram bot stopped")

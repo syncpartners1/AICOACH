@@ -30,6 +30,7 @@ class OKRStatus(str, Enum):
 
 class AccountStatus(str, Enum):
     ACTIVE = "active"
+    PENDING = "pending"
     SUSPENDED = "suspended"
     ARCHIVED = "archived"
 

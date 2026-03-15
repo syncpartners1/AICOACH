@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir \
 # Copy only what the coaching API needs
 COPY autogpt/singleton.py ./autogpt/singleton.py
 COPY autogpt/coaching/ ./autogpt/coaching/
+COPY autogpt/static/ ./autogpt/static/
 
 # Write a minimal autogpt package init — does NOT load the full autogpt app
 # (avoids OpenAI key checks from cached old images / system packages)

@@ -24,7 +24,10 @@ def render_admin(
     users: List[UserProgressSummary],
     pending_invites: List[Invite],
     public_url: str = "",
+    pending_users: List[UserProgressSummary] = None,
 ) -> str:
+    if pending_users is None:
+        pending_users = []
     # ── User rows ─────────────────────────────────────────────────────────────
     _status_colors = {
         "active": ("#16a34a", "#dcfce7"),
@@ -89,6 +92,28 @@ def render_admin(
 
     if not user_rows:
         user_rows = '<tr><td colspan="8" style="padding:20px;color:#9ca3af;text-align:center">No users yet.</td></tr>'
+
+    # ── Pending registration rows ─────────────────────────────────────────────
+    pending_rows = ""
+    for u in pending_users:
+        contact = u.phone_number or u.email or "—"
+        pending_rows += f"""
+<tr>
+  <td style="padding:10px 12px;font-weight:600">{u.name}</td>
+  <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
+  <td style="padding:10px 12px;white-space:nowrap">
+    <button onclick="approveUser('{u.user_id}')"
+      style="font-size:11px;cursor:pointer;padding:2px 10px;border-radius:6px;
+             background:#dcfce7;color:#166534;border:1px solid #86efac;margin-right:4px">
+      Approve</button>
+    <button onclick="setStatus('{u.user_id}','archived')"
+      style="font-size:11px;cursor:pointer;padding:2px 10px;border-radius:6px;
+             background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">
+      Reject</button>
+  </td>
+</tr>"""
+    if not pending_rows:
+        pending_rows = '<tr><td colspan="3" style="padding:16px;color:#9ca3af;text-align:center">No pending registrations.</td></tr>'
 
     # ── Pending invite rows ───────────────────────────────────────────────────
     invite_rows = ""
@@ -163,6 +188,14 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 </div>
 <div class="container">
 
+  <div class="section-title">Pending Approval ({len(pending_users)})</div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Name</th><th>Contact</th><th>Actions</th></tr></thead>
+      <tbody>{pending_rows}</tbody>
+    </table>
+  </div>
+
   <div class="section-title">Program Members ({len(users)})</div>
   <div class="card">
     <table>
@@ -172,6 +205,20 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
       </tr></thead>
       <tbody>{user_rows}</tbody>
     </table>
+  </div>
+
+  <div class="section-title">Register New User</div>
+  <div class="invite-form">
+    <h3>Create a user account directly (account is immediately active)</h3>
+    <form id="registerForm">
+      <div class="form-row">
+        <input type="text" name="name" placeholder="Full Name *" required>
+        <input type="tel" name="phone_number" placeholder="Phone Number * (+1234567890)" required>
+        <input type="email" name="email" placeholder="Email (optional)">
+      </div>
+      <button type="submit" class="btn">Register User</button>
+    </form>
+    <div id="regMsg" style="margin-top:10px;font-size:13px"></div>
   </div>
 
   <div class="section-title">Send Invitation</div>
@@ -201,18 +248,54 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 
 </div>
 <script>
-// Admin status change
+// Admin status change — uses session cookie for auth
 async function setStatus(userId, newStatus) {{
-  const apiKey = new URLSearchParams(location.search).get('api_key') || '';
   const reasons = {{suspended: 'Suspended by admin', archived: 'Archived by admin', active: ''}};
   const res = await fetch(`/admin/users/${{userId}}/status`, {{
     method: 'PUT',
-    headers: {{'Content-Type': 'application/json', 'X-API-Key': apiKey}},
+    credentials: 'include',
+    headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify({{status: newStatus, reason: reasons[newStatus] || ''}})
   }});
   if (res.ok) location.reload();
-  else alert('Could not update status. Please check your API key.');
+  else alert('Could not update status.');
 }}
+
+async function approveUser(userId) {{
+  const res = await fetch(`/admin/users/${{userId}}/approve`, {{
+    method: 'POST',
+    credentials: 'include',
+  }});
+  if (res.ok) location.reload();
+  else alert('Could not approve user.');
+}}
+
+// Register user form
+document.getElementById('registerForm').addEventListener('submit', async function(e) {{
+  e.preventDefault();
+  const msg = document.getElementById('regMsg');
+  const fd = new FormData(this);
+  const body = {{name: fd.get('name'), phone_number: fd.get('phone_number')}};
+  if (fd.get('email')) body.email = fd.get('email');
+  msg.style.color='#6b7280'; msg.textContent='Registering…';
+  const res = await fetch('/admin/users/register', {{
+    method: 'POST',
+    credentials: 'include',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify(body)
+  }});
+  if (res.ok) {{
+    const data = await res.json();
+    msg.style.color='#16a34a';
+    msg.textContent='✓ User "' + data.name + '" registered (ID: ' + data.user_id + ')';
+    this.reset();
+    setTimeout(() => location.reload(), 2000);
+  }} else {{
+    const err = await res.json().catch(()=>({{}}));
+    msg.style.color='#dc2626';
+    msg.textContent='Error: ' + (err.detail || 'unknown error');
+  }}
+}});
 
 // Allow form submission via fetch so the page doesn't navigate away
 document.getElementById('inviteForm').addEventListener('submit', async function(e) {{
@@ -220,10 +303,10 @@ document.getElementById('inviteForm').addEventListener('submit', async function(
   const fd = new FormData(this);
   const body = {{}};
   fd.forEach((v, k) => {{ if(v) body[k] = v; }});
-  const apiKey = new URLSearchParams(location.search).get('api_key') || '';
   const res = await fetch('{invite_form_action}', {{
     method: 'POST',
-    headers: {{'Content-Type': 'application/json', 'X-API-Key': apiKey}},
+    credentials: 'include',
+    headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify(body)
   }});
   if (res.ok) {{
@@ -231,7 +314,8 @@ document.getElementById('inviteForm').addEventListener('submit', async function(
     alert('Invite created!\\n\\nShare this link:\\n' + (data.register_url || data.token));
     location.reload();
   }} else {{
-    alert('Error creating invite.');
+    const err = await res.json().catch(()=>({{}}));
+    alert('Error creating invite: ' + (err.detail || 'unknown error'));
   }}
 }});
 </script>

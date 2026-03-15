@@ -82,7 +82,11 @@ def login_user(email: str, password: str) -> UserProfile:
     return _row_to_profile(row)
 
 
-def register_user_by_phone(name: str, phone_number: str) -> UserProfile:
+def register_user_by_phone(
+    name: str,
+    phone_number: str,
+    account_status: AccountStatus = AccountStatus.ACTIVE,
+) -> UserProfile:
     """Create a new user identified by phone number (Telegram/WhatsApp join).
     Raises ValueError on duplicate."""
     db = _get_client()
@@ -93,11 +97,19 @@ def register_user_by_phone(name: str, phone_number: str) -> UserProfile:
         "user_id": uid,
         "name": name,
         "phone_number": phone_number,
+        "account_status": account_status.value,
     }).execute()
-    return UserProfile(user_id=uid, name=name, phone_number=phone_number)
+    return UserProfile(user_id=uid, name=name, phone_number=phone_number,
+                       account_status=account_status)
 
 
-def google_auth(google_id: str, name: str, email: str, phone_number: str) -> UserProfile:
+def google_auth(
+    google_id: str,
+    name: str,
+    email: str,
+    phone_number: str,
+    account_status: AccountStatus = AccountStatus.ACTIVE,
+) -> UserProfile:
     """Register or log in via Google OAuth.
     Phone number is mandatory — caller must collect it before calling this.
     Lookup order: google_id → email → create new."""
@@ -124,17 +136,23 @@ def google_auth(google_id: str, name: str, email: str, phone_number: str) -> Use
         row.update(upd)
         return _row_to_profile(row)
     # 3. New user
-    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
+    if phone_number and db.table("user_profiles").select("user_id").eq(
+        "phone_number", phone_number
+    ).execute().data:
         raise ValueError("Phone number already registered.")
     uid = str(uuid.uuid4())
-    db.table("user_profiles").insert({
+    row_data: dict = {
         "user_id": uid,
         "name": name,
         "email": email,
-        "phone_number": phone_number,
         "google_id": google_id,
-    }).execute()
-    return UserProfile(user_id=uid, name=name, email=email, phone_number=phone_number)
+        "account_status": account_status.value,
+    }
+    if phone_number:
+        row_data["phone_number"] = phone_number
+    db.table("user_profiles").insert(row_data).execute()
+    return UserProfile(user_id=uid, name=name, email=email, phone_number=phone_number,
+                       account_status=account_status)
 
 
 def get_user_profile(user_id: str) -> Optional[UserProfile]:
@@ -732,7 +750,7 @@ def get_user_by_phone(phone_number: str) -> Optional[UserProfile]:
 # ── Invites ───────────────────────────────────────────────────────────────────
 
 def create_invite(
-    invited_by_user_id: str,
+    invited_by_user_id: Optional[str] = None,
     name: Optional[str] = None,
     email: Optional[str] = None,
     phone: Optional[str] = None,
@@ -744,11 +762,13 @@ def create_invite(
     invite_id = str(uuid.uuid4())
     import secrets
     token = secrets.token_hex(16)
-    row = {
+    row: dict = {
         "invite_id": invite_id,
         "token": token,
-        "invited_by": invited_by_user_id,
     }
+    # invited_by is a UUID FK — only include when a real user_id is provided
+    if invited_by_user_id:
+        row["invited_by"] = invited_by_user_id
     if name:
         row["name"] = name
     if email:
