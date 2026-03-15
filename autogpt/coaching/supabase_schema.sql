@@ -240,3 +240,12 @@ CREATE POLICY service_only ON weekly_plans          USING (auth.role() = 'servic
 CREATE POLICY service_only ON weekly_kr_activities  USING (auth.role() = 'service_role');
 CREATE POLICY service_only ON daily_highlights      USING (auth.role() = 'service_role');
 CREATE POLICY service_only ON invites               USING (auth.role() = 'service_role');
+
+-- ============================================================
+-- MIGRATIONS  (safe to re-run — all use IF NOT EXISTS / IF EXISTS)
+-- ============================================================
+
+-- M001: bilingual support — add language preference to user profiles
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en'
+             CHECK (language IN ('en', 'he'));
