@@ -37,6 +37,9 @@ class CoachingConfig(metaclass=Singleton):
         # Admin settings
         self.admin_telegram_id: int = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
         self.admin_user_id: str = os.getenv("ADMIN_USER_ID", "")
+        # Admin web dashboard credentials
+        self.admin_username: str = os.getenv("ADMIN_USERNAME", "Adi")
+        self.admin_password: str = os.getenv("ADMIN_PASSWORD", "@D!9989010")
         # Demo page — separate key so the main API key isn't exposed in the browser
         self.demo_key: str = os.getenv("COACHING_DEMO_KEY", "")
         # Public URL of this service (used to build the demo page's API_BASE).
