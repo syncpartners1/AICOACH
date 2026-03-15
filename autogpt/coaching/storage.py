@@ -48,6 +48,7 @@ def _row_to_profile(row: dict) -> UserProfile:
         email=row.get("email"),
         account_status=AccountStatus(row.get("account_status", "active")),
         language=row.get("language") or "en",
+        telegram_user_id=row.get("telegram_user_id"),
     )
 
 
@@ -158,7 +159,7 @@ def google_auth(
 def get_user_profile(user_id: str) -> Optional[UserProfile]:
     db = _get_client()
     result = db.table("user_profiles").select(
-        "user_id,name,phone_number,email,account_status,language"
+        "user_id,name,phone_number,email,account_status,language,telegram_user_id"
     ).eq("user_id", user_id).execute()
     if not result.data:
         return None

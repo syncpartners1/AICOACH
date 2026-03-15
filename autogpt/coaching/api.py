@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from autogpt.coaching.config import coaching_config
-from autogpt.coaching.email_service import send_invite_email, send_welcome_email
+from autogpt.coaching.email_service import send_invite_email
 
 logger = logging.getLogger(__name__)
 from autogpt.coaching.dashboard import build_dashboard
@@ -195,22 +195,6 @@ def auth_register(req: RegisterRequest, _: str = Depends(verify_api_key)) -> Aut
                              password=req.password, phone_number=req.phone_number)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-
-    # Send welcome email if EmailJS is configured
-    if (
-        user.email
-        and coaching_config.emailjs_service_id
-        and coaching_config.emailjs_template_welcome
-    ):
-        send_welcome_email(
-            to_email=user.email,
-            to_name=user.name,
-            coach_name=coaching_config.coach_name,
-            service_id=coaching_config.emailjs_service_id,
-            template_id=coaching_config.emailjs_template_welcome,
-            public_key=coaching_config.emailjs_public_key,
-            private_key=coaching_config.emailjs_private_key,
-        )
 
     return AuthResponse(user_id=user.user_id, name=user.name,
                         email=user.email, phone_number=user.phone_number)
@@ -1251,6 +1235,24 @@ def admin_approve_user(user_id: str, request: Request,
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     set_account_status(user_id, AccountStatus.ACTIVE, None)
+
+    # Notify the user via Telegram bot if they have a linked Telegram account
+    if user.telegram_user_id and coaching_config.telegram_bot_token:
+        from autogpt.coaching.i18n import t
+        lang = user.language or "en"
+        try:
+            http_requests.post(
+                f"https://api.telegram.org/bot{coaching_config.telegram_bot_token}/sendMessage",
+                json={
+                    "chat_id": user.telegram_user_id,
+                    "text": t(lang, "welcome_activated", name=user.name),
+                    "parse_mode": "Markdown",
+                },
+                timeout=10,
+            )
+        except Exception:
+            logger.warning("Could not send Telegram welcome to user %s", user_id)
+
     return {"user_id": user_id, "account_status": "active"}
 
 

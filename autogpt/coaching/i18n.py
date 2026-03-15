@@ -58,6 +58,13 @@ _S: dict[str, dict[str, str]] = {
             "You'll receive a message here as soon as it's activated.\n\n"
             "You can also reach the coach via the web: /start will check your status."
         ),
+        "welcome_activated": (
+            "✅ *Welcome to the program, {name}!*\n\n"
+            "Your account has been activated by your coach. "
+            "I'm your AI Co-Navigator — here to guide your weekly check-ins, "
+            "track your OKRs, and help you stay on course.\n\n"
+            "Send /start to kick off your first coaching session. 🚀"
+        ),
         "linked_existing": "✅ Your Telegram is now linked to *{name}*'s account. Starting your session…",
         "starting_session": "Starting your session… ⏳",
         "start_failed": "Sorry, I couldn't start your session. Please try again with /start.",
@@ -246,6 +253,13 @@ _S: dict[str, dict[str, str]] = {
             "✅ *נרשמת בהצלחה!*\n\n"
             "חשבונך ממתין לאישור המאמן. "
             "תקבל הודעה כאן ברגע שהוא יופעל."
+        ),
+        "welcome_activated": (
+            "✅ *ברוכים הבאים לתוכנית, {name}!*\n\n"
+            "חשבונך הופעל על ידי המאמן שלך. "
+            "אני ה-AI Co-Navigator שלך — כאן כדי לנחות אותך בפגישות שבועיות, "
+            "לעקוב אחרי ה-OKR שלך ולעזור לך להישאר במסלול.\n\n"
+            "שלח /start להתחלת פגישת האימון הראשונה. 🚀"
         ),
         "linked_existing": "✅ חשבון הטלגרם שלך קושר לפרופיל של *{name}*. מתחיל את הפגישה…",
         "starting_session": "מתחיל את הפגישה… ⏳",

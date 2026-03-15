@@ -54,6 +54,7 @@ class UserProfile(BaseModel):
     email: Optional[str] = None
     account_status: AccountStatus = AccountStatus.ACTIVE
     language: str = "en"                       # "en" or "he"
+    telegram_user_id: Optional[int] = None
 
 
 class RegisterRequest(BaseModel):
