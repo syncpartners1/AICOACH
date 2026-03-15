@@ -1052,10 +1052,39 @@ class DemoStartRequest(BaseModel):
     name: str
 
 
-@app.get("/", include_in_schema=False)
-def root():
-    """Redirect root to the demo page."""
-    return RedirectResponse(url="/demo")
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def root() -> HTMLResponse:
+    """Production landing page — main entry point for coaching program participants."""
+    from autogpt.coaching.production_ui import PRODUCTION_HTML
+
+    telegram_button = ""
+    if coaching_config.telegram_bot_username:
+        tg_url = f"https://t.me/{coaching_config.telegram_bot_username}"
+        telegram_button = (
+            f'<a href="{tg_url}" target="_blank" rel="noopener" class="btn btn-telegram">'
+            f'<svg width="22" height="22" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">'
+            f'<circle cx="120" cy="120" r="120" fill="#229ED9"/>'
+            f'<path d="M180 67L155 178c-1.7 7.7-6.4 9.6-13 6L108 160l-16 15.4c-1.8 1.8-3.3 3.3-6.7 3.3l2.4-33.6 61-55.1c2.6-2.3-.6-3.6-4.1-1.3L60 139.5l-32.8-10.3c-7.1-2.2-7.3-7.1 1.5-10.5l152.2-58.7c5.9-2.1 11.1 1.4 9.1 7z" fill="#fff"/>'
+            f'</svg>'
+            f'&nbsp; Start on Telegram</a>'
+        )
+
+    google_button = ""
+    if coaching_config.google_client_id:
+        google_oauth_url = "/auth/google/url?redirect_to=/dashboard"
+        google_button = (
+            f'<a href="{google_oauth_url}" class="btn btn-google">'
+            f'<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.2l6.8-6.8C35.8 2.4 30.2 0 24 0 14.7 0 6.7 5.4 2.8 13.3l7.9 6.1C12.6 13 17.9 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.7 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.7-4.6l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.5 10.8l8.2-6.2z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.1 0-11.3-4.1-13.2-9.7l-8.1 6.2C6.6 42.5 14.7 48 24 48z"/></svg>'
+            f'&nbsp; Continue with Google</a>'
+        )
+
+    html = PRODUCTION_HTML.format(
+        coach_name=coaching_config.coach_name,
+        calendly_url=coaching_config.coach_calendly_url,
+        telegram_button=telegram_button,
+        google_button=google_button,
+    )
+    return HTMLResponse(content=html)
 
 
 @app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
