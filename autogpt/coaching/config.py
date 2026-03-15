@@ -31,9 +31,17 @@ class CoachingConfig(metaclass=Singleton):
         self.telegram_bot_username: str = os.getenv("TELEGRAM_BOT_USERNAME", "")
         # WhatsApp Business Cloud API
         self.whatsapp_access_token: str = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
-        self.whatsapp_phone_number_id: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+        self.whatsapp_phone_number_id: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "997470790125080")
+        self.whatsapp_business_account_id: str = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1140904578083674")
         self.whatsapp_app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "")
         self.whatsapp_verify_token: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
+        # Facebook / Meta Login
+        self.facebook_app_id: str = os.getenv("FACEBOOK_APP_ID", "2003921883519698")
+        self.facebook_app_secret: str = os.getenv("FACEBOOK_APP_SECRET", "0e13ca8b594c869e62cb2939e6c4e888")
+        # Facebook User ID allowed as admin (leave blank to allow any valid FB login)
+        self.admin_facebook_id: str = os.getenv("ADMIN_FACEBOOK_ID", "")
+        # Admin phone for WhatsApp OTP login (E.164 without +, e.g. 972501234567)
+        self.admin_whatsapp_phone: str = os.getenv("ADMIN_WHATSAPP_PHONE", "")
         # Admin settings
         self.admin_telegram_id: int = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
         self.admin_user_id: str = os.getenv("ADMIN_USER_ID", "")
