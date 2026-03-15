@@ -26,18 +26,53 @@ def render_admin(
     public_url: str = "",
 ) -> str:
     # ── User rows ─────────────────────────────────────────────────────────────
+    _status_colors = {
+        "active": ("#16a34a", "#dcfce7"),
+        "suspended": ("#d97706", "#fef3c7"),
+        "archived": ("#dc2626", "#fee2e2"),
+    }
+
     user_rows = ""
     for u in users:
         last_sess = u.last_session.strftime("%d %b %Y") if u.last_session else "—"
         last_plan = u.last_weekly_plan.strftime("%d %b %Y") if u.last_weekly_plan else "—"
-        contact = u.email or u.phone_number or "—"
+        contact = u.phone_number or u.email or "—"
         dashboard_url = f"{public_url}/dashboard/{u.user_id}" if public_url else f"/dashboard/{u.user_id}"
+        st = u.account_status.value if hasattr(u.account_status, "value") else str(u.account_status)
+        fg, bg = _status_colors.get(st, ("#6b7280", "#f3f4f6"))
+        status_pill = (f'<span style="font-size:10px;font-weight:700;padding:1px 7px;'
+                       f'border-radius:8px;background:{bg};color:{fg}">{st.upper()}</span>')
+        # Admin action buttons
+        if st == "active":
+            actions = (f'<button onclick="setStatus(\'{u.user_id}\',\'suspended\')" '
+                       f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
+                       f'background:#fef3c7;color:#92400e;border:1px solid #fbbf24;margin-right:4px">'
+                       f'Suspend</button>'
+                       f'<button onclick="setStatus(\'{u.user_id}\',\'archived\')" '
+                       f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
+                       f'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">'
+                       f'Archive</button>')
+        elif st == "suspended":
+            actions = (f'<button onclick="setStatus(\'{u.user_id}\',\'active\')" '
+                       f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
+                       f'background:#dcfce7;color:#166534;border:1px solid #86efac;margin-right:4px">'
+                       f'Reactivate</button>'
+                       f'<button onclick="setStatus(\'{u.user_id}\',\'archived\')" '
+                       f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
+                       f'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">'
+                       f'Archive</button>')
+        else:
+            actions = (f'<button onclick="setStatus(\'{u.user_id}\',\'active\')" '
+                       f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
+                       f'background:#dcfce7;color:#166534;border:1px solid #86efac">'
+                       f'Reactivate</button>')
         user_rows += f"""
 <tr>
   <td style="padding:10px 12px;font-weight:600;white-space:nowrap">
     <a href="{dashboard_url}" style="color:#1a2b4a;text-decoration:none">{u.name}</a>
   </td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
+  <td style="padding:10px 12px;text-align:center">{status_pill}</td>
   <td style="padding:10px 12px;text-align:center">{u.objectives_count}</td>
   <td style="padding:10px 12px;white-space:nowrap">
     <span style="font-weight:600">{u.avg_kr_pct:.0f}%</span>
@@ -45,14 +80,15 @@ def render_admin(
   </td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{last_sess}</td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{last_plan}</td>
-  <td style="padding:10px 12px">
+  <td style="padding:10px 12px;white-space:nowrap">
     <a href="{dashboard_url}" style="font-size:12px;color:#1a2b4a;background:#e0e7ff;
-       padding:3px 10px;border-radius:12px;text-decoration:none">View</a>
+       padding:3px 10px;border-radius:12px;text-decoration:none;margin-right:6px">View</a>
+    {actions}
   </td>
 </tr>"""
 
     if not user_rows:
-        user_rows = '<tr><td colspan="7" style="padding:20px;color:#9ca3af;text-align:center">No users yet.</td></tr>'
+        user_rows = '<tr><td colspan="8" style="padding:20px;color:#9ca3af;text-align:center">No users yet.</td></tr>'
 
     # ── Pending invite rows ───────────────────────────────────────────────────
     invite_rows = ""
@@ -128,8 +164,8 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
   <div class="card">
     <table>
       <thead><tr>
-        <th>Name</th><th>Contact</th><th>OKRs</th>
-        <th>Avg KR Progress</th><th>Last Session</th><th>Last Plan</th><th></th>
+        <th>Name</th><th>Contact</th><th>Status</th><th>OKRs</th>
+        <th>Avg KR Progress</th><th>Last Session</th><th>Last Plan</th><th>Actions</th>
       </tr></thead>
       <tbody>{user_rows}</tbody>
     </table>
@@ -162,6 +198,19 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 
 </div>
 <script>
+// Admin status change
+async function setStatus(userId, newStatus) {{
+  const apiKey = new URLSearchParams(location.search).get('api_key') || '';
+  const reasons = {{suspended: 'Suspended by admin', archived: 'Archived by admin', active: ''}};
+  const res = await fetch(`/admin/users/${{userId}}/status`, {{
+    method: 'PUT',
+    headers: {{'Content-Type': 'application/json', 'X-API-Key': apiKey}},
+    body: JSON.stringify({{status: newStatus, reason: reasons[newStatus] || ''}})
+  }});
+  if (res.ok) location.reload();
+  else alert('Could not update status. Please check your API key.');
+}}
+
 // Allow form submission via fetch so the page doesn't navigate away
 document.getElementById('inviteForm').addEventListener('submit', async function(e) {{
   e.preventDefault();

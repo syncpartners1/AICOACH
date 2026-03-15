@@ -42,6 +42,16 @@ def _kr_lookup(kr_activities: List[KRActivity]) -> dict:
     return {a.kr_id: a for a in kr_activities}
 
 
+def _status_badge(account_status) -> str:
+    val = account_status.value if hasattr(account_status, "value") else str(account_status)
+    colors = {"active": ("#16a34a", "#dcfce7"), "suspended": ("#d97706", "#fef3c7"),
+              "archived": ("#dc2626", "#fee2e2")}
+    fg, bg = colors.get(val, ("#6b7280", "#f3f4f6"))
+    label = val.upper()
+    return (f'<span style="display:inline-block;padding:2px 10px;border-radius:10px;'
+            f'font-size:11px;font-weight:700;background:{bg};color:{fg}">{label}</span>')
+
+
 def render_dashboard(
     user: UserProfile,
     objectives: List[Objective],
@@ -139,6 +149,40 @@ def render_dashboard(
         sess_html = '<p style="color:#9ca3af;font-size:13px">No sessions recorded yet.</p>'
 
     week_label = f"{week_start.strftime('%d %b')} – {week_end.strftime('%d %b %Y')}"
+    status_val = user.account_status.value if hasattr(user.account_status, "value") else "active"
+    status_badge = _status_badge(user.account_status)
+
+    # Suspend / reactivate button
+    if status_val == "active":
+        status_action = (
+            f'<button onclick="setStatus(\'suspend\')" '
+            f'style="font-size:12px;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;'
+            f'padding:4px 12px;border-radius:8px;cursor:pointer;margin-left:10px">'
+            f'⏸ Pause my coaching</button>'
+        )
+    elif status_val == "suspended":
+        status_action = (
+            f'<button onclick="setStatus(\'reactivate\')" '
+            f'style="font-size:12px;background:#dcfce7;color:#166534;border:1px solid #86efac;'
+            f'padding:4px 12px;border-radius:8px;cursor:pointer;margin-left:10px">'
+            f'▶ Resume my coaching</button>'
+        )
+    else:
+        status_action = ""
+
+    suspended_banner = (
+        '<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:10px;'
+        'padding:12px 16px;margin-bottom:20px;font-size:14px;color:#92400e">'
+        '⏸ <strong>Your coaching is paused.</strong> Use the button above to resume '
+        'whenever you\'re ready.</div>'
+    ) if status_val == "suspended" else ""
+
+    archived_banner = (
+        '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;'
+        'padding:12px 16px;margin-bottom:20px;font-size:14px;color:#991b1b">'
+        '🚫 <strong>This account has been archived.</strong> Please contact your coach '
+        'to discuss reactivation.</div>'
+    ) if status_val == "archived" else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -167,10 +211,11 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
        style="border-radius:8px" alt="logo">
   <div>
     <div class="hdr-title">My Coaching Dashboard</div>
-    <div class="hdr-sub">{user.name}</div>
+    <div class="hdr-sub">{user.name} &nbsp;{status_badge}{status_action}</div>
   </div>
 </div>
 <div class="container">
+  {suspended_banner}{archived_banner}
 
   <div class="section-title">This Week &mdash; {week_label}</div>
 
@@ -184,5 +229,20 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   {sess_html}
 
 </div>
+<script>
+async function setStatus(action) {{
+  const uid = '{user.user_id}';
+  const apiKey = new URLSearchParams(location.search).get('api_key') || '';
+  const url = action === 'suspend'
+    ? `/users/${{uid}}/suspend`
+    : `/users/${{uid}}/reactivate`;
+  const method = 'POST';
+  const headers = {{'Content-Type':'application/json','X-API-Key': apiKey}};
+  const body = action === 'suspend' ? JSON.stringify({{reason: 'User self-suspended'}}) : null;
+  const res = await fetch(url, {{method, headers, body}});
+  if (res.ok) location.reload();
+  else alert('Could not update status. Please try again.');
+}}
+</script>
 </body>
 </html>"""

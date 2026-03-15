@@ -7,24 +7,32 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
 -- 1. USER PROFILES
--- Custom user table (email/password or Google OAuth).
+-- Phone number is MANDATORY for every user regardless of sign-up method.
+-- account_status: active | suspended | archived
 -- ============================================================
 CREATE TABLE IF NOT EXISTS user_profiles (
-  user_id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
-  name             TEXT    NOT NULL,
-  email            TEXT    UNIQUE,            -- NULL for phone-only accounts
-  password_hash    TEXT,                      -- NULL for Google/phone accounts
-  google_id        TEXT    UNIQUE,            -- NULL for email/phone accounts
-  phone_number     TEXT    UNIQUE,            -- NULL for email/Google accounts
-  telegram_user_id BIGINT  UNIQUE,            -- linked Telegram account
-  is_admin         BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at       TIMESTAMPTZ DEFAULT NOW()
+  user_id           UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+  name              TEXT    NOT NULL,
+  phone_number      TEXT    NOT NULL UNIQUE,       -- mandatory for all users
+  email             TEXT    UNIQUE,                -- NULL for phone/Telegram-only accounts
+  password_hash     TEXT,                          -- NULL for Google/phone/Telegram accounts
+  google_id         TEXT    UNIQUE,                -- NULL for non-Google accounts
+  telegram_user_id  BIGINT  UNIQUE,                -- linked Telegram account
+  whatsapp_user_id  TEXT    UNIQUE,                -- linked WhatsApp number (normalized E.164)
+  is_admin          BOOLEAN NOT NULL DEFAULT FALSE,
+  account_status    TEXT    NOT NULL DEFAULT 'active'
+                            CHECK (account_status IN ('active','suspended','archived')),
+  suspended_at      TIMESTAMPTZ,
+  suspended_reason  TEXT,
+  created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_email    ON user_profiles(email);
-CREATE INDEX IF NOT EXISTS idx_user_google   ON user_profiles(google_id);
-CREATE INDEX IF NOT EXISTS idx_user_phone    ON user_profiles(phone_number);
-CREATE INDEX IF NOT EXISTS idx_user_telegram ON user_profiles(telegram_user_id);
+CREATE INDEX IF NOT EXISTS idx_user_email      ON user_profiles(email);
+CREATE INDEX IF NOT EXISTS idx_user_google     ON user_profiles(google_id);
+CREATE INDEX IF NOT EXISTS idx_user_phone      ON user_profiles(phone_number);
+CREATE INDEX IF NOT EXISTS idx_user_telegram   ON user_profiles(telegram_user_id);
+CREATE INDEX IF NOT EXISTS idx_user_whatsapp   ON user_profiles(whatsapp_user_id);
+CREATE INDEX IF NOT EXISTS idx_user_status     ON user_profiles(account_status);
 
 -- ============================================================
 -- 2. OBJECTIVES  (user's ongoing OKR plan)

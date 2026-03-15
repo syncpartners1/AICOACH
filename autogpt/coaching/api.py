@@ -24,8 +24,10 @@ from autogpt.coaching.config import coaching_config
 logger = logging.getLogger(__name__)
 from autogpt.coaching.dashboard import build_dashboard
 from autogpt.coaching.models import (
+    AccountStatus,
     AuthResponse,
     CoachDashboard,
+    CompleteGoogleSignupRequest,
     DailyHighlightRequest,
     GoogleAuthRequest,
     Invite,
@@ -41,8 +43,10 @@ from autogpt.coaching.models import (
     RegisterRequest,
     SessionSummary,
     StatusUpdateRequest,
+    SuspendRequest,
     UserProfile,
     UserProgressSummary,
+    UserStatusRequest,
     WeeklyPlan,
 )
 from autogpt.coaching.session import CoachingSession
@@ -60,6 +64,7 @@ from autogpt.coaching.storage import (
     register_user,
     register_user_by_phone,
     save_session,
+    set_account_status,
     set_kr_status,
     set_objective_status,
     upsert_daily_highlight,
@@ -130,13 +135,16 @@ _active_sessions: Dict[str, CoachingSession] = {}
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
 
-@app.post("/auth/register", response_model=AuthResponse, summary="Register a new user with email and password")
+@app.post("/auth/register", response_model=AuthResponse,
+          summary="Register a new user with email, password and phone number")
 def auth_register(req: RegisterRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
     try:
-        user = register_user(name=req.name, email=req.email, password=req.password)
+        user = register_user(name=req.name, email=req.email,
+                             password=req.password, phone_number=req.phone_number)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    return AuthResponse(user_id=user.user_id, name=user.name, email=user.email)
+    return AuthResponse(user_id=user.user_id, name=user.name,
+                        email=user.email, phone_number=user.phone_number)
 
 
 @app.post(
@@ -162,10 +170,15 @@ def auth_login(req: LoginRequest, _: str = Depends(verify_api_key)) -> AuthRespo
 
 
 @app.post("/auth/google", response_model=AuthResponse,
-          summary="Register or login via Google OAuth (call after Wix handles OAuth)")
+          summary="Register or login via Google OAuth — phone_number is required")
 def auth_google(req: GoogleAuthRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
-    user = google_auth(google_id=req.google_id, name=req.name, email=req.email)
-    return AuthResponse(user_id=user.user_id, name=user.name, email=user.email)
+    try:
+        user = google_auth(google_id=req.google_id, name=req.name,
+                           email=req.email, phone_number=req.phone_number)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return AuthResponse(user_id=user.user_id, name=user.name,
+                        email=user.email, phone_number=user.phone_number)
 
 
 @app.get(
@@ -266,11 +279,147 @@ def google_oauth_callback(
     if not google_id or not email:
         return RedirectResponse(url=f"{redirect_to}?error=incomplete_profile", status_code=302)
 
-    user = google_auth(google_id=google_id, name=name, email=email)
+    # Check whether this Google identity already has a phone number on file
+    from autogpt.coaching.storage import _get_client as _supa
+    db = _supa()
+    existing = db.table("user_profiles").select("user_id,name,phone_number").eq(
+        "google_id", google_id
+    ).execute().data
+    if not existing:
+        # Also try by email
+        existing = db.table("user_profiles").select("user_id,name,phone_number").eq(
+            "email", email
+        ).execute().data
 
-    # Return user to Wix with identity attached as query params
-    params = urlencode({"user_id": user.user_id, "name": user.name, "email": user.email})
-    return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
+    if existing and existing[0].get("phone_number"):
+        # Phone already on file — complete sign-in without extra step
+        row = existing[0]
+        try:
+            user = google_auth(google_id=google_id, name=name, email=email,
+                               phone_number=row["phone_number"])
+        except ValueError:
+            user_row = existing[0]
+            from autogpt.coaching.models import AccountStatus as _AS
+            from autogpt.coaching.models import UserProfile as _UP
+            user = _UP(user_id=user_row["user_id"], name=user_row["name"],
+                       phone_number=user_row["phone_number"])
+        params = urlencode({"user_id": user.user_id, "name": user.name, "email": user.email or ""})
+        return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
+
+    # No phone yet — redirect to phone-setup page
+    gid_token = base64.urlsafe_b64encode(
+        f"{google_id}|{name}|{email}".encode()
+    ).decode()
+    setup_params = urlencode({"gid": gid_token, "redirect_to": redirect_to})
+    return RedirectResponse(url=f"/phone-setup?{setup_params}", status_code=302)
+
+
+@app.get("/phone-setup", response_class=HTMLResponse, include_in_schema=False)
+def phone_setup_page(
+    gid: str = Query(..., description="Base64-encoded google_id|name|email"),
+    redirect_to: str = Query(default="/"),
+) -> HTMLResponse:
+    """Collect phone number after Google OAuth when the account has no phone on file."""
+    try:
+        decoded = base64.urlsafe_b64decode(gid.encode()).decode()
+        parts = decoded.split("|", 2)
+        pre_name = parts[1] if len(parts) > 1 else ""
+    except Exception:
+        pre_name = ""
+
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Complete Your Registration – ABN Consulting</title>
+<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
+.card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:400px;width:100%;
+      box-shadow:0 4px 20px rgba(0,0,0,.1)}}
+.logo{{display:flex;align-items:center;gap:10px;margin-bottom:24px}}
+.logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
+h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:8px}}
+p{{color:#6b7280;font-size:14px;margin-bottom:22px;line-height:1.5}}
+label{{font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:4px}}
+input{{width:100%;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:9px;
+      font-size:14px;outline:none;margin-bottom:16px;transition:border-color .2s}}
+input:focus{{border-color:#1a2b4a}}
+.btn{{width:100%;background:#1a2b4a;color:#fff;border:none;padding:12px;border-radius:10px;
+     font-size:15px;font-weight:700;cursor:pointer}}
+.btn:hover{{background:#243d6b}}
+#msg{{margin-top:12px;font-size:13px;text-align:center}}
+</style></head>
+<body>
+<div class="card">
+  <div class="logo">
+    <img src="/static/android-chrome-192x192.png" width="36" height="36"
+         style="border-radius:8px" alt="logo">
+    <div class="logo-text">ABN Consulting</div>
+  </div>
+  <h1>One last step</h1>
+  <p>Welcome, <strong>{pre_name}</strong>! Please add your phone number to complete your
+  registration. This lets us connect your coaching across all channels.</p>
+  <form id="phoneForm">
+    <label>Phone Number (WhatsApp / Telegram)</label>
+    <input type="tel" id="phone" placeholder="+1 234 567 8900" required>
+    <button type="submit" class="btn">Complete Registration</button>
+  </form>
+  <div id="msg"></div>
+</div>
+<script>
+document.getElementById('phoneForm').addEventListener('submit', async function(e) {{
+  e.preventDefault();
+  const msg = document.getElementById('msg');
+  msg.textContent = 'Saving…';
+  const phone = document.getElementById('phone').value.trim();
+  const res = await fetch('/public/complete-google-signup', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{gid: decodeURIComponent('{gid}'), phone_number: phone}})
+  }});
+  if (res.ok) {{
+    const data = await res.json();
+    msg.style.color = '#16a34a';
+    msg.textContent = 'All set! Redirecting…';
+    setTimeout(() => {{
+      window.location = '/dashboard/' + data.user_id;
+    }}, 1200);
+  }} else {{
+    const err = await res.json().catch(()=>({{}}));
+    msg.style.color = '#dc2626';
+    msg.textContent = err.detail || 'Could not save. Please try again.';
+  }}
+}});
+</script>
+</body></html>""")
+
+
+class _GooglePhoneBody(BaseModel):
+    gid: str          # base64-encoded "google_id|name|email"
+    phone_number: str
+    invite_token: Optional[str] = None
+
+
+@app.post("/public/complete-google-signup", response_model=AuthResponse,
+          summary="Finalise Google OAuth signup by providing the mandatory phone number")
+def complete_google_signup(body: _GooglePhoneBody) -> AuthResponse:
+    """Called from the /phone-setup page."""
+    try:
+        decoded = base64.urlsafe_b64decode(body.gid.encode()).decode()
+        google_id, name, email = decoded.split("|", 2)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token.")
+    try:
+        user = google_auth(google_id=google_id, name=name, email=email,
+                           phone_number=body.phone_number)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if body.invite_token:
+        use_invite(body.invite_token, user.user_id)
+    return AuthResponse(user_id=user.user_id, name=user.name,
+                        email=user.email, phone_number=user.phone_number)
 
 
 @app.get("/auth/google/config", summary="Show the redirect URI to register in Google Cloud Console")
@@ -293,6 +442,39 @@ def get_profile(user_id: str, _: str = Depends(verify_api_key)) -> UserProfile:
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     return user
+
+
+@app.post("/users/{user_id}/suspend", response_model=dict,
+          summary="User self-suspends their coaching (can reactivate later)")
+def self_suspend(
+    user_id: str,
+    req: SuspendRequest,
+    _: str = Depends(verify_api_key),
+) -> dict:
+    user = get_user_profile(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    if user.account_status == AccountStatus.ARCHIVED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Archived accounts cannot be modified.")
+    set_account_status(user_id, AccountStatus.SUSPENDED, req.reason)
+    return {"user_id": user_id, "account_status": "suspended"}
+
+
+@app.post("/users/{user_id}/reactivate", response_model=dict,
+          summary="User reactivates their own suspended coaching")
+def self_reactivate(
+    user_id: str,
+    _: str = Depends(verify_api_key),
+) -> dict:
+    user = get_user_profile(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    if user.account_status == AccountStatus.ARCHIVED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Archived accounts cannot be self-reactivated. Please contact your coach.")
+    set_account_status(user_id, AccountStatus.ACTIVE)
+    return {"user_id": user_id, "account_status": "active"}
 
 
 # ── Objectives ────────────────────────────────────────────────────────────────
@@ -546,6 +728,20 @@ def admin_list_users(_: str = Depends(verify_api_key)) -> List[UserProgressSumma
     return get_all_users_progress()
 
 
+@app.put("/admin/users/{user_id}/status", response_model=dict,
+         summary="Admin: set a user's account status (active / suspended / archived)")
+def admin_set_user_status(
+    user_id: str,
+    req: UserStatusRequest,
+    _: str = Depends(verify_api_key),
+) -> dict:
+    user = get_user_profile(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    set_account_status(user_id, req.status, req.reason)
+    return {"user_id": user_id, "account_status": req.status.value}
+
+
 @app.post("/admin/invites", response_model=Invite, summary="Create a program invite link (admin)")
 def admin_create_invite(req: InviteRequest, _: str = Depends(verify_api_key)) -> Invite:
     admin_uid = coaching_config.admin_user_id or "system"
@@ -736,6 +932,17 @@ def start_session(
     if req.user_id:
         profile = get_user_profile(req.user_id)
         if profile:
+            if profile.account_status == AccountStatus.SUSPENDED:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your coaching is currently suspended. "
+                           "Use /users/{user_id}/reactivate to resume.",
+                )
+            if profile.account_status == AccountStatus.ARCHIVED:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This account has been archived. Please contact your coach.",
+                )
             user_name = profile.name
         objectives = get_user_objectives(req.user_id)
         past_sessions = get_past_sessions(req.user_id, limit=3)

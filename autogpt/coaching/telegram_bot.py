@@ -9,6 +9,8 @@ Commands (users):
   /myplan    – view current week's plan summary
   /message   – send a message to the coach (Adi Ben Nesher)
   /done      – end an active AI coaching session and save summary
+  /suspend   – pause your coaching until you're ready to resume
+  /resume    – reactivate a paused coaching account
   /cancel    – cancel current operation
   /help      – show this list
 
@@ -103,6 +105,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return CHATTING
 
     if user:
+        err = _check_active(user)
+        if err:
+            await update.message.reply_text(err, parse_mode="Markdown")
+            return ConversationHandler.END
         await update.message.reply_text(
             f"Welcome back, *{user.name}*! 👋\n\n"
             "Starting your weekly check-in session…",
@@ -119,6 +125,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         parse_mode="Markdown",
     )
     return WAITING_NAME
+
+
+def _check_active(user) -> Optional[str]:
+    """Return an error message if the account is not active, else None."""
+    if user is None:
+        return None
+    st = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
+    if st == "suspended":
+        return ("⏸ Your coaching is currently *paused*. "
+                "Send /resume to reactivate it whenever you're ready.")
+    if st == "archived":
+        return ("🚫 Your account has been *archived*. "
+                "Please contact Adi Ben Nesher to discuss reactivation.")
+    return None
 
 
 async def _start_coaching_session(
@@ -673,6 +693,65 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ── /help ──────────────────────────────────────────────────────────────────────
 
+async def suspend_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    if not user:
+        await update.message.reply_text("Please link your account first with /link.")
+        return
+    st = user.account_status.value if hasattr(user.account_status, "value") else "active"
+    if st == "archived":
+        await update.message.reply_text(
+            "🚫 Your account has been archived. Please contact Adi Ben Nesher."
+        )
+        return
+    if st == "suspended":
+        await update.message.reply_text("Your coaching is already paused. Use /resume to reactivate.")
+        return
+    try:
+        from autogpt.coaching.storage import set_account_status
+        from autogpt.coaching.models import AccountStatus
+        set_account_status(user.user_id, AccountStatus.SUSPENDED, "User self-suspended via Telegram")
+        await update.message.reply_text(
+            "⏸ Your coaching has been *paused*.\n\n"
+            "Use /resume whenever you're ready to continue. "
+            "Your progress and OKRs are safely saved.",
+            parse_mode="Markdown",
+        )
+    except Exception:
+        logger.exception("Could not suspend user %s", user.user_id)
+        await update.message.reply_text("Sorry, something went wrong. Please try again.")
+
+
+async def resume_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    if not user:
+        await update.message.reply_text("Please link your account first with /link.")
+        return
+    st = user.account_status.value if hasattr(user.account_status, "value") else "active"
+    if st == "archived":
+        await update.message.reply_text(
+            "🚫 Your account has been archived. Please contact Adi Ben Nesher directly."
+        )
+        return
+    if st == "active":
+        await update.message.reply_text("Your coaching is already active! Use /start for your session.")
+        return
+    try:
+        from autogpt.coaching.storage import set_account_status
+        from autogpt.coaching.models import AccountStatus
+        set_account_status(user.user_id, AccountStatus.ACTIVE)
+        await update.message.reply_text(
+            f"▶ Welcome back, *{user.name}*! Your coaching is now *active* again.\n\n"
+            "Use /start to begin your session whenever you're ready.",
+            parse_mode="Markdown",
+        )
+    except Exception:
+        logger.exception("Could not reactivate user %s", user.user_id)
+        await update.message.reply_text("Sorry, something went wrong. Please try again.")
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tg_id = update.effective_user.id
     base = (
@@ -685,6 +764,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/myplan — View your current week's plan\n"
         "/message — Send a message to Adi Ben Nesher\n"
         "/done — End session and receive summary\n"
+        "/suspend — Pause your coaching\n"
+        "/resume — Reactivate a paused coaching account\n"
         "/cancel — Cancel current operation\n"
         "/help — Show this list"
     )
@@ -802,6 +883,8 @@ def _build_app(token: str) -> Application:
     app.add_handler(conv)
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("myplan", myplan))
+    app.add_handler(CommandHandler("suspend", suspend_self))
+    app.add_handler(CommandHandler("resume", resume_self))
     app.add_handler(CommandHandler("help", help_command))
 
     # Admin commands

@@ -28,6 +28,12 @@ class OKRStatus(str, Enum):
     ON_HOLD = "on_hold"
 
 
+class AccountStatus(str, Enum):
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    ARCHIVED = "archived"
+
+
 class DayOfWeek(str, Enum):
     MONDAY = "monday"
     TUESDAY = "tuesday"
@@ -43,20 +49,32 @@ class DayOfWeek(str, Enum):
 class UserProfile(BaseModel):
     user_id: str
     name: str
+    phone_number: str                          # mandatory for all users
     email: Optional[str] = None
-    phone_number: Optional[str] = None
+    account_status: AccountStatus = AccountStatus.ACTIVE
 
 
 class RegisterRequest(BaseModel):
+    """Email + password registration — phone is required."""
     name: str
     email: str
     password: str
+    phone_number: str
 
 
 class PhoneRegisterRequest(BaseModel):
-    """Register a new user with just name and phone number (no password required)."""
+    """Register with name + phone number only (Telegram / WhatsApp join flow)."""
     name: str
     phone_number: str
+
+
+class CompleteGoogleSignupRequest(BaseModel):
+    """Finalise Google OAuth signup by adding the mandatory phone number."""
+    google_id: str
+    name: str
+    email: str
+    phone_number: str
+    invite_token: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -65,17 +83,33 @@ class LoginRequest(BaseModel):
 
 
 class GoogleAuthRequest(BaseModel):
-    """Called after Wix completes Google OAuth; provides the resolved identity."""
+    """Called server-side after Google OAuth completes (API use only).
+    Phone number must be supplied by the caller."""
     google_id: str
     name: str
     email: str
+    phone_number: str
 
 
 class AuthResponse(BaseModel):
     user_id: str
     name: str
+    phone_number: str
     email: Optional[str] = None
-    phone_number: Optional[str] = None
+    account_status: AccountStatus = AccountStatus.ACTIVE
+    # True when the account exists but has no phone yet (Google OAuth mid-flow)
+    needs_phone: bool = False
+
+
+class SuspendRequest(BaseModel):
+    """User self-suspend — reason is optional."""
+    reason: Optional[str] = None
+
+
+class UserStatusRequest(BaseModel):
+    """Admin: set any account status with an optional reason."""
+    status: AccountStatus
+    reason: Optional[str] = None
 
 
 # ── OKR Master Plan ───────────────────────────────────────────────────────────
@@ -289,8 +323,9 @@ class UserProgressSummary(BaseModel):
     """Lightweight progress snapshot per user — used in admin overview."""
     user_id: str
     name: str
+    phone_number: str
     email: Optional[str] = None
-    phone_number: Optional[str] = None
+    account_status: AccountStatus = AccountStatus.ACTIVE
     objectives_count: int = 0
     avg_kr_pct: float = 0.0
     last_session: Optional[datetime] = None

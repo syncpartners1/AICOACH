@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from autogpt.coaching.auth import hash_password, verify_password
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.models import (
+    AccountStatus,
     Alert,
     AlertLevel,
     ClientStatus,
@@ -39,20 +40,32 @@ def _get_client():
 
 # ── User / Auth ───────────────────────────────────────────────────────────────
 
-def register_user(name: str, email: str, password: str) -> UserProfile:
-    """Create a new user with hashed password. Raises ValueError on duplicate email."""
+def _row_to_profile(row: dict) -> UserProfile:
+    return UserProfile(
+        user_id=row["user_id"],
+        name=row["name"],
+        phone_number=row.get("phone_number") or "",
+        email=row.get("email"),
+        account_status=AccountStatus(row.get("account_status", "active")),
+    )
+
+
+def register_user(name: str, email: str, password: str, phone_number: str) -> UserProfile:
+    """Create a new user with email + password + phone. Raises ValueError on duplicates."""
     db = _get_client()
-    existing = db.table("user_profiles").select("user_id").eq("email", email).execute()
-    if existing.data:
+    if db.table("user_profiles").select("user_id").eq("email", email).execute().data:
         raise ValueError("Email already registered.")
+    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
+        raise ValueError("Phone number already registered.")
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
         "user_id": uid,
         "name": name,
         "email": email,
+        "phone_number": phone_number,
         "password_hash": hash_password(password),
     }).execute()
-    return UserProfile(user_id=uid, name=name, email=email)
+    return UserProfile(user_id=uid, name=name, email=email, phone_number=phone_number)
 
 
 def login_user(email: str, password: str) -> UserProfile:
@@ -65,14 +78,14 @@ def login_user(email: str, password: str) -> UserProfile:
     stored = row.get("password_hash") or ""
     if not stored or not verify_password(password, stored):
         raise ValueError("Invalid email or password.")
-    return UserProfile(user_id=row["user_id"], name=row["name"], email=row["email"])
+    return _row_to_profile(row)
 
 
 def register_user_by_phone(name: str, phone_number: str) -> UserProfile:
-    """Create a new user identified by phone number. Raises ValueError on duplicate."""
+    """Create a new user identified by phone number (Telegram/WhatsApp join).
+    Raises ValueError on duplicate."""
     db = _get_client()
-    existing = db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute()
-    if existing.data:
+    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
         raise ValueError("Phone number already registered.")
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
@@ -83,38 +96,74 @@ def register_user_by_phone(name: str, phone_number: str) -> UserProfile:
     return UserProfile(user_id=uid, name=name, phone_number=phone_number)
 
 
-def google_auth(google_id: str, name: str, email: str) -> UserProfile:
-    """Register or log in via Google. Links by google_id first, then email."""
+def google_auth(google_id: str, name: str, email: str, phone_number: str) -> UserProfile:
+    """Register or log in via Google OAuth.
+    Phone number is mandatory — caller must collect it before calling this.
+    Lookup order: google_id → email → create new."""
     db = _get_client()
-    # Check existing google_id
+    # 1. Existing google_id
     by_gid = db.table("user_profiles").select("*").eq("google_id", google_id).execute()
     if by_gid.data:
         row = by_gid.data[0]
-        return UserProfile(user_id=row["user_id"], name=row["name"], email=row["email"])
-    # Check existing email — link Google to existing account
+        # Back-fill phone if missing
+        if not row.get("phone_number") and phone_number:
+            db.table("user_profiles").update({"phone_number": phone_number}).eq(
+                "user_id", row["user_id"]
+            ).execute()
+            row["phone_number"] = phone_number
+        return _row_to_profile(row)
+    # 2. Existing email — link Google identity
     by_email = db.table("user_profiles").select("*").eq("email", email).execute()
     if by_email.data:
         row = by_email.data[0]
-        db.table("user_profiles").update({"google_id": google_id}).eq("user_id", row["user_id"]).execute()
-        return UserProfile(user_id=row["user_id"], name=row["name"], email=row["email"])
-    # New user
+        upd: dict = {"google_id": google_id}
+        if not row.get("phone_number") and phone_number:
+            upd["phone_number"] = phone_number
+        db.table("user_profiles").update(upd).eq("user_id", row["user_id"]).execute()
+        row.update(upd)
+        return _row_to_profile(row)
+    # 3. New user
+    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
+        raise ValueError("Phone number already registered.")
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
         "user_id": uid,
         "name": name,
         "email": email,
+        "phone_number": phone_number,
         "google_id": google_id,
     }).execute()
-    return UserProfile(user_id=uid, name=name, email=email)
+    return UserProfile(user_id=uid, name=name, email=email, phone_number=phone_number)
 
 
 def get_user_profile(user_id: str) -> Optional[UserProfile]:
     db = _get_client()
-    result = db.table("user_profiles").select("user_id,name,email").eq("user_id", user_id).execute()
+    result = db.table("user_profiles").select(
+        "user_id,name,phone_number,email,account_status"
+    ).eq("user_id", user_id).execute()
     if not result.data:
         return None
-    row = result.data[0]
-    return UserProfile(**row)
+    return _row_to_profile(result.data[0])
+
+
+# ── Account status management ─────────────────────────────────────────────────
+
+def set_account_status(
+    user_id: str,
+    new_status: AccountStatus,
+    reason: Optional[str] = None,
+) -> None:
+    """Set a user's account_status. Optionally records reason and timestamp."""
+    db = _get_client()
+    upd: dict = {
+        "account_status": new_status.value,
+        "suspended_reason": reason,
+    }
+    if new_status == AccountStatus.SUSPENDED:
+        upd["suspended_at"] = datetime.utcnow().isoformat()
+    else:
+        upd["suspended_at"] = None
+    db.table("user_profiles").update(upd).eq("user_id", user_id).execute()
 
 
 # ── Objectives ────────────────────────────────────────────────────────────────
@@ -653,26 +702,22 @@ def link_telegram(user_id: str, telegram_user_id: int) -> None:
 
 def get_user_by_telegram(telegram_user_id: int) -> Optional[UserProfile]:
     db = _get_client()
-    result = db.table("user_profiles").select("user_id,name,email,phone_number").eq(
-        "telegram_user_id", telegram_user_id
-    ).execute()
+    result = db.table("user_profiles").select(
+        "user_id,name,phone_number,email,account_status"
+    ).eq("telegram_user_id", telegram_user_id).execute()
     if not result.data:
         return None
-    row = result.data[0]
-    return UserProfile(user_id=row["user_id"], name=row["name"],
-                       email=row.get("email"), phone_number=row.get("phone_number"))
+    return _row_to_profile(result.data[0])
 
 
 def get_user_by_phone(phone_number: str) -> Optional[UserProfile]:
     db = _get_client()
-    result = db.table("user_profiles").select("user_id,name,email,phone_number").eq(
-        "phone_number", phone_number
-    ).execute()
+    result = db.table("user_profiles").select(
+        "user_id,name,phone_number,email,account_status"
+    ).eq("phone_number", phone_number).execute()
     if not result.data:
         return None
-    row = result.data[0]
-    return UserProfile(user_id=row["user_id"], name=row["name"],
-                       email=row.get("email"), phone_number=row.get("phone_number"))
+    return _row_to_profile(result.data[0])
 
 
 # ── Invites ───────────────────────────────────────────────────────────────────
@@ -762,7 +807,7 @@ def get_all_users_progress() -> List[UserProgressSummary]:
     db = _get_client()
     users = (
         db.table("user_profiles")
-        .select("user_id,name,email,phone_number")
+        .select("user_id,name,email,phone_number,account_status")
         .order("created_at", desc=True)
         .execute()
         .data or []
@@ -813,8 +858,9 @@ def get_all_users_progress() -> List[UserProgressSummary]:
         summaries.append(UserProgressSummary(
             user_id=uid,
             name=u["name"],
+            phone_number=u.get("phone_number") or "",
             email=u.get("email"),
-            phone_number=u.get("phone_number"),
+            account_status=AccountStatus(u.get("account_status", "active")),
             objectives_count=len(obj_rows),
             avg_kr_pct=round(avg_pct, 1),
             last_session=last_session_dt,
