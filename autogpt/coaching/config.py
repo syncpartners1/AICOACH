@@ -33,6 +33,9 @@ class CoachingConfig(metaclass=Singleton):
         self.whatsapp_phone_number_id: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
         self.whatsapp_app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "")
         self.whatsapp_verify_token: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
+        # Admin settings
+        self.admin_telegram_id: int = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
+        self.admin_user_id: str = os.getenv("ADMIN_USER_ID", "")
         # Demo page — separate key so the main API key isn't exposed in the browser
         self.demo_key: str = os.getenv("COACHING_DEMO_KEY", "")
         # Public URL of this service (used to build the demo page's API_BASE).

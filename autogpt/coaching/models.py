@@ -1,7 +1,7 @@
 """Pydantic data models for the ABN Consulting AI Co-Navigator."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -28,18 +28,54 @@ class OKRStatus(str, Enum):
     ON_HOLD = "on_hold"
 
 
+class AccountStatus(str, Enum):
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    ARCHIVED = "archived"
+
+
+class DayOfWeek(str, Enum):
+    MONDAY = "monday"
+    TUESDAY = "tuesday"
+    WEDNESDAY = "wednesday"
+    THURSDAY = "thursday"
+    FRIDAY = "friday"
+    SATURDAY = "saturday"
+    SUNDAY = "sunday"
+
+
 # ── User / Auth ───────────────────────────────────────────────────────────────
 
 class UserProfile(BaseModel):
     user_id: str
     name: str
-    email: str
+    phone_number: str                          # mandatory for all users
+    email: Optional[str] = None
+    account_status: AccountStatus = AccountStatus.ACTIVE
+    language: str = "en"                       # "en" or "he"
 
 
 class RegisterRequest(BaseModel):
+    """Email + password registration — phone is required."""
     name: str
     email: str
     password: str
+    phone_number: str
+
+
+class PhoneRegisterRequest(BaseModel):
+    """Register with name + phone number only (Telegram / WhatsApp join flow)."""
+    name: str
+    phone_number: str
+
+
+class CompleteGoogleSignupRequest(BaseModel):
+    """Finalise Google OAuth signup by adding the mandatory phone number."""
+    google_id: str
+    name: str
+    email: str
+    phone_number: str
+    invite_token: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -48,16 +84,33 @@ class LoginRequest(BaseModel):
 
 
 class GoogleAuthRequest(BaseModel):
-    """Called after Wix completes Google OAuth; provides the resolved identity."""
+    """Called server-side after Google OAuth completes (API use only).
+    Phone number must be supplied by the caller."""
     google_id: str
     name: str
     email: str
+    phone_number: str
 
 
 class AuthResponse(BaseModel):
     user_id: str
     name: str
-    email: str
+    phone_number: str
+    email: Optional[str] = None
+    account_status: AccountStatus = AccountStatus.ACTIVE
+    # True when the account exists but has no phone yet (Google OAuth mid-flow)
+    needs_phone: bool = False
+
+
+class SuspendRequest(BaseModel):
+    """User self-suspend — reason is optional."""
+    reason: Optional[str] = None
+
+
+class UserStatusRequest(BaseModel):
+    """Admin: set any account status with an optional reason."""
+    status: AccountStatus
+    reason: Optional[str] = None
 
 
 # ── OKR Master Plan ───────────────────────────────────────────────────────────
@@ -188,3 +241,93 @@ class ClientStatus(BaseModel):
 class CoachDashboard(BaseModel):
     generated_at: datetime
     clients: List[ClientStatus] = []
+
+
+# ── Weekly Plan ───────────────────────────────────────────────────────────────
+
+class KRActivity(BaseModel):
+    """Planned activities and progress tracking for one key result in a given week."""
+    activity_id: str
+    plan_id: str
+    kr_id: str
+    planned_activities: str = ""
+    progress_update: str = ""
+    insights: str = ""
+    gaps: str = ""
+    corrective_actions: str = ""
+    current_pct: Optional[int] = Field(default=None, ge=0, le=100)
+
+
+class KRActivityRequest(BaseModel):
+    """Create or update the weekly activity entry for a single key result."""
+    kr_id: str
+    planned_activities: str = ""
+    progress_update: str = ""
+    insights: str = ""
+    gaps: str = ""
+    corrective_actions: str = ""
+    current_pct: Optional[int] = Field(default=None, ge=0, le=100)
+    # week_start defaults to the current Monday if not supplied
+    week_start: Optional[date] = None
+
+
+class DailyHighlight(BaseModel):
+    """A user's highlight note for a single day of the week."""
+    highlight_id: str
+    user_id: str
+    week_start: date
+    day_of_week: DayOfWeek
+    highlight: str = ""
+
+
+class DailyHighlightRequest(BaseModel):
+    """Create or update a daily highlight entry."""
+    day_of_week: DayOfWeek
+    highlight: str
+    week_start: Optional[date] = None
+
+
+class WeeklyPlan(BaseModel):
+    """Full weekly plan for a user: all KR activities + daily highlights."""
+    plan_id: str
+    user_id: str
+    week_start: date
+    week_end: Optional[date] = None   # defaults to week_start + 6 days (Saturday)
+    kr_activities: List[KRActivity] = []
+    daily_highlights: List[DailyHighlight] = []
+
+
+# ── Admin / Invites ───────────────────────────────────────────────────────────
+
+class InviteRequest(BaseModel):
+    """Admin creates an invitation for a prospective program member."""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    note: Optional[str] = None
+
+
+class Invite(BaseModel):
+    invite_id: str
+    token: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    note: Optional[str] = None
+    used_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    register_url: Optional[str] = None
+
+
+class UserProgressSummary(BaseModel):
+    """Lightweight progress snapshot per user — used in admin overview."""
+    user_id: str
+    name: str
+    phone_number: str
+    email: Optional[str] = None
+    account_status: AccountStatus = AccountStatus.ACTIVE
+    objectives_count: int = 0
+    avg_kr_pct: float = 0.0
+    last_session: Optional[datetime] = None
+    last_weekly_plan: Optional[date] = None

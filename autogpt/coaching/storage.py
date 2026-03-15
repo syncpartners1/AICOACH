@@ -2,16 +2,21 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from autogpt.coaching.auth import hash_password, verify_password
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.models import (
+    AccountStatus,
     Alert,
     AlertLevel,
     ClientStatus,
+    DailyHighlight,
+    DayOfWeek,
+    Invite,
     KeyResult,
+    KRActivity,
     MasterKeyResult,
     NavigationStatus,
     Objective,
@@ -20,7 +25,9 @@ from autogpt.coaching.models import (
     PastSession,
     SessionSummary,
     UserProfile,
+    UserProgressSummary,
     WeeklyLog,
+    WeeklyPlan,
 )
 
 
@@ -33,20 +40,33 @@ def _get_client():
 
 # ── User / Auth ───────────────────────────────────────────────────────────────
 
-def register_user(name: str, email: str, password: str) -> UserProfile:
-    """Create a new user with hashed password. Raises ValueError on duplicate email."""
+def _row_to_profile(row: dict) -> UserProfile:
+    return UserProfile(
+        user_id=row["user_id"],
+        name=row["name"],
+        phone_number=row.get("phone_number") or "",
+        email=row.get("email"),
+        account_status=AccountStatus(row.get("account_status", "active")),
+        language=row.get("language") or "en",
+    )
+
+
+def register_user(name: str, email: str, password: str, phone_number: str) -> UserProfile:
+    """Create a new user with email + password + phone. Raises ValueError on duplicates."""
     db = _get_client()
-    existing = db.table("user_profiles").select("user_id").eq("email", email).execute()
-    if existing.data:
+    if db.table("user_profiles").select("user_id").eq("email", email).execute().data:
         raise ValueError("Email already registered.")
+    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
+        raise ValueError("Phone number already registered.")
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
         "user_id": uid,
         "name": name,
         "email": email,
+        "phone_number": phone_number,
         "password_hash": hash_password(password),
     }).execute()
-    return UserProfile(user_id=uid, name=name, email=email)
+    return UserProfile(user_id=uid, name=name, email=email, phone_number=phone_number)
 
 
 def login_user(email: str, password: str) -> UserProfile:
@@ -59,41 +79,100 @@ def login_user(email: str, password: str) -> UserProfile:
     stored = row.get("password_hash") or ""
     if not stored or not verify_password(password, stored):
         raise ValueError("Invalid email or password.")
-    return UserProfile(user_id=row["user_id"], name=row["name"], email=row["email"])
+    return _row_to_profile(row)
 
 
-def google_auth(google_id: str, name: str, email: str) -> UserProfile:
-    """Register or log in via Google. Links by google_id first, then email."""
+def register_user_by_phone(name: str, phone_number: str) -> UserProfile:
+    """Create a new user identified by phone number (Telegram/WhatsApp join).
+    Raises ValueError on duplicate."""
     db = _get_client()
-    # Check existing google_id
+    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
+        raise ValueError("Phone number already registered.")
+    uid = str(uuid.uuid4())
+    db.table("user_profiles").insert({
+        "user_id": uid,
+        "name": name,
+        "phone_number": phone_number,
+    }).execute()
+    return UserProfile(user_id=uid, name=name, phone_number=phone_number)
+
+
+def google_auth(google_id: str, name: str, email: str, phone_number: str) -> UserProfile:
+    """Register or log in via Google OAuth.
+    Phone number is mandatory — caller must collect it before calling this.
+    Lookup order: google_id → email → create new."""
+    db = _get_client()
+    # 1. Existing google_id
     by_gid = db.table("user_profiles").select("*").eq("google_id", google_id).execute()
     if by_gid.data:
         row = by_gid.data[0]
-        return UserProfile(user_id=row["user_id"], name=row["name"], email=row["email"])
-    # Check existing email — link Google to existing account
+        # Back-fill phone if missing
+        if not row.get("phone_number") and phone_number:
+            db.table("user_profiles").update({"phone_number": phone_number}).eq(
+                "user_id", row["user_id"]
+            ).execute()
+            row["phone_number"] = phone_number
+        return _row_to_profile(row)
+    # 2. Existing email — link Google identity
     by_email = db.table("user_profiles").select("*").eq("email", email).execute()
     if by_email.data:
         row = by_email.data[0]
-        db.table("user_profiles").update({"google_id": google_id}).eq("user_id", row["user_id"]).execute()
-        return UserProfile(user_id=row["user_id"], name=row["name"], email=row["email"])
-    # New user
+        upd: dict = {"google_id": google_id}
+        if not row.get("phone_number") and phone_number:
+            upd["phone_number"] = phone_number
+        db.table("user_profiles").update(upd).eq("user_id", row["user_id"]).execute()
+        row.update(upd)
+        return _row_to_profile(row)
+    # 3. New user
+    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
+        raise ValueError("Phone number already registered.")
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
         "user_id": uid,
         "name": name,
         "email": email,
+        "phone_number": phone_number,
         "google_id": google_id,
     }).execute()
-    return UserProfile(user_id=uid, name=name, email=email)
+    return UserProfile(user_id=uid, name=name, email=email, phone_number=phone_number)
 
 
 def get_user_profile(user_id: str) -> Optional[UserProfile]:
     db = _get_client()
-    result = db.table("user_profiles").select("user_id,name,email").eq("user_id", user_id).execute()
+    result = db.table("user_profiles").select(
+        "user_id,name,phone_number,email,account_status,language"
+    ).eq("user_id", user_id).execute()
     if not result.data:
         return None
-    row = result.data[0]
-    return UserProfile(**row)
+    return _row_to_profile(result.data[0])
+
+
+# ── Account status management ─────────────────────────────────────────────────
+
+def set_account_status(
+    user_id: str,
+    new_status: AccountStatus,
+    reason: Optional[str] = None,
+) -> None:
+    """Set a user's account_status. Optionally records reason and timestamp."""
+    db = _get_client()
+    upd: dict = {
+        "account_status": new_status.value,
+        "suspended_reason": reason,
+    }
+    if new_status == AccountStatus.SUSPENDED:
+        upd["suspended_at"] = datetime.utcnow().isoformat()
+    else:
+        upd["suspended_at"] = None
+    db.table("user_profiles").update(upd).eq("user_id", user_id).execute()
+
+
+def set_user_language(user_id: str, language: str) -> None:
+    """Persist the user's preferred language ('en' or 'he')."""
+    if language not in ("en", "he"):
+        return
+    db = _get_client()
+    db.table("user_profiles").update({"language": language}).eq("user_id", user_id).execute()
 
 
 # ── Objectives ────────────────────────────────────────────────────────────────
@@ -419,6 +498,384 @@ def load_session(session_id: str) -> Optional[SessionSummary]:
         ),
         summary_for_coach=row.get("summary_for_coach", ""),
     )
+
+
+# ── Weekly Plans ──────────────────────────────────────────────────────────────
+
+def _current_week_start() -> date:
+    """Return the most recent Sunday (week starts on Sunday)."""
+    today = date.today()
+    return today - timedelta(days=(today.weekday() + 1) % 7)
+
+
+def _week_end(week_start: date) -> date:
+    """Return the Saturday that ends the week (6 days after Sunday start)."""
+    return week_start + timedelta(days=6)
+
+
+def _get_or_create_weekly_plan(db, user_id: str, week_start: date) -> str:
+    """Return the plan_id for (user_id, week_start), creating the row if needed."""
+    row = (
+        db.table("weekly_plans")
+        .select("plan_id")
+        .eq("user_id", user_id)
+        .eq("week_start", week_start.isoformat())
+        .execute()
+        .data
+    )
+    if row:
+        return row[0]["plan_id"]
+    plan_id = str(uuid.uuid4())
+    db.table("weekly_plans").insert({
+        "plan_id": plan_id,
+        "user_id": user_id,
+        "week_start": week_start.isoformat(),
+        "week_end": _week_end(week_start).isoformat(),
+    }).execute()
+    return plan_id
+
+
+def upsert_kr_activity(
+    user_id: str,
+    kr_id: str,
+    planned_activities: str = "",
+    progress_update: str = "",
+    insights: str = "",
+    gaps: str = "",
+    corrective_actions: str = "",
+    current_pct: Optional[int] = None,
+    week_start: Optional[date] = None,
+) -> KRActivity:
+    """Create or update the weekly activity entry for a single key result."""
+    if week_start is None:
+        week_start = _current_week_start()
+    db = _get_client()
+    plan_id = _get_or_create_weekly_plan(db, user_id, week_start)
+    now = datetime.utcnow().isoformat()
+
+    existing = (
+        db.table("weekly_kr_activities")
+        .select("activity_id")
+        .eq("plan_id", plan_id)
+        .eq("kr_id", kr_id)
+        .execute()
+        .data
+    )
+
+    payload: Dict[str, Any] = {
+        "planned_activities": planned_activities,
+        "progress_update": progress_update,
+        "insights": insights,
+        "gaps": gaps,
+        "corrective_actions": corrective_actions,
+        "updated_at": now,
+    }
+    if current_pct is not None:
+        payload["current_pct"] = current_pct
+
+    if existing:
+        activity_id = existing[0]["activity_id"]
+        db.table("weekly_kr_activities").update(payload).eq("activity_id", activity_id).execute()
+    else:
+        activity_id = str(uuid.uuid4())
+        payload.update({"activity_id": activity_id, "plan_id": plan_id, "kr_id": kr_id})
+        db.table("weekly_kr_activities").insert(payload).execute()
+
+    return KRActivity(
+        activity_id=activity_id,
+        plan_id=plan_id,
+        kr_id=kr_id,
+        planned_activities=planned_activities,
+        progress_update=progress_update,
+        insights=insights,
+        gaps=gaps,
+        corrective_actions=corrective_actions,
+        current_pct=current_pct,
+    )
+
+
+def upsert_daily_highlight(
+    user_id: str,
+    day_of_week: DayOfWeek,
+    highlight: str,
+    week_start: Optional[date] = None,
+) -> DailyHighlight:
+    """Create or update the highlight for a given day in the user's weekly plan."""
+    if week_start is None:
+        week_start = _current_week_start()
+    db = _get_client()
+    now = datetime.utcnow().isoformat()
+
+    existing = (
+        db.table("daily_highlights")
+        .select("highlight_id")
+        .eq("user_id", user_id)
+        .eq("week_start", week_start.isoformat())
+        .eq("day_of_week", day_of_week.value)
+        .execute()
+        .data
+    )
+
+    if existing:
+        highlight_id = existing[0]["highlight_id"]
+        db.table("daily_highlights").update({
+            "highlight": highlight,
+            "updated_at": now,
+        }).eq("highlight_id", highlight_id).execute()
+    else:
+        highlight_id = str(uuid.uuid4())
+        db.table("daily_highlights").insert({
+            "highlight_id": highlight_id,
+            "user_id": user_id,
+            "week_start": week_start.isoformat(),
+            "day_of_week": day_of_week.value,
+            "highlight": highlight,
+        }).execute()
+
+    return DailyHighlight(
+        highlight_id=highlight_id,
+        user_id=user_id,
+        week_start=week_start,
+        day_of_week=day_of_week,
+        highlight=highlight,
+    )
+
+
+def get_weekly_plan(user_id: str, week_start: Optional[date] = None) -> WeeklyPlan:
+    """Return the full weekly plan (KR activities + daily highlights) for a given week."""
+    if week_start is None:
+        week_start = _current_week_start()
+    db = _get_client()
+    plan_id = _get_or_create_weekly_plan(db, user_id, week_start)
+
+    activity_rows = (
+        db.table("weekly_kr_activities")
+        .select("*")
+        .eq("plan_id", plan_id)
+        .execute()
+        .data or []
+    )
+    kr_activities = [
+        KRActivity(
+            activity_id=r["activity_id"],
+            plan_id=r["plan_id"],
+            kr_id=r["kr_id"],
+            planned_activities=r.get("planned_activities", ""),
+            progress_update=r.get("progress_update", ""),
+            insights=r.get("insights", ""),
+            gaps=r.get("gaps", ""),
+            corrective_actions=r.get("corrective_actions", ""),
+            current_pct=r.get("current_pct"),
+        )
+        for r in activity_rows
+    ]
+
+    highlight_rows = (
+        db.table("daily_highlights")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("week_start", week_start.isoformat())
+        .execute()
+        .data or []
+    )
+    daily_highlights = [
+        DailyHighlight(
+            highlight_id=r["highlight_id"],
+            user_id=r["user_id"],
+            week_start=date.fromisoformat(r["week_start"]),
+            day_of_week=DayOfWeek(r["day_of_week"]),
+            highlight=r.get("highlight", ""),
+        )
+        for r in highlight_rows
+    ]
+
+    return WeeklyPlan(
+        plan_id=plan_id,
+        user_id=user_id,
+        week_start=week_start,
+        week_end=_week_end(week_start),
+        kr_activities=kr_activities,
+        daily_highlights=daily_highlights,
+    )
+
+
+# ── Telegram linking ──────────────────────────────────────────────────────────
+
+def link_telegram(user_id: str, telegram_user_id: int) -> None:
+    """Associate a Telegram user ID with a registered user account."""
+    db = _get_client()
+    db.table("user_profiles").update({
+        "telegram_user_id": telegram_user_id,
+    }).eq("user_id", user_id).execute()
+
+
+def get_user_by_telegram(telegram_user_id: int) -> Optional[UserProfile]:
+    db = _get_client()
+    result = db.table("user_profiles").select(
+        "user_id,name,phone_number,email,account_status,language"
+    ).eq("telegram_user_id", telegram_user_id).execute()
+    if not result.data:
+        return None
+    return _row_to_profile(result.data[0])
+
+
+def get_user_by_phone(phone_number: str) -> Optional[UserProfile]:
+    db = _get_client()
+    result = db.table("user_profiles").select(
+        "user_id,name,phone_number,email,account_status,language"
+    ).eq("phone_number", phone_number).execute()
+    if not result.data:
+        return None
+    return _row_to_profile(result.data[0])
+
+
+# ── Invites ───────────────────────────────────────────────────────────────────
+
+def create_invite(
+    invited_by_user_id: str,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    note: Optional[str] = None,
+    public_url: str = "",
+) -> Invite:
+    """Create a new program invite token. Returns the Invite with the registration URL."""
+    db = _get_client()
+    invite_id = str(uuid.uuid4())
+    import secrets
+    token = secrets.token_hex(16)
+    row = {
+        "invite_id": invite_id,
+        "token": token,
+        "invited_by": invited_by_user_id,
+    }
+    if name:
+        row["name"] = name
+    if email:
+        row["email"] = email
+    if phone:
+        row["phone"] = phone
+    if note:
+        row["note"] = note
+    db.table("invites").insert(row).execute()
+    register_url = f"{public_url}/register?token={token}" if public_url else f"/register?token={token}"
+    return Invite(
+        invite_id=invite_id,
+        token=token,
+        name=name,
+        email=email,
+        phone=phone,
+        note=note,
+        register_url=register_url,
+    )
+
+
+def get_invite(token: str) -> Optional[Invite]:
+    db = _get_client()
+    result = db.table("invites").select("*").eq("token", token).execute()
+    if not result.data:
+        return None
+    r = result.data[0]
+    return Invite(
+        invite_id=r["invite_id"],
+        token=r["token"],
+        name=r.get("name"),
+        email=r.get("email"),
+        phone=r.get("phone"),
+        note=r.get("note"),
+        used_at=datetime.fromisoformat(r["used_at"]) if r.get("used_at") else None,
+        created_at=datetime.fromisoformat(r["created_at"]) if r.get("created_at") else None,
+        expires_at=datetime.fromisoformat(r["expires_at"]) if r.get("expires_at") else None,
+    )
+
+
+def use_invite(token: str, user_id: str) -> bool:
+    """Mark invite as used. Returns False if already used or expired."""
+    db = _get_client()
+    result = db.table("invites").select("invite_id,used_at,expires_at").eq("token", token).execute()
+    if not result.data:
+        return False
+    r = result.data[0]
+    if r.get("used_at"):
+        return False
+    if r.get("expires_at"):
+        exp = datetime.fromisoformat(r["expires_at"])
+        if exp < datetime.utcnow():
+            return False
+    db.table("invites").update({
+        "used_at": datetime.utcnow().isoformat(),
+        "used_by": user_id,
+    }).eq("token", token).execute()
+    return True
+
+
+# ── Admin: user progress overview ─────────────────────────────────────────────
+
+def get_all_users_progress() -> List[UserProgressSummary]:
+    """Return a lightweight progress snapshot for every registered user."""
+    db = _get_client()
+    users = (
+        db.table("user_profiles")
+        .select("user_id,name,email,phone_number,account_status,language")
+        .order("created_at", desc=True)
+        .execute()
+        .data or []
+    )
+    summaries = []
+    for u in users:
+        uid = u["user_id"]
+        # Count objectives and average KR pct
+        obj_rows = (
+            db.table("objectives")
+            .select("objective_id")
+            .eq("user_id", uid)
+            .eq("status", "active")
+            .execute()
+            .data or []
+        )
+        kr_rows = (
+            db.table("user_key_results")
+            .select("current_pct")
+            .eq("user_id", uid)
+            .eq("status", "active")
+            .execute()
+            .data or []
+        )
+        avg_pct = (sum(r["current_pct"] for r in kr_rows) / len(kr_rows)) if kr_rows else 0.0
+        # Last session
+        last_sess = (
+            db.table("coaching_sessions")
+            .select("timestamp")
+            .eq("user_id", uid)
+            .order("timestamp", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        last_session_dt = datetime.fromisoformat(last_sess[0]["timestamp"]) if last_sess else None
+        # Last weekly plan
+        last_plan = (
+            db.table("weekly_plans")
+            .select("week_start")
+            .eq("user_id", uid)
+            .order("week_start", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        last_plan_date = date.fromisoformat(last_plan[0]["week_start"]) if last_plan else None
+        summaries.append(UserProgressSummary(
+            user_id=uid,
+            name=u["name"],
+            phone_number=u.get("phone_number") or "",
+            email=u.get("email"),
+            account_status=AccountStatus(u.get("account_status", "active")),
+            objectives_count=len(obj_rows),
+            avg_kr_pct=round(avg_pct, 1),
+            last_session=last_session_dt,
+            last_weekly_plan=last_plan_date,
+        ))
+    return summaries
 
 
 def get_latest_session_per_client() -> List[SessionSummary]:

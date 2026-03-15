@@ -124,6 +124,43 @@ These examples show just a glimpse of what you can achieve with AutoGPT! You can
 
 ---
 
+## 🧭 ABN Co-Navigator — AI Coaching Module
+
+> An OKR-driven, bilingual coaching assistant built on the AutoGPT platform.
+> Delivers structured coaching sessions via **Telegram**, a personalised
+> **web dashboard**, and a **FastAPI** back-end connected to **Supabase**.
+
+### What it does
+
+| Feature | Details |
+|---|---|
+| **AI coaching sessions** | GPT-powered weekly check-ins anchored to each user's OKRs |
+| **Guided weekly plan** | `/plan` walks through activities, progress, insights, gaps, and corrective actions per Key Result |
+| **Personal dashboard** | Server-rendered at `/dashboard/{user_id}` — progress bars, daily highlights, session history |
+| **Bilingual (EN / HE)** | Full English 🇬🇧 and Hebrew 🇮🇱 support in the bot and dashboard; RTL layout for Hebrew |
+| **OKR lifecycle** | Create, edit, hold, and archive Objectives & Key Results; AI can mutate them mid-session |
+| **Admin tools** | `/users`, `/report`, `/invite`, `/broadcast` — admin-only Telegram commands |
+| **Account lifecycle** | Users self-suspend (`/suspend`) and reactivate (`/resume`); coach can archive |
+
+### Language support
+
+`autogpt/coaching/i18n.py` manages all user-facing strings:
+- **Auto-detects** Hebrew from incoming message text (Unicode block `\u0590–\u05FF`).
+- Language is stored per-user in `user_profiles.language` (`'en'` or `'he'`).
+- Users switch explicitly with `/lang en` or `/lang he`.
+- Hebrew dashboard renders with `dir="rtl"`, right-aligned text, and Noto Sans Hebrew font.
+
+### Quick start
+
+```bash
+# Fill in .env, run supabase_schema.sql once, then:
+uvicorn autogpt.coaching.api:app --reload --port 8000
+```
+
+📖 [Full module documentation →](autogpt/coaching/README.md)
+
+---
+
 ### **License Overview:**
 
 🛡️ **Polyform Shield License:**
