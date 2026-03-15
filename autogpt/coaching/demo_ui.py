@@ -206,11 +206,28 @@ async function startSession() {{
   }}
 }}
 
+function escHtml(s) {{
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}}
+
+function formatMsg(text) {{
+  // Strip internal JSON summary blocks the LLM embeds at session end
+  let s = text
+    .replace(/\[SESSION_SUMMARY_JSON\][\s\S]*?\[\/SESSION_SUMMARY_JSON\]/g, '')
+    .replace(/\[OKR_CHANGES_JSON\][\s\S]*?\[\/OKR_CHANGES_JSON\]/g, '')
+    .trim();
+  // Escape HTML, then linkify URLs
+  return escHtml(s).replace(
+    /(https?:\/\/[^\s&<>"]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;word-break:break-all">$1</a>'
+  );
+}}
+
 function addMsg(role, text) {{
   const c = document.getElementById("msgs");
   const d = document.createElement("div");
   d.className = "msg " + role;
-  d.innerHTML = `<div class="bubble">${{text}}</div>`;
+  d.innerHTML = `<div class="bubble">${{formatMsg(text)}}</div>`;
   c.appendChild(d); c.scrollTop = c.scrollHeight;
 }}
 
