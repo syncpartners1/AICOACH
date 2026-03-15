@@ -28,6 +28,7 @@ class CoachingConfig(metaclass=Singleton):
         self.google_redirect_uri: str = os.getenv("GOOGLE_REDIRECT_URI", "")
         # Telegram bot
         self.telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        self.telegram_bot_username: str = os.getenv("TELEGRAM_BOT_USERNAME", "")
         # WhatsApp Business Cloud API
         self.whatsapp_access_token: str = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
         self.whatsapp_phone_number_id: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
