@@ -15,6 +15,10 @@ DEMO_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ABN Consulting – AI Co-Navigator</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/android-chrome-192x192.png">
+<link rel="apple-touch-icon" sizes="192x192" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/android-chrome-512x512.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;

@@ -16,6 +16,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Sec
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from autogpt.coaching.config import coaching_config
@@ -79,6 +80,10 @@ app = FastAPI(
     version="2.1.0",
     lifespan=lifespan,
 )
+
+import os as _os
+_static_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "static")
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 app.add_middleware(
     CORSMiddleware,
