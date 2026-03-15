@@ -477,6 +477,12 @@ class DemoStartRequest(BaseModel):
     name: str
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    """Redirect root to the demo page."""
+    return RedirectResponse(url="/demo")
+
+
 @app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
 def demo_page(request: Request) -> HTMLResponse:
     """Serve the interactive demo chat page (embeddable in Wix via iframe)."""
