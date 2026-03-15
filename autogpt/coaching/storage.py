@@ -836,7 +836,7 @@ def get_all_users_progress() -> List[UserProgressSummary]:
     db = _get_client()
     users = (
         db.table("user_profiles")
-        .select("user_id,name,email,phone_number,account_status,language")
+        .select("user_id,name,email,phone_number,account_status,language,telegram_user_id")
         .order("created_at", desc=True)
         .execute()
         .data or []
@@ -894,6 +894,7 @@ def get_all_users_progress() -> List[UserProgressSummary]:
             avg_kr_pct=round(avg_pct, 1),
             last_session=last_session_dt,
             last_weekly_plan=last_plan_date,
+            telegram_user_id=u.get("telegram_user_id"),
         ))
     return summaries
 

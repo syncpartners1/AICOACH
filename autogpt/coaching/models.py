@@ -332,3 +332,4 @@ class UserProgressSummary(BaseModel):
     avg_kr_pct: float = 0.0
     last_session: Optional[datetime] = None
     last_weekly_plan: Optional[date] = None
+    telegram_user_id: Optional[int] = None

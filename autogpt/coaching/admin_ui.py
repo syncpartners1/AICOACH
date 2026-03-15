@@ -97,9 +97,13 @@ def render_admin(
     pending_rows = ""
     for u in pending_users:
         contact = u.phone_number or u.email or "—"
+        tg_badge = (
+            f'<span style="font-size:11px;background:#e8f4fd;color:#1a73e8;'
+            f'padding:1px 7px;border-radius:8px;margin-left:6px">&#128241; Telegram</span>'
+        ) if u.telegram_user_id else ""
         pending_rows += f"""
 <tr>
-  <td style="padding:10px 12px;font-weight:600">{u.name}</td>
+  <td style="padding:10px 12px;font-weight:600">{u.name}{tg_badge}</td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
   <td style="padding:10px 12px;white-space:nowrap">
     <button onclick="approveUser('{u.user_id}')"

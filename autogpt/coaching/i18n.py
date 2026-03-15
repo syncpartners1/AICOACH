@@ -40,6 +40,25 @@ _S: dict[str, dict[str, str]] = {
         ),
         "ask_name": "What's your name?",
         "invalid_name": "Please enter a valid name (up to 100 characters).",
+        "ask_phone": (
+            "Great! To register you in the program, please share your phone number "
+            "(include country code, e.g. *+1 234 567 8900*)."
+        ),
+        "invalid_phone": (
+            "That doesn't look like a valid phone number. "
+            "Please include the country code, e.g. +1 234 567 8900."
+        ),
+        "phone_taken": (
+            "That phone number is already registered. "
+            "Use /link to connect this Telegram account to your existing profile."
+        ),
+        "pending_registered": (
+            "✅ *You're registered!*\n\n"
+            "Your account is awaiting approval by the coach. "
+            "You'll receive a message here as soon as it's activated.\n\n"
+            "You can also reach the coach via the web: /start will check your status."
+        ),
+        "linked_existing": "✅ Your Telegram is now linked to *{name}*'s account. Starting your session…",
         "starting_session": "Starting your session… ⏳",
         "start_failed": "Sorry, I couldn't start your session. Please try again with /start.",
         "no_active_session": "No active session — use /start to begin.",
@@ -211,6 +230,24 @@ _S: dict[str, dict[str, str]] = {
         ),
         "ask_name": "מה שמך?",
         "invalid_name": "אנא הכנס שם תקין (עד 100 תווים).",
+        "ask_phone": (
+            "מעולה! כדי לרשום אותך לתוכנית, נא שתף את מספר הטלפון שלך "
+            "(כולל קידומת מדינה, לדוגמה: *+972 50 1234567*)."
+        ),
+        "invalid_phone": (
+            "מספר הטלפון אינו תקין. "
+            "אנא כלול את קידומת המדינה, לדוגמה: +972 50 1234567."
+        ),
+        "phone_taken": (
+            "מספר הטלפון הזה כבר רשום. "
+            "השתמש ב-/link כדי לקשר את חשבון הטלגרם שלך לפרופיל הקיים."
+        ),
+        "pending_registered": (
+            "✅ *נרשמת בהצלחה!*\n\n"
+            "חשבונך ממתין לאישור המאמן. "
+            "תקבל הודעה כאן ברגע שהוא יופעל."
+        ),
+        "linked_existing": "✅ חשבון הטלגרם שלך קושר לפרופיל של *{name}*. מתחיל את הפגישה…",
         "starting_session": "מתחיל את הפגישה… ⏳",
         "start_failed": "מצטער, לא הצלחתי להתחיל את הפגישה. נסה שוב עם /start.",
         "no_active_session": "אין פגישה פעילה — השתמש ב-/start להתחיל.",

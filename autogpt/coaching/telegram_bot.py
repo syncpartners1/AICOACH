@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 # ── Conversation states ────────────────────────────────────────────────────────
 (
     WAITING_NAME,
+    WAITING_PHONE,
     CHATTING,
     LINK_WAITING_PHONE,
     PLAN_SELECT_KR,
@@ -60,7 +61,7 @@ logger = logging.getLogger(__name__)
     PLAN_CORRECTIONS,
     HIGHLIGHT_WAITING,
     MSG_WAITING,
-) = range(11)
+) = range(12)
 
 # Active AI coaching sessions: telegram_user_id → CoachingSession
 _sessions: Dict[int, object] = {}
@@ -167,6 +168,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return WAITING_NAME
 
 
+
 async def _start_coaching_session(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -197,7 +199,7 @@ async def _start_coaching_session(
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     name = update.message.text.strip()
-    lang = detect_lang(name)  # detect from the name they typed
+    lang = detect_lang(name)
 
     if not name or len(name) > 100:
         await update.message.reply_text(t(lang, "invalid_name"))
@@ -205,14 +207,88 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     context.user_data["temp_name"] = name
     context.user_data["lang"] = lang
-    await update.message.reply_text(t(lang, "starting_session"))
+    await update.message.reply_text(
+        t(lang, "ask_phone"),
+        parse_mode="Markdown",
+    )
+    return WAITING_PHONE
+
+
+async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Capture phone number, register the user as pending, link their Telegram ID."""
+    tg_id = update.effective_user.id
+    raw = update.message.text.strip()
+    lang = context.user_data.get("lang", detect_lang(raw))
+    name = context.user_data.get("temp_name", "")
+
+    # Basic normalisation — allow digits, +, spaces, dashes, parens
+    import re as _re
+    phone = _re.sub(r"[\s\-()]", "", raw)
+    if not _re.match(r"^\+?\d{7,15}$", phone):
+        await update.message.reply_text(t(lang, "invalid_phone"))
+        return WAITING_PHONE
+
+    if not phone.startswith("+"):
+        phone = "+" + phone
+
+    from autogpt.coaching.storage import (
+        get_user_by_phone, register_user_by_phone, link_telegram,
+    )
+    from autogpt.coaching.models import AccountStatus
+
+    # If phone already exists — link this Telegram ID to that account
+    existing = get_user_by_phone(phone)
+    if existing:
+        link_telegram(existing.user_id, tg_id)
+        st = existing.account_status.value if hasattr(existing.account_status, "value") else str(existing.account_status)
+        if st == "active":
+            await update.message.reply_text(
+                t(lang, "linked_existing", name=existing.name),
+                parse_mode="Markdown",
+            )
+            await _start_coaching_session(update, context, tg_id,
+                                          existing.user_id, existing.name, lang)
+            return CHATTING
+        else:
+            await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
+            return ConversationHandler.END
+
+    # New user — register as pending
     try:
-        await _start_coaching_session(update, context, tg_id, None, name, lang)
-        return CHATTING
-    except Exception:
-        logger.exception("Failed to start session for telegram user %s", tg_id)
-        await update.message.reply_text(t(lang, "start_failed"))
-        return ConversationHandler.END
+        user = register_user_by_phone(
+            name=name,
+            phone_number=phone,
+            account_status=AccountStatus.PENDING,
+        )
+    except ValueError:
+        await update.message.reply_text(t(lang, "phone_taken"))
+        return WAITING_PHONE
+
+    link_telegram(user.user_id, tg_id)
+    context.user_data.clear()
+
+    await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
+
+    # Notify admin
+    if coaching_config.admin_telegram_id:
+        try:
+            tg_username = update.effective_user.username or ""
+            tg_display = f"@{tg_username}" if tg_username else f"tg_id:{tg_id}"
+            await update.get_bot().send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=(
+                    f"🆕 *New registration pending approval*\n\n"
+                    f"*Name:* {name}\n"
+                    f"*Phone:* {phone}\n"
+                    f"*Telegram:* {tg_display}\n\n"
+                    f"Visit the admin dashboard to approve."
+                ),
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
+
+    return ConversationHandler.END
 
 
 # ── Free-form chat ─────────────────────────────────────────────────────────────
@@ -891,6 +967,9 @@ def _build_app(token: str) -> Application:
         states={
             WAITING_NAME: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name),
+            ],
+            WAITING_PHONE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone),
             ],
             CHATTING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message),
