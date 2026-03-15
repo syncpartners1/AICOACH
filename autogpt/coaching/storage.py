@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from autogpt.coaching.auth import hash_password, verify_password
@@ -11,7 +11,10 @@ from autogpt.coaching.models import (
     Alert,
     AlertLevel,
     ClientStatus,
+    DailyHighlight,
+    DayOfWeek,
     KeyResult,
+    KRActivity,
     MasterKeyResult,
     NavigationStatus,
     Objective,
@@ -21,6 +24,7 @@ from autogpt.coaching.models import (
     SessionSummary,
     UserProfile,
     WeeklyLog,
+    WeeklyPlan,
 )
 
 
@@ -60,6 +64,21 @@ def login_user(email: str, password: str) -> UserProfile:
     if not stored or not verify_password(password, stored):
         raise ValueError("Invalid email or password.")
     return UserProfile(user_id=row["user_id"], name=row["name"], email=row["email"])
+
+
+def register_user_by_phone(name: str, phone_number: str) -> UserProfile:
+    """Create a new user identified by phone number. Raises ValueError on duplicate."""
+    db = _get_client()
+    existing = db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute()
+    if existing.data:
+        raise ValueError("Phone number already registered.")
+    uid = str(uuid.uuid4())
+    db.table("user_profiles").insert({
+        "user_id": uid,
+        "name": name,
+        "phone_number": phone_number,
+    }).execute()
+    return UserProfile(user_id=uid, name=name, phone_number=phone_number)
 
 
 def google_auth(google_id: str, name: str, email: str) -> UserProfile:
@@ -418,6 +437,198 @@ def load_session(session_id: str) -> Optional[SessionSummary]:
             reason=row.get("alert_reason", ""),
         ),
         summary_for_coach=row.get("summary_for_coach", ""),
+    )
+
+
+# ── Weekly Plans ──────────────────────────────────────────────────────────────
+
+def _current_week_start() -> date:
+    """Return the Monday of the current ISO week."""
+    today = date.today()
+    return today - timedelta(days=today.weekday())
+
+
+def _get_or_create_weekly_plan(db, user_id: str, week_start: date) -> str:
+    """Return the plan_id for (user_id, week_start), creating the row if needed."""
+    row = (
+        db.table("weekly_plans")
+        .select("plan_id")
+        .eq("user_id", user_id)
+        .eq("week_start", week_start.isoformat())
+        .execute()
+        .data
+    )
+    if row:
+        return row[0]["plan_id"]
+    plan_id = str(uuid.uuid4())
+    db.table("weekly_plans").insert({
+        "plan_id": plan_id,
+        "user_id": user_id,
+        "week_start": week_start.isoformat(),
+    }).execute()
+    return plan_id
+
+
+def upsert_kr_activity(
+    user_id: str,
+    kr_id: str,
+    planned_activities: str = "",
+    progress_update: str = "",
+    insights: str = "",
+    gaps: str = "",
+    corrective_actions: str = "",
+    current_pct: Optional[int] = None,
+    week_start: Optional[date] = None,
+) -> KRActivity:
+    """Create or update the weekly activity entry for a single key result."""
+    if week_start is None:
+        week_start = _current_week_start()
+    db = _get_client()
+    plan_id = _get_or_create_weekly_plan(db, user_id, week_start)
+    now = datetime.utcnow().isoformat()
+
+    existing = (
+        db.table("weekly_kr_activities")
+        .select("activity_id")
+        .eq("plan_id", plan_id)
+        .eq("kr_id", kr_id)
+        .execute()
+        .data
+    )
+
+    payload: Dict[str, Any] = {
+        "planned_activities": planned_activities,
+        "progress_update": progress_update,
+        "insights": insights,
+        "gaps": gaps,
+        "corrective_actions": corrective_actions,
+        "updated_at": now,
+    }
+    if current_pct is not None:
+        payload["current_pct"] = current_pct
+
+    if existing:
+        activity_id = existing[0]["activity_id"]
+        db.table("weekly_kr_activities").update(payload).eq("activity_id", activity_id).execute()
+    else:
+        activity_id = str(uuid.uuid4())
+        payload.update({"activity_id": activity_id, "plan_id": plan_id, "kr_id": kr_id})
+        db.table("weekly_kr_activities").insert(payload).execute()
+
+    return KRActivity(
+        activity_id=activity_id,
+        plan_id=plan_id,
+        kr_id=kr_id,
+        planned_activities=planned_activities,
+        progress_update=progress_update,
+        insights=insights,
+        gaps=gaps,
+        corrective_actions=corrective_actions,
+        current_pct=current_pct,
+    )
+
+
+def upsert_daily_highlight(
+    user_id: str,
+    day_of_week: DayOfWeek,
+    highlight: str,
+    week_start: Optional[date] = None,
+) -> DailyHighlight:
+    """Create or update the highlight for a given day in the user's weekly plan."""
+    if week_start is None:
+        week_start = _current_week_start()
+    db = _get_client()
+    now = datetime.utcnow().isoformat()
+
+    existing = (
+        db.table("daily_highlights")
+        .select("highlight_id")
+        .eq("user_id", user_id)
+        .eq("week_start", week_start.isoformat())
+        .eq("day_of_week", day_of_week.value)
+        .execute()
+        .data
+    )
+
+    if existing:
+        highlight_id = existing[0]["highlight_id"]
+        db.table("daily_highlights").update({
+            "highlight": highlight,
+            "updated_at": now,
+        }).eq("highlight_id", highlight_id).execute()
+    else:
+        highlight_id = str(uuid.uuid4())
+        db.table("daily_highlights").insert({
+            "highlight_id": highlight_id,
+            "user_id": user_id,
+            "week_start": week_start.isoformat(),
+            "day_of_week": day_of_week.value,
+            "highlight": highlight,
+        }).execute()
+
+    return DailyHighlight(
+        highlight_id=highlight_id,
+        user_id=user_id,
+        week_start=week_start,
+        day_of_week=day_of_week,
+        highlight=highlight,
+    )
+
+
+def get_weekly_plan(user_id: str, week_start: Optional[date] = None) -> WeeklyPlan:
+    """Return the full weekly plan (KR activities + daily highlights) for a given week."""
+    if week_start is None:
+        week_start = _current_week_start()
+    db = _get_client()
+    plan_id = _get_or_create_weekly_plan(db, user_id, week_start)
+
+    activity_rows = (
+        db.table("weekly_kr_activities")
+        .select("*")
+        .eq("plan_id", plan_id)
+        .execute()
+        .data or []
+    )
+    kr_activities = [
+        KRActivity(
+            activity_id=r["activity_id"],
+            plan_id=r["plan_id"],
+            kr_id=r["kr_id"],
+            planned_activities=r.get("planned_activities", ""),
+            progress_update=r.get("progress_update", ""),
+            insights=r.get("insights", ""),
+            gaps=r.get("gaps", ""),
+            corrective_actions=r.get("corrective_actions", ""),
+            current_pct=r.get("current_pct"),
+        )
+        for r in activity_rows
+    ]
+
+    highlight_rows = (
+        db.table("daily_highlights")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("week_start", week_start.isoformat())
+        .execute()
+        .data or []
+    )
+    daily_highlights = [
+        DailyHighlight(
+            highlight_id=r["highlight_id"],
+            user_id=r["user_id"],
+            week_start=date.fromisoformat(r["week_start"]),
+            day_of_week=DayOfWeek(r["day_of_week"]),
+            highlight=r.get("highlight", ""),
+        )
+        for r in highlight_rows
+    ]
+
+    return WeeklyPlan(
+        plan_id=plan_id,
+        user_id=user_id,
+        week_start=week_start,
+        kr_activities=kr_activities,
+        daily_highlights=daily_highlights,
     )
 
 

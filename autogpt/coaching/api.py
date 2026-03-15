@@ -26,30 +26,38 @@ from autogpt.coaching.dashboard import build_dashboard
 from autogpt.coaching.models import (
     AuthResponse,
     CoachDashboard,
+    DailyHighlightRequest,
     GoogleAuthRequest,
     KeyResultRequest,
+    KRActivityRequest,
     LoginRequest,
     Objective,
     ObjectiveRequest,
     OKRStatus,
     PastSession,
+    PhoneRegisterRequest,
     RegisterRequest,
     SessionSummary,
     StatusUpdateRequest,
     UserProfile,
+    WeeklyPlan,
 )
 from autogpt.coaching.session import CoachingSession
 from autogpt.coaching.storage import (
     get_past_sessions,
     get_user_objectives,
     get_user_profile,
+    get_weekly_plan,
     google_auth,
     load_session,
     login_user,
     register_user,
+    register_user_by_phone,
     save_session,
     set_kr_status,
     set_objective_status,
+    upsert_daily_highlight,
+    upsert_kr_activity,
     upsert_master_kr,
     upsert_objective,
 )
@@ -115,13 +123,26 @@ _active_sessions: Dict[str, CoachingSession] = {}
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
 
-@app.post("/auth/register", response_model=AuthResponse, summary="Register a new user")
+@app.post("/auth/register", response_model=AuthResponse, summary="Register a new user with email and password")
 def auth_register(req: RegisterRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
     try:
         user = register_user(name=req.name, email=req.email, password=req.password)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     return AuthResponse(user_id=user.user_id, name=user.name, email=user.email)
+
+
+@app.post(
+    "/auth/register/phone",
+    response_model=AuthResponse,
+    summary="Register a new user with name and phone number (no password required)",
+)
+def auth_register_phone(req: PhoneRegisterRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
+    try:
+        user = register_user_by_phone(name=req.name, phone_number=req.phone_number)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return AuthResponse(user_id=user.user_id, name=user.name, phone_number=user.phone_number)
 
 
 @app.post("/auth/login", response_model=AuthResponse, summary="Login with email and password")
@@ -330,6 +351,81 @@ def update_kr_status(
 ) -> dict:
     set_kr_status(kr_id, req.status)
     return {"kr_id": kr_id, "status": req.status.value}
+
+
+# ── Weekly Plan ───────────────────────────────────────────────────────────────
+
+@app.get(
+    "/users/{user_id}/weekly-plan",
+    response_model=WeeklyPlan,
+    summary="Get the weekly plan (KR activities + daily highlights) for a given week",
+)
+def get_user_weekly_plan(
+    user_id: str,
+    week_start: Optional[str] = Query(
+        default=None,
+        description="ISO date of the Monday that starts the week (e.g. 2026-03-16). "
+                    "Defaults to the current week.",
+    ),
+    _: str = Depends(verify_api_key),
+) -> WeeklyPlan:
+    from datetime import date as _date
+    parsed_week = _date.fromisoformat(week_start) if week_start else None
+    return get_weekly_plan(user_id=user_id, week_start=parsed_week)
+
+
+@app.post(
+    "/users/{user_id}/weekly-plan/kr-activity",
+    response_model=dict,
+    summary="Create or update planned activities and progress for a key result this week",
+)
+def upsert_user_kr_activity(
+    user_id: str,
+    req: KRActivityRequest,
+    _: str = Depends(verify_api_key),
+) -> dict:
+    activity = upsert_kr_activity(
+        user_id=user_id,
+        kr_id=req.kr_id,
+        planned_activities=req.planned_activities,
+        progress_update=req.progress_update,
+        insights=req.insights,
+        gaps=req.gaps,
+        corrective_actions=req.corrective_actions,
+        current_pct=req.current_pct,
+        week_start=req.week_start,
+    )
+    return {
+        "activity_id": activity.activity_id,
+        "plan_id": activity.plan_id,
+        "kr_id": activity.kr_id,
+        "week_start": activity.plan_id,  # plan_id is returned; week_start is in the plan
+    }
+
+
+@app.post(
+    "/users/{user_id}/weekly-plan/daily-highlight",
+    response_model=dict,
+    summary="Create or update a daily highlight for a specific day of the week",
+)
+def upsert_user_daily_highlight(
+    user_id: str,
+    req: DailyHighlightRequest,
+    _: str = Depends(verify_api_key),
+) -> dict:
+    hl = upsert_daily_highlight(
+        user_id=user_id,
+        day_of_week=req.day_of_week,
+        highlight=req.highlight,
+        week_start=req.week_start,
+    )
+    return {
+        "highlight_id": hl.highlight_id,
+        "user_id": hl.user_id,
+        "week_start": hl.week_start.isoformat(),
+        "day_of_week": hl.day_of_week.value,
+        "highlight": hl.highlight,
+    }
 
 
 # ── History ───────────────────────────────────────────────────────────────────

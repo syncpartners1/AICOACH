@@ -1,7 +1,7 @@
 """Pydantic data models for the ABN Consulting AI Co-Navigator."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -28,18 +28,35 @@ class OKRStatus(str, Enum):
     ON_HOLD = "on_hold"
 
 
+class DayOfWeek(str, Enum):
+    MONDAY = "monday"
+    TUESDAY = "tuesday"
+    WEDNESDAY = "wednesday"
+    THURSDAY = "thursday"
+    FRIDAY = "friday"
+    SATURDAY = "saturday"
+    SUNDAY = "sunday"
+
+
 # ── User / Auth ───────────────────────────────────────────────────────────────
 
 class UserProfile(BaseModel):
     user_id: str
     name: str
-    email: str
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
+
+
+class PhoneRegisterRequest(BaseModel):
+    """Register a new user with just name and phone number (no password required)."""
+    name: str
+    phone_number: str
 
 
 class LoginRequest(BaseModel):
@@ -57,7 +74,8 @@ class GoogleAuthRequest(BaseModel):
 class AuthResponse(BaseModel):
     user_id: str
     name: str
-    email: str
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
 
 
 # ── OKR Master Plan ───────────────────────────────────────────────────────────
@@ -188,3 +206,56 @@ class ClientStatus(BaseModel):
 class CoachDashboard(BaseModel):
     generated_at: datetime
     clients: List[ClientStatus] = []
+
+
+# ── Weekly Plan ───────────────────────────────────────────────────────────────
+
+class KRActivity(BaseModel):
+    """Planned activities and progress tracking for one key result in a given week."""
+    activity_id: str
+    plan_id: str
+    kr_id: str
+    planned_activities: str = ""
+    progress_update: str = ""
+    insights: str = ""
+    gaps: str = ""
+    corrective_actions: str = ""
+    current_pct: Optional[int] = Field(default=None, ge=0, le=100)
+
+
+class KRActivityRequest(BaseModel):
+    """Create or update the weekly activity entry for a single key result."""
+    kr_id: str
+    planned_activities: str = ""
+    progress_update: str = ""
+    insights: str = ""
+    gaps: str = ""
+    corrective_actions: str = ""
+    current_pct: Optional[int] = Field(default=None, ge=0, le=100)
+    # week_start defaults to the current Monday if not supplied
+    week_start: Optional[date] = None
+
+
+class DailyHighlight(BaseModel):
+    """A user's highlight note for a single day of the week."""
+    highlight_id: str
+    user_id: str
+    week_start: date
+    day_of_week: DayOfWeek
+    highlight: str = ""
+
+
+class DailyHighlightRequest(BaseModel):
+    """Create or update a daily highlight entry."""
+    day_of_week: DayOfWeek
+    highlight: str
+    week_start: Optional[date] = None
+
+
+class WeeklyPlan(BaseModel):
+    """Full weekly plan for a user: all KR activities + daily highlights."""
+    plan_id: str
+    user_id: str
+    week_start: date
+    kr_activities: List[KRActivity] = []
+    daily_highlights: List[DailyHighlight] = []
