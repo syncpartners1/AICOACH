@@ -1,16 +1,21 @@
 """Telegram bot for the ABN Co-Navigator coaching program.
 
+Language support: English (en) and Hebrew (he).
+  • Language is stored per-user in user_profiles.language.
+  • Auto-detected from message content on first interaction.
+  • Use /lang en or /lang he to switch explicitly.
+
 Commands (users):
   /start     – register or start a free-form AI coaching session
   /link      – link this Telegram account to a registered user (by phone)
   /plan      – guided weekly plan entry (per KR)
-  /progress  – update progress / insights / gaps for the current week
   /highlight – add today's key highlight
   /myplan    – view current week's plan summary
   /message   – send a message to the coach (Adi Ben Nesher)
   /done      – end an active AI coaching session and save summary
-  /suspend   – pause your coaching until you're ready to resume
+  /suspend   – pause your coaching until you choose to resume
   /resume    – reactivate a paused coaching account
+  /lang      – change language (/lang en or /lang he)
   /cancel    – cancel current operation
   /help      – show this list
 
@@ -38,6 +43,7 @@ from telegram.ext import (
 )
 
 from autogpt.coaching.config import coaching_config
+from autogpt.coaching.i18n import detect_lang, t
 
 logger = logging.getLogger(__name__)
 
@@ -79,16 +85,51 @@ def _is_admin(telegram_user_id: int) -> bool:
                 telegram_user_id == coaching_config.admin_telegram_id)
 
 
-def _current_week_label() -> str:
+def _lang(user=None, text: str = "") -> str:
+    """Return display language: user's stored preference, or detect from text."""
+    if user and getattr(user, "language", None):
+        return user.language
+    return detect_lang(text) if text else "en"
+
+
+def _current_week_label(lang: str = "en") -> str:
     today = date.today()
     sunday = today - timedelta(days=(today.weekday() + 1) % 7)
     saturday = sunday + timedelta(days=6)
     return f"{sunday.strftime('%d %b')} – {saturday.strftime('%d %b %Y')}"
 
 
+def _today_day_name(lang: str = "en") -> str:
+    """Return today's localised day name for highlight prompts."""
+    day_key = f"db_day_{date.today().strftime('%A').lower()}"
+    return t(lang, day_key)
+
+
 def _today_day_of_week() -> str:
-    """Return the DayOfWeek value for today."""
     return date.today().strftime("%A").lower()
+
+
+def _check_active(user, lang: str = "en") -> Optional[str]:
+    """Return a localised error string if account is not active, else None."""
+    if user is None:
+        return None
+    st = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
+    if st == "suspended":
+        return t(lang, "suspended_msg")
+    if st == "archived":
+        return t(lang, "archived_msg")
+    return None
+
+
+def _save_lang_if_new(user, detected: str) -> None:
+    """Persist detected language if it differs from the user's stored preference."""
+    if user and getattr(user, "language", "en") != detected:
+        try:
+            from autogpt.coaching.storage import set_user_language
+            set_user_language(user.user_id, detected)
+            user.language = detected  # update in-memory object
+        except Exception:
+            pass
 
 
 # ── /start ────────────────────────────────────────────────────────────────────
@@ -96,49 +137,29 @@ def _today_day_of_week() -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
 
     if tg_id in _sessions:
-        await update.message.reply_text(
-            "You already have an active session. Keep chatting, "
-            "or use /done to end it and receive your summary."
-        )
+        await update.message.reply_text(t(lang, "already_session"))
         return CHATTING
 
     if user:
-        err = _check_active(user)
+        err = _check_active(user, lang)
         if err:
             await update.message.reply_text(err, parse_mode="Markdown")
             return ConversationHandler.END
         await update.message.reply_text(
-            f"Welcome back, *{user.name}*! 👋\n\n"
-            "Starting your weekly check-in session…",
+            t(lang, "welcome_back", name=user.name),
             parse_mode="Markdown",
         )
-        await _start_coaching_session(update, context, tg_id, user.user_id, user.name)
+        await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
         return CHATTING
 
     await update.message.reply_text(
-        "👋 *Welcome to the ABN Consulting AI Co-Navigator!*\n\n"
-        "I'll guide you through structured coaching sessions — reviewing "
-        "your OKRs, logging progress, and surfacing obstacles.\n\n"
-        "What's your name?",
+        t(lang, "welcome_new"),
         parse_mode="Markdown",
     )
     return WAITING_NAME
-
-
-def _check_active(user) -> Optional[str]:
-    """Return an error message if the account is not active, else None."""
-    if user is None:
-        return None
-    st = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
-    if st == "suspended":
-        return ("⏸ Your coaching is currently *paused*. "
-                "Send /resume to reactivate it whenever you're ready.")
-    if st == "archived":
-        return ("🚫 Your account has been *archived*. "
-                "Please contact Adi Ben Nesher to discuss reactivation.")
-    return None
 
 
 async def _start_coaching_session(
@@ -147,6 +168,7 @@ async def _start_coaching_session(
     tg_id: int,
     user_id: Optional[str],
     name: str,
+    lang: str = "en",
 ) -> None:
     from autogpt.coaching.session import CoachingSession
     from autogpt.coaching.storage import get_user_objectives, get_past_sessions
@@ -164,28 +186,27 @@ async def _start_coaching_session(
     _sessions[tg_id] = session
     opening = session.open()
     await update.message.reply_text(opening)
-    await update.message.reply_text(
-        "_Tip: use /plan for structured weekly planning, or just chat freely. "
-        "Send /done when ready to save your session summary._",
-        parse_mode="Markdown",
-    )
+    await update.message.reply_text(t(lang, "session_tip"), parse_mode="Markdown")
 
 
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     name = update.message.text.strip()
+    lang = detect_lang(name)  # detect from the name they typed
+
     if not name or len(name) > 100:
-        await update.message.reply_text("Please enter a valid name (up to 100 characters).")
+        await update.message.reply_text(t(lang, "invalid_name"))
         return WAITING_NAME
 
     context.user_data["temp_name"] = name
-    await update.message.reply_text("Starting your session… ⏳")
+    context.user_data["lang"] = lang
+    await update.message.reply_text(t(lang, "starting_session"))
     try:
-        await _start_coaching_session(update, context, tg_id, None, name)
+        await _start_coaching_session(update, context, tg_id, None, name, lang)
         return CHATTING
     except Exception:
         logger.exception("Failed to start session for telegram user %s", tg_id)
-        await update.message.reply_text("Sorry, I couldn't start your session. Please try again with /start.")
+        await update.message.reply_text(t(lang, "start_failed"))
         return ConversationHandler.END
 
 
@@ -193,9 +214,11 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
     session = _sessions.get(tg_id)
     if not session:
-        await update.message.reply_text("No active session — use /start to begin.")
+        await update.message.reply_text(t(lang, "no_active_session"))
         return ConversationHandler.END
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -204,18 +227,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(reply)
     except Exception:
         logger.exception("Chat error for telegram user %s", tg_id)
-        await update.message.reply_text("Sorry, something went wrong. Please try again.")
+        await update.message.reply_text(t(lang, "chat_error"))
     return CHATTING
 
 
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user)
     session = _sessions.get(tg_id)
     if not session:
-        await update.message.reply_text("No active session to end.")
+        await update.message.reply_text(t(lang, "no_session_to_end"))
         return ConversationHandler.END
 
-    await update.message.reply_text("Wrapping up your session… ⏳")
+    await update.message.reply_text(t(lang, "wrapping_up"))
     try:
         from autogpt.coaching.storage import save_session
         summary = session.extract_summary()
@@ -225,9 +250,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except Exception:
         logger.exception("End session error for telegram user %s", tg_id)
         _sessions.pop(tg_id, None)
-        await update.message.reply_text(
-            "Sorry, I couldn't generate your summary. Your session has been cleared."
-        )
+        await update.message.reply_text(t(lang, "session_cleared"))
     return ConversationHandler.END
 
 
@@ -236,42 +259,37 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def link_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
     if user:
         await update.message.reply_text(
-            f"Your Telegram is already linked to *{user.name}*. "
-            "Use /start to begin a session.",
+            t(lang, "already_linked", name=user.name),
             parse_mode="Markdown",
         )
         return ConversationHandler.END
-    await update.message.reply_text(
-        "Please send your registered phone number (e.g. *+972501234567*) "
-        "to link your account.",
-        parse_mode="Markdown",
-    )
+    await update.message.reply_text(t(lang, "ask_phone_link"), parse_mode="Markdown")
     return LINK_WAITING_PHONE
 
 
 async def link_receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     phone = update.message.text.strip()
+    lang = detect_lang(phone) if phone else context.user_data.get("lang", "en")
     try:
         from autogpt.coaching.storage import get_user_by_phone, link_telegram
         user = get_user_by_phone(phone)
         if not user:
-            await update.message.reply_text(
-                "Phone number not found. Please check and try again, or use /cancel."
-            )
+            await update.message.reply_text(t(lang, "phone_not_found"))
             return LINK_WAITING_PHONE
         link_telegram(user.user_id, tg_id)
+        # Persist detected language on fresh link
+        linked_lang = _lang(user)
         await update.message.reply_text(
-            f"✅ Linked! Welcome, *{user.name}*.\n\n"
-            "Use /start to begin a coaching session, /plan to fill in your weekly plan, "
-            "or /help to see all commands.",
+            t(linked_lang, "linked_ok", name=user.name),
             parse_mode="Markdown",
         )
     except Exception:
         logger.exception("Link error for tg user %s", tg_id)
-        await update.message.reply_text("Something went wrong. Please try again.")
+        await update.message.reply_text(t(lang, "link_error"))
     return ConversationHandler.END
 
 
@@ -280,10 +298,9 @@ async def link_receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
     if not user:
-        await update.message.reply_text(
-            "Please link your account first with /link, then try /plan again."
-        )
+        await update.message.reply_text(t(lang, "link_first"))
         return ConversationHandler.END
 
     from autogpt.coaching.storage import get_user_objectives
@@ -294,21 +311,17 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         for kr in obj.key_results
     ]
     if not all_krs:
-        await update.message.reply_text(
-            "You have no active key results. Set up your objectives first with /start."
-        )
+        await update.message.reply_text(t(lang, "no_krs"))
         return ConversationHandler.END
 
     context.user_data["plan_user_id"] = user.user_id
     context.user_data["plan_krs"] = all_krs
     context.user_data["plan_kr_index"] = 0
     context.user_data["plan_entries"] = {}
+    context.user_data["lang"] = lang
 
-    week_label = _current_week_label()
     await update.message.reply_text(
-        f"📋 *Weekly Plan — {week_label}*\n\n"
-        f"Let's fill in your plan for each key result. I'll ask you one question at a time.\n\n"
-        f"Send /skip to leave a field blank, /done to finish early.",
+        t(lang, "plan_header", week=_current_week_label(lang)),
         parse_mode="Markdown",
     )
     return await _ask_plan_activities(update, context)
@@ -317,65 +330,66 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def _ask_plan_activities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     krs = context.user_data["plan_krs"]
     idx = context.user_data["plan_kr_index"]
+    lang = context.user_data.get("lang", "en")
     obj_title, kr = krs[idx]
     total = len(krs)
     await update.message.reply_text(
-        f"*KR {idx + 1}/{total}* — _{obj_title}_\n"
-        f"📌 *{kr.description}* ({kr.current_pct}% complete)\n\n"
-        f"What are your *planned activities* for this KR this week?",
+        t(lang, "plan_kr_prompt",
+          idx=idx + 1, total=total, obj=obj_title,
+          kr=kr.description, pct=kr.current_pct),
         parse_mode="Markdown",
     )
     return PLAN_ACTIVITIES
 
 
 async def plan_receive_activities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.user_data.get("lang", "en")
     text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"].setdefault(kr_id, {})["planned_activities"] = text
-    await update.message.reply_text("Any *progress update* so far? (/skip to leave blank)",
-                                    parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_progress"), parse_mode="Markdown")
     return PLAN_PROGRESS
 
 
 async def plan_receive_progress(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.user_data.get("lang", "en")
     text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["progress_update"] = text
-    await update.message.reply_text("Any *insights* from this week? (/skip to leave blank)",
-                                    parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_insights"), parse_mode="Markdown")
     return PLAN_INSIGHTS
 
 
 async def plan_receive_insights(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.user_data.get("lang", "en")
     text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["insights"] = text
-    await update.message.reply_text("Any *gaps* or challenges? (/skip to leave blank)",
-                                    parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_gaps"), parse_mode="Markdown")
     return PLAN_GAPS
 
 
 async def plan_receive_gaps(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.user_data.get("lang", "en")
     text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["gaps"] = text
-    await update.message.reply_text("*Corrective actions* for next steps? (/skip to leave blank)",
-                                    parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_corrections"), parse_mode="Markdown")
     return PLAN_CORRECTIONS
 
 
 async def plan_receive_corrections(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.user_data.get("lang", "en")
     text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
     idx = context.user_data["plan_kr_index"]
     krs = context.user_data["plan_krs"]
     kr_id = krs[idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["corrective_actions"] = text
 
-    # Move to next KR or finish
     next_idx = idx + 1
     if next_idx < len(krs):
         context.user_data["plan_kr_index"] = next_idx
@@ -386,6 +400,7 @@ async def plan_receive_corrections(update: Update, context: ContextTypes.DEFAULT
 
 async def _save_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     from autogpt.coaching.storage import upsert_kr_activity
+    lang = context.user_data.get("lang", "en")
     user_id = context.user_data["plan_user_id"]
     entries = context.user_data["plan_entries"]
     saved = 0
@@ -397,8 +412,7 @@ async def _save_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             logger.exception("Failed to save plan entry for kr %s", kr_id)
 
     await update.message.reply_text(
-        f"✅ *Weekly plan saved!* ({saved} key result(s) updated)\n\n"
-        f"Use /myplan to view your full plan, or /highlight to add today's highlights.",
+        t(lang, "plan_saved", count=saved),
         parse_mode="Markdown",
     )
     context.user_data.clear()
@@ -410,38 +424,42 @@ async def _save_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def highlight_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
     if not user:
-        await update.message.reply_text("Please link your account first with /link.")
+        await update.message.reply_text(t(lang, "link_first"))
         return ConversationHandler.END
 
-    day = _today_day_of_week().capitalize()
+    day_name = _today_day_name(lang)
     context.user_data["highlight_user_id"] = user.user_id
+    context.user_data["lang"] = lang
     await update.message.reply_text(
-        f"📝 What's your key highlight for *{day}*? (one line is great)",
+        t(lang, "ask_highlight", day=day_name),
         parse_mode="Markdown",
     )
     return HIGHLIGHT_WAITING
 
 
 async def highlight_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.user_data.get("lang", "en")
     text = update.message.text.strip()
     if not text:
-        await update.message.reply_text("Please type your highlight and send it.")
+        await update.message.reply_text(t(lang, "highlight_empty"))
         return HIGHLIGHT_WAITING
 
     user_id = context.user_data["highlight_user_id"]
     day = _today_day_of_week()
+    day_name = _today_day_name(lang)
     try:
         from autogpt.coaching.models import DayOfWeek
         from autogpt.coaching.storage import upsert_daily_highlight
         upsert_daily_highlight(user_id=user_id, day_of_week=DayOfWeek(day), highlight=text)
         await update.message.reply_text(
-            f"✅ Highlight saved for *{day.capitalize()}*!\n\nUse /myplan to see your full week.",
+            t(lang, "highlight_saved", day=day_name),
             parse_mode="Markdown",
         )
     except Exception:
         logger.exception("Failed to save highlight for user %s", user_id)
-        await update.message.reply_text("Sorry, I couldn't save your highlight. Please try again.")
+        await update.message.reply_text(t(lang, "highlight_error"))
     context.user_data.pop("highlight_user_id", None)
     return ConversationHandler.END
 
@@ -451,8 +469,9 @@ async def highlight_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
     if not user:
-        await update.message.reply_text("Please link your account first with /link.")
+        await update.message.reply_text(t(lang, "link_first"))
         return
 
     from autogpt.coaching.storage import get_weekly_plan, get_user_objectives
@@ -461,7 +480,7 @@ async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     kr_map = {a.kr_id: a for a in plan.kr_activities}
     hl_map = {h.day_of_week.value: h.highlight for h in plan.daily_highlights}
 
-    lines = [f"📋 *Weekly Plan — {_current_week_label()}*\n"]
+    lines = [f"📋 *{t(lang, 'plan_header', week=_current_week_label(lang)).split(chr(10))[0][5:]}*\n"]
     for obj in objectives:
         lines.append(f"🎯 *{obj.title}*")
         for kr in obj.key_results:
@@ -469,18 +488,19 @@ async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             dot = "🟢" if kr.current_pct >= 70 else "🟡" if kr.current_pct >= 40 else "🔴"
             lines.append(f"  {dot} *{kr.description}* — {kr.current_pct}%")
             if act and act.planned_activities:
-                lines.append(f"    📌 Plan: {act.planned_activities}")
+                lines.append(f"    📌 {t(lang, 'db_field_planned')}: {act.planned_activities}")
             if act and act.progress_update:
-                lines.append(f"    📊 Progress: {act.progress_update}")
+                lines.append(f"    📊 {t(lang, 'db_field_progress')}: {act.progress_update}")
             if act and act.gaps:
-                lines.append(f"    ⚠️ Gaps: {act.gaps}")
+                lines.append(f"    ⚠️ {t(lang, 'db_field_gaps')}: {act.gaps}")
         lines.append("")
 
     if hl_map:
-        lines.append("*Daily Highlights:*")
+        lines.append(f"*{t(lang, 'db_section_highlights')}:*")
         for day in ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]:
             if day in hl_map:
-                lines.append(f"  {day[:3].capitalize()}: {hl_map[day]}")
+                day_label = t(lang, f"db_day_{day}")
+                lines.append(f"  {day_label}: {hl_map[day]}")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
@@ -490,42 +510,41 @@ async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def msg_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
     if not user:
-        await update.message.reply_text("Please link your account first with /link.")
+        await update.message.reply_text(t(lang, "link_first"))
         return ConversationHandler.END
 
     if not coaching_config.admin_telegram_id:
-        await update.message.reply_text("Direct messaging is not configured yet.")
+        await update.message.reply_text(t(lang, "msg_not_configured"))
         return ConversationHandler.END
 
     context.user_data["msg_user_name"] = user.name
-    await update.message.reply_text(
-        "✉️ Type your message to *Adi Ben Nesher* and send it:",
-        parse_mode="Markdown",
-    )
+    context.user_data["lang"] = lang
+    await update.message.reply_text(t(lang, "ask_message"), parse_mode="Markdown")
     return MSG_WAITING
 
 
 async def msg_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
+    lang = context.user_data.get("lang", "en")
     text = update.message.text.strip()
     if not text:
-        await update.message.reply_text("Please type your message and send it.")
+        await update.message.reply_text(t(lang, "msg_empty"))
         return MSG_WAITING
 
     name = context.user_data.get("msg_user_name", "A user")
     try:
         forwarded = await context.bot.send_message(
             chat_id=coaching_config.admin_telegram_id,
-            text=f"📨 *Message from {name}* (telegram id: {tg_id})\n\n{text}",
+            text=t(lang, "admin_msg_fmt", name=name, tid=tg_id, text=text),
             parse_mode="Markdown",
         )
-        # Store mapping so admin can reply back
         _forward_map[forwarded.message_id] = tg_id
-        await update.message.reply_text("✅ Your message has been sent to Adi.")
+        await update.message.reply_text(t(lang, "msg_sent"))
     except Exception:
         logger.exception("Failed to forward message to admin from tg user %s", tg_id)
-        await update.message.reply_text("Sorry, couldn't deliver your message. Please try again.")
+        await update.message.reply_text(t(lang, "msg_error"))
     context.user_data.pop("msg_user_name", None)
     return ConversationHandler.END
 
@@ -546,16 +565,99 @@ async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not original_user_tg_id:
         return
 
+    # Determine reply language from the recipient user's preference
+    recipient = _get_linked_user(original_user_tg_id)
+    lang = _lang(recipient)
+
     try:
         await context.bot.send_message(
             chat_id=original_user_tg_id,
-            text=f"💬 *Message from Adi Ben Nesher:*\n\n{msg.text}",
+            text=t(lang, "admin_reply_fmt", text=msg.text),
             parse_mode="Markdown",
         )
-        await msg.reply_text("✅ Reply delivered.")
+        await msg.reply_text(t("en", "admin_reply_ok"))
     except Exception:
         logger.exception("Failed to deliver admin reply to tg user %s", original_user_tg_id)
-        await msg.reply_text("Could not deliver the reply.")
+        await msg.reply_text(t("en", "admin_reply_fail"))
+
+
+# ── /suspend ──────────────────────────────────────────────────────────────────
+
+async def suspend_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
+    if not user:
+        await update.message.reply_text(t(lang, "link_first"))
+        return
+    st = user.account_status.value if hasattr(user.account_status, "value") else "active"
+    if st == "archived":
+        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="Markdown")
+        return
+    if st == "suspended":
+        await update.message.reply_text(t(lang, "already_suspended"))
+        return
+    try:
+        from autogpt.coaching.storage import set_account_status
+        from autogpt.coaching.models import AccountStatus
+        set_account_status(user.user_id, AccountStatus.SUSPENDED, "User self-suspended via Telegram")
+        await update.message.reply_text(t(lang, "suspend_ok"), parse_mode="Markdown")
+    except Exception:
+        logger.exception("Could not suspend user %s", user.user_id)
+        await update.message.reply_text(t(lang, "suspend_error"))
+
+
+# ── /resume ───────────────────────────────────────────────────────────────────
+
+async def resume_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
+    if not user:
+        await update.message.reply_text(t(lang, "link_first"))
+        return
+    st = user.account_status.value if hasattr(user.account_status, "value") else "active"
+    if st == "archived":
+        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="Markdown")
+        return
+    if st == "active":
+        await update.message.reply_text(t(lang, "already_active"))
+        return
+    try:
+        from autogpt.coaching.storage import set_account_status
+        from autogpt.coaching.models import AccountStatus
+        set_account_status(user.user_id, AccountStatus.ACTIVE)
+        await update.message.reply_text(
+            t(lang, "resume_ok", name=user.name),
+            parse_mode="Markdown",
+        )
+    except Exception:
+        logger.exception("Could not reactivate user %s", user.user_id)
+        await update.message.reply_text(t(lang, "resume_error"))
+
+
+# ── /lang — explicit language switch ─────────────────────────────────────────
+
+async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
+    args = context.args
+
+    if not args or args[0] not in ("en", "he"):
+        await update.message.reply_text(t(lang, "lang_usage"))
+        return
+
+    new_lang = args[0]
+    if user:
+        try:
+            from autogpt.coaching.storage import set_user_language
+            set_user_language(user.user_id, new_lang)
+        except Exception:
+            logger.exception("Could not save language preference for user %s", user.user_id)
+
+    msg_key = "lang_set_he" if new_lang == "he" else "lang_set_en"
+    await update.message.reply_text(t(new_lang, msg_key), parse_mode="Markdown")
 
 
 # ── Admin commands ────────────────────────────────────────────────────────────
@@ -577,7 +679,7 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         contact = u.email or u.phone_number or "—"
         last = u.last_session.strftime("%d %b") if u.last_session else "never"
         lines.append(f"{dot} *{u.name}* ({contact})\n"
-                     f"   KR avg: {u.avg_kr_pct:.0f}% · {u.objectives_count} OKRs · last session: {last}")
+                     f"   KR avg: {u.avg_kr_pct:.0f}% · {u.objectives_count} OKRs · last: {last}")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
@@ -631,7 +733,7 @@ async def admin_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not _is_admin(tg_id):
         return
 
-    args = context.args  # /invite [name] [phone_or_email]
+    args = context.args
     name = args[0] if args else None
     contact = args[1] if len(args) > 1 else None
     email = contact if contact and "@" in contact else None
@@ -648,8 +750,7 @@ async def admin_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     url = invite.register_url or f"/register?token={invite.token}"
     await update.message.reply_text(
         f"✅ *Invite created*{' for ' + name if name else ''}!\n\n"
-        f"Registration link:\n`{url}`\n\n"
-        f"Token: `{invite.token}`",
+        f"Registration link:\n`{url}`\n\nToken: `{invite.token}`",
         parse_mode="Markdown",
     )
 
@@ -664,14 +765,12 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     text = " ".join(context.args)
-    from autogpt.coaching.storage import get_all_users_progress
     from autogpt.coaching.storage import _get_client  # type: ignore
 
     db = _get_client()
-    # Get users who have a telegram_user_id linked
     rows = (
         db.table("user_profiles")
-        .select("telegram_user_id,name")
+        .select("telegram_user_id,name,language")
         .not_.is_("telegram_user_id", "null")
         .execute()
         .data or []
@@ -693,99 +792,24 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ── /help ──────────────────────────────────────────────────────────────────────
 
-async def suspend_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    tg_id = update.effective_user.id
-    user = _get_linked_user(tg_id)
-    if not user:
-        await update.message.reply_text("Please link your account first with /link.")
-        return
-    st = user.account_status.value if hasattr(user.account_status, "value") else "active"
-    if st == "archived":
-        await update.message.reply_text(
-            "🚫 Your account has been archived. Please contact Adi Ben Nesher."
-        )
-        return
-    if st == "suspended":
-        await update.message.reply_text("Your coaching is already paused. Use /resume to reactivate.")
-        return
-    try:
-        from autogpt.coaching.storage import set_account_status
-        from autogpt.coaching.models import AccountStatus
-        set_account_status(user.user_id, AccountStatus.SUSPENDED, "User self-suspended via Telegram")
-        await update.message.reply_text(
-            "⏸ Your coaching has been *paused*.\n\n"
-            "Use /resume whenever you're ready to continue. "
-            "Your progress and OKRs are safely saved.",
-            parse_mode="Markdown",
-        )
-    except Exception:
-        logger.exception("Could not suspend user %s", user.user_id)
-        await update.message.reply_text("Sorry, something went wrong. Please try again.")
-
-
-async def resume_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    tg_id = update.effective_user.id
-    user = _get_linked_user(tg_id)
-    if not user:
-        await update.message.reply_text("Please link your account first with /link.")
-        return
-    st = user.account_status.value if hasattr(user.account_status, "value") else "active"
-    if st == "archived":
-        await update.message.reply_text(
-            "🚫 Your account has been archived. Please contact Adi Ben Nesher directly."
-        )
-        return
-    if st == "active":
-        await update.message.reply_text("Your coaching is already active! Use /start for your session.")
-        return
-    try:
-        from autogpt.coaching.storage import set_account_status
-        from autogpt.coaching.models import AccountStatus
-        set_account_status(user.user_id, AccountStatus.ACTIVE)
-        await update.message.reply_text(
-            f"▶ Welcome back, *{user.name}*! Your coaching is now *active* again.\n\n"
-            "Use /start to begin your session whenever you're ready.",
-            parse_mode="Markdown",
-        )
-    except Exception:
-        logger.exception("Could not reactivate user %s", user.user_id)
-        await update.message.reply_text("Sorry, something went wrong. Please try again.")
-
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tg_id = update.effective_user.id
-    base = (
-        "*ABN Co-Navigator — Commands*\n\n"
-        "/start — Begin or resume a coaching session\n"
-        "/link — Link your Telegram to your registered account\n"
-        "/plan — Fill in your weekly plan (per key result)\n"
-        "/progress — Update progress mid-week\n"
-        "/highlight — Add today's key highlight\n"
-        "/myplan — View your current week's plan\n"
-        "/message — Send a message to Adi Ben Nesher\n"
-        "/done — End session and receive summary\n"
-        "/suspend — Pause your coaching\n"
-        "/resume — Reactivate a paused coaching account\n"
-        "/cancel — Cancel current operation\n"
-        "/help — Show this list"
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
+    admin_extra = t(lang, "help_admin") if _is_admin(tg_id) else ""
+    await update.message.reply_text(
+        t(lang, "help_text") + admin_extra,
+        parse_mode="Markdown",
     )
-    admin_extra = (
-        "\n\n*Admin commands:*\n"
-        "/users — List all program members\n"
-        "/report <user_id> — Full progress report\n"
-        "/invite [name] [contact] — Create invite link\n"
-        "/broadcast <text> — Message all linked users"
-    ) if _is_admin(tg_id) else ""
-    await update.message.reply_text(base + admin_extra, parse_mode="Markdown")
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
     _sessions.pop(tg_id, None)
     context.user_data.clear()
-    await update.message.reply_text(
-        "Operation cancelled. Use /start or /help whenever you're ready."
-    )
+    await update.message.reply_text(t(lang, "cancelled"))
     return ConversationHandler.END
 
 
@@ -825,7 +849,6 @@ def _format_summary(summary) -> str:
 def _build_app(token: str) -> Application:
     app = Application.builder().token(token).build()
 
-    # Main conversation (AI coaching session + weekly plan + linking + messaging)
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -885,6 +908,7 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("myplan", myplan))
     app.add_handler(CommandHandler("suspend", suspend_self))
     app.add_handler(CommandHandler("resume", resume_self))
+    app.add_handler(CommandHandler("lang", set_language))
     app.add_handler(CommandHandler("help", help_command))
 
     # Admin commands
@@ -893,7 +917,7 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("invite", admin_invite))
     app.add_handler(CommandHandler("broadcast", admin_broadcast))
 
-    # Admin reply routing (must be after ConversationHandler to not interfere)
+    # Admin reply routing (must be after ConversationHandler)
     app.add_handler(MessageHandler(
         filters.REPLY & filters.TEXT & ~filters.COMMAND,
         admin_reply_handler,

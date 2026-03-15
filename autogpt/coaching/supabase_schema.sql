@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   is_admin          BOOLEAN NOT NULL DEFAULT FALSE,
   account_status    TEXT    NOT NULL DEFAULT 'active'
                             CHECK (account_status IN ('active','suspended','archived')),
+  language          TEXT    NOT NULL DEFAULT 'en'
+                            CHECK (language IN ('en','he')),
   suspended_at      TIMESTAMPTZ,
   suspended_reason  TEXT,
   created_at        TIMESTAMPTZ DEFAULT NOW()

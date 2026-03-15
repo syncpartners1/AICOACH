@@ -52,6 +52,7 @@ class UserProfile(BaseModel):
     phone_number: str                          # mandatory for all users
     email: Optional[str] = None
     account_status: AccountStatus = AccountStatus.ACTIVE
+    language: str = "en"                       # "en" or "he"
 
 
 class RegisterRequest(BaseModel):

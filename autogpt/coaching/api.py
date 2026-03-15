@@ -67,6 +67,7 @@ from autogpt.coaching.storage import (
     set_account_status,
     set_kr_status,
     set_objective_status,
+    set_user_language,
     upsert_daily_highlight,
     upsert_kr_activity,
     upsert_master_kr,
@@ -665,6 +666,7 @@ def user_dashboard(
         past_sessions=past_sessions,
         week_start=parsed_week,
         week_end=_week_end(parsed_week),
+        language=user.language,
     )
     return HTMLResponse(content=html)
 

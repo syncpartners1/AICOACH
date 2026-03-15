@@ -47,6 +47,7 @@ def _row_to_profile(row: dict) -> UserProfile:
         phone_number=row.get("phone_number") or "",
         email=row.get("email"),
         account_status=AccountStatus(row.get("account_status", "active")),
+        language=row.get("language") or "en",
     )
 
 
@@ -139,7 +140,7 @@ def google_auth(google_id: str, name: str, email: str, phone_number: str) -> Use
 def get_user_profile(user_id: str) -> Optional[UserProfile]:
     db = _get_client()
     result = db.table("user_profiles").select(
-        "user_id,name,phone_number,email,account_status"
+        "user_id,name,phone_number,email,account_status,language"
     ).eq("user_id", user_id).execute()
     if not result.data:
         return None
@@ -164,6 +165,14 @@ def set_account_status(
     else:
         upd["suspended_at"] = None
     db.table("user_profiles").update(upd).eq("user_id", user_id).execute()
+
+
+def set_user_language(user_id: str, language: str) -> None:
+    """Persist the user's preferred language ('en' or 'he')."""
+    if language not in ("en", "he"):
+        return
+    db = _get_client()
+    db.table("user_profiles").update({"language": language}).eq("user_id", user_id).execute()
 
 
 # ── Objectives ────────────────────────────────────────────────────────────────
@@ -703,7 +712,7 @@ def link_telegram(user_id: str, telegram_user_id: int) -> None:
 def get_user_by_telegram(telegram_user_id: int) -> Optional[UserProfile]:
     db = _get_client()
     result = db.table("user_profiles").select(
-        "user_id,name,phone_number,email,account_status"
+        "user_id,name,phone_number,email,account_status,language"
     ).eq("telegram_user_id", telegram_user_id).execute()
     if not result.data:
         return None
@@ -713,7 +722,7 @@ def get_user_by_telegram(telegram_user_id: int) -> Optional[UserProfile]:
 def get_user_by_phone(phone_number: str) -> Optional[UserProfile]:
     db = _get_client()
     result = db.table("user_profiles").select(
-        "user_id,name,phone_number,email,account_status"
+        "user_id,name,phone_number,email,account_status,language"
     ).eq("phone_number", phone_number).execute()
     if not result.data:
         return None
@@ -807,7 +816,7 @@ def get_all_users_progress() -> List[UserProgressSummary]:
     db = _get_client()
     users = (
         db.table("user_profiles")
-        .select("user_id,name,email,phone_number,account_status")
+        .select("user_id,name,email,phone_number,account_status,language")
         .order("created_at", desc=True)
         .execute()
         .data or []
