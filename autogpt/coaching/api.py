@@ -104,7 +104,8 @@ app = FastAPI(
 
 import os as _os
 _static_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "static")
-app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+if _os.path.isdir(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 app.add_middleware(
     CORSMiddleware,
