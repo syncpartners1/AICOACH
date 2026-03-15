@@ -227,6 +227,13 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
     <div class="hdr-title">{t(lang, "db_title")}</div>
     <div class="hdr-sub">{user.name} &nbsp;{status_badge}{status_action}</div>
   </div>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <a href="/chat" style="color:#fff;font-size:12px;font-weight:600;text-decoration:none;
+       background:#16a34a;padding:6px 14px;border-radius:8px;">▶ Start Session</a>
+    <a href="/user/logout" style="color:rgba(255,255,255,.65);font-size:12px;
+       text-decoration:none;border:1px solid rgba(255,255,255,.25);padding:5px 12px;
+       border-radius:8px;">Sign out</a>
+  </div>
 </div>
 <div class="container">
   {suspended_banner}{archived_banner}

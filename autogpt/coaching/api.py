@@ -121,17 +121,62 @@ app.add_middleware(
 
 # ── API-key guard (Wix → API server auth) ────────────────────────────────────
 
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def verify_api_key(key: str = Security(api_key_header)) -> str:
+def verify_api_key(key: Optional[str] = Security(api_key_header)) -> str:
     if not coaching_config.api_key:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="Server API key not configured.")
-    if key != coaching_config.api_key:
+    if not key or key != coaching_config.api_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Invalid API key.")
     return key
+
+
+def verify_admin_or_api_key(request: Request) -> None:
+    """Accept either a valid admin session cookie OR a valid API key.
+    Used for admin-only write endpoints so the dashboard works without a URL-embedded key."""
+    if _is_admin_authenticated(request):
+        return
+    key = request.headers.get("X-API-Key", "")
+    if coaching_config.api_key and key == coaching_config.api_key:
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Admin authentication required.")
+
+
+# ── User session cookie ───────────────────────────────────────────────────────
+
+_USER_COOKIE = "user_session"
+
+
+def _user_session_token(user_id: str) -> str:
+    secret = (coaching_config.api_key or "user-fallback-secret").encode()
+    msg = f"user:{user_id}".encode()
+    return f"{user_id}:{hmac.new(secret, msg, hashlib.sha256).hexdigest()}"
+
+
+def _get_user_id_from_cookie(request: Request) -> Optional[str]:
+    cookie = request.cookies.get(_USER_COOKIE, "")
+    if not cookie or ":" not in cookie:
+        return None
+    parts = cookie.split(":", 1)
+    user_id = parts[0]
+    expected = _user_session_token(user_id)
+    if hmac.compare_digest(cookie, expected):
+        return user_id
+    return None
+
+
+def _set_user_cookie(response: Response, user_id: str) -> None:
+    response.set_cookie(
+        key=_USER_COOKIE,
+        value=_user_session_token(user_id),
+        httponly=True,
+        samesite="lax",
+        max_age=30 * 24 * 3600,
+    )
 
 
 # ── In-memory active session store ───────────────────────────────────────────
@@ -288,12 +333,13 @@ def google_oauth_callback(
     # Check whether this Google identity already has a phone number on file
     from autogpt.coaching.storage import _get_client as _supa
     db = _supa()
-    existing = db.table("user_profiles").select("user_id,name,phone_number").eq(
+    is_web_flow = redirect_to.startswith("/")  # local path = web login, http = Wix
+    existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
         "google_id", google_id
     ).execute().data
     if not existing:
         # Also try by email
-        existing = db.table("user_profiles").select("user_id,name,phone_number").eq(
+        existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
             "email", email
         ).execute().data
 
@@ -304,11 +350,16 @@ def google_oauth_callback(
             user = google_auth(google_id=google_id, name=name, email=email,
                                phone_number=row["phone_number"])
         except ValueError:
-            user_row = existing[0]
-            from autogpt.coaching.models import AccountStatus as _AS
             from autogpt.coaching.models import UserProfile as _UP
-            user = _UP(user_id=user_row["user_id"], name=user_row["name"],
-                       phone_number=user_row["phone_number"])
+            user = _UP(user_id=row["user_id"], name=row["name"],
+                       phone_number=row["phone_number"],
+                       account_status=AccountStatus(row.get("account_status", "active")))
+        if is_web_flow:
+            acct = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
+            dest = "/pending" if acct == "pending" else f"/dashboard/{user.user_id}"
+            resp = RedirectResponse(url=dest, status_code=302)
+            _set_user_cookie(resp, user.user_id)
+            return resp
         params = urlencode({"user_id": user.user_id, "name": user.name, "email": user.email or ""})
         return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
 
@@ -390,7 +441,11 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
     msg.style.color = '#16a34a';
     msg.textContent = 'All set! Redirecting…';
     setTimeout(() => {{
-      window.location = '/dashboard/' + data.user_id;
+      if (data.account_status === 'pending') {{
+        window.location = '/pending';
+      }} else {{
+        window.location = '/dashboard/' + data.user_id;
+      }}
     }}, 1200);
   }} else {{
     const err = await res.json().catch(()=>({{}}));
@@ -417,15 +472,17 @@ def complete_google_signup(body: _GooglePhoneBody) -> AuthResponse:
         google_id, name, email = decoded.split("|", 2)
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token.")
+    new_status = AccountStatus.ACTIVE if body.invite_token else AccountStatus.PENDING
     try:
         user = google_auth(google_id=google_id, name=name, email=email,
-                           phone_number=body.phone_number)
+                           phone_number=body.phone_number, account_status=new_status)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if body.invite_token:
         use_invite(body.invite_token, user.user_id)
     return AuthResponse(user_id=user.user_id, name=user.name,
-                        email=user.email, phone_number=user.phone_number)
+                        email=user.email, phone_number=user.phone_number,
+                        account_status=user.account_status)
 
 
 @app.get("/auth/google/config", summary="Show the redirect URI to register in Google Cloud Console")
@@ -633,6 +690,15 @@ def user_history(user_id: str, _: str = Depends(verify_api_key)) -> List[PastSes
 
 # ── User personal dashboard ───────────────────────────────────────────────────
 
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard_root(request: Request) -> Response:
+    """Redirect logged-in users to their own dashboard."""
+    user_id = _get_user_id_from_cookie(request)
+    if user_id:
+        return RedirectResponse(url=f"/dashboard/{user_id}", status_code=302)
+    return RedirectResponse(url="/login", status_code=302)
+
+
 @app.get("/dashboard/{user_id}", response_class=HTMLResponse, include_in_schema=False)
 def user_dashboard(
     user_id: str,
@@ -641,15 +707,19 @@ def user_dashboard(
     api_key: Optional[str] = Query(default=None, alias="api_key"),
 ) -> HTMLResponse:
     """Personal progress dashboard for a coaching program user."""
-    # Accept API key via query param (for browser links) or header
-    if api_key:
+    # Accept: user session cookie, API key in query param, or API key in header
+    cookie_uid = _get_user_id_from_cookie(request)
+    if cookie_uid:
+        # Cookie auth: user can only view their own dashboard
+        if cookie_uid != user_id:
+            return RedirectResponse(url=f"/dashboard/{cookie_uid}", status_code=302)
+    elif api_key:
         if coaching_config.api_key and api_key != coaching_config.api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
     else:
-        try:
-            verify_api_key(request.headers.get("X-API-Key", ""))
-        except HTTPException:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="API key required.")
+        header_key = request.headers.get("X-API-Key", "")
+        if not coaching_config.api_key or header_key != coaching_config.api_key:
+            return RedirectResponse(url=f"/login?next=/dashboard/{user_id}", status_code=302)
 
     from datetime import date as _date
     from autogpt.coaching.dashboard_ui import render_dashboard
@@ -912,7 +982,9 @@ def admin_dashboard(request: Request) -> HTMLResponse:
 
     from autogpt.coaching.admin_ui import render_admin
 
-    users = get_all_users_progress()
+    all_users = get_all_users_progress()
+    pending_users = [u for u in all_users if u.account_status == AccountStatus.PENDING]
+    users = [u for u in all_users if u.account_status != AccountStatus.PENDING]
     try:
         db = __import__("autogpt.coaching.storage", fromlist=["_get_client"])._get_client()
         inv_rows = (
@@ -940,7 +1012,8 @@ def admin_dashboard(request: Request) -> HTMLResponse:
     except Exception:
         pending = []
 
-    html = render_admin(users=users, pending_invites=pending, public_url=coaching_config.public_url)
+    html = render_admin(users=users, pending_invites=pending,
+                        public_url=coaching_config.public_url, pending_users=pending_users)
     return HTMLResponse(content=html)
 
 
@@ -1066,7 +1139,8 @@ def admin_list_users(_: str = Depends(verify_api_key)) -> List[UserProgressSumma
 def admin_set_user_status(
     user_id: str,
     req: UserStatusRequest,
-    _: str = Depends(verify_api_key),
+    request: Request,
+    _: None = Depends(verify_admin_or_api_key),
 ) -> dict:
     user = get_user_profile(user_id)
     if not user:
@@ -1076,8 +1150,9 @@ def admin_set_user_status(
 
 
 @app.post("/admin/invites", response_model=Invite, summary="Create a program invite link (admin)")
-def admin_create_invite(req: InviteRequest, _: str = Depends(verify_api_key)) -> Invite:
-    admin_uid = coaching_config.admin_user_id or "system"
+def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(verify_admin_or_api_key)) -> Invite:
+    # invited_by is a UUID FK — only set it when a valid user_id is configured
+    admin_uid = coaching_config.admin_user_id if coaching_config.admin_user_id else None
     return create_invite(
         invited_by_user_id=admin_uid,
         name=req.name,
@@ -1096,29 +1171,78 @@ def admin_get_invite(token: str, _: str = Depends(verify_api_key)) -> Invite:
     return inv
 
 
+class AdminRegisterRequest(BaseModel):
+    name: str
+    phone_number: str
+    email: Optional[str] = None
+
+
+@app.post("/admin/users/register", response_model=AuthResponse,
+          summary="Admin: directly register a new active user")
+def admin_register_user(req: AdminRegisterRequest, request: Request,
+                        _: None = Depends(verify_admin_or_api_key)) -> AuthResponse:
+    try:
+        user = register_user_by_phone(
+            name=req.name,
+            phone_number=req.phone_number,
+            account_status=AccountStatus.ACTIVE,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if req.email:
+        try:
+            db = __import__("autogpt.coaching.storage", fromlist=["_get_client"])._get_client()
+            db.table("user_profiles").update({"email": req.email}).eq(
+                "user_id", user.user_id
+            ).execute()
+        except Exception:
+            pass
+    return AuthResponse(user_id=user.user_id, name=user.name,
+                        phone_number=user.phone_number, account_status=user.account_status)
+
+
+@app.post("/admin/users/{user_id}/approve", response_model=dict,
+          summary="Admin: approve a pending user (sets status to active)")
+def admin_approve_user(user_id: str, request: Request,
+                       _: None = Depends(verify_admin_or_api_key)) -> dict:
+    user = get_user_profile(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    set_account_status(user_id, AccountStatus.ACTIVE, None)
+    return {"user_id": user_id, "account_status": "active"}
+
+
 @app.post(
     "/public/register/phone",
     response_model=AuthResponse,
-    summary="Public phone registration — requires a valid invite token",
+    summary="Open phone registration — invite token optional; without it user is pending approval",
 )
 def public_register_phone(
     req: PhoneRegisterRequest,
     invite_token: Optional[str] = Query(default=None),
 ) -> AuthResponse:
-    """Open registration endpoint protected by an invite token."""
-    if not invite_token:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="An invite token is required to register.")
-    invite = get_invite(invite_token)
-    if not invite or invite.used_at:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Invite token is invalid or already used.")
+    """Register by phone. With a valid invite token the account is immediately active;
+    without one the account is created with 'pending' status awaiting admin approval."""
+    if invite_token:
+        invite = get_invite(invite_token)
+        if not invite or invite.used_at:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Invite token is invalid or already used.")
+        new_status = AccountStatus.ACTIVE
+    else:
+        new_status = AccountStatus.PENDING
     try:
-        user = register_user_by_phone(name=req.name, phone_number=req.phone_number)
+        user = register_user_by_phone(
+            name=req.name,
+            phone_number=req.phone_number,
+            account_status=new_status,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    use_invite(invite_token, user.user_id)
-    return AuthResponse(user_id=user.user_id, name=user.name, phone_number=user.phone_number)
+    if invite_token:
+        use_invite(invite_token, user.user_id)
+    return AuthResponse(user_id=user.user_id, name=user.name, phone_number=user.phone_number,
+                        account_status=user.account_status)
 
 
 @app.get(
@@ -1215,10 +1339,13 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
   if (res.ok) {{
     const data = await res.json();
     msg.style.color='#16a34a';
-    msg.textContent = 'Welcome, ' + data.name + '! Redirecting to your dashboard…';
-    setTimeout(() => {{
-      window.location = '/dashboard/' + data.user_id;
-    }}, 1500);
+    if (data.account_status === 'pending') {{
+      msg.textContent = 'Registration submitted! Awaiting coach approval…';
+      setTimeout(() => {{ window.location = '/pending'; }}, 1500);
+    }} else {{
+      msg.textContent = 'Welcome, ' + data.name + '! Redirecting to your dashboard…';
+      setTimeout(() => {{ window.location = '/dashboard/' + data.user_id; }}, 1500);
+    }}
   }} else {{
     const err = await res.json().catch(()=>({{}}));
     msg.style.color='#dc2626';
@@ -1227,6 +1354,103 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
 }});
 </script>
 </body></html>""")
+
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
+    """User-facing login page — sign in with Google."""
+    # Pass local next URL encoded as redirect_to so callback detects web flow
+    dest = next or "/dashboard"
+    google_url = f"/auth/google/url?redirect_to={dest}"
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign In – ABN Consulting</title>
+<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
+.card{{background:#fff;border-radius:16px;padding:40px 32px;max-width:380px;width:100%;
+      box-shadow:0 4px 20px rgba(0,0,0,.1)}}
+.logo{{display:flex;align-items:center;gap:10px;margin-bottom:28px}}
+.logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
+h1{{font-size:22px;font-weight:700;color:#1a2b4a;margin-bottom:6px}}
+p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
+.google-btn{{width:100%;background:#fff;color:#374151;border:1.5px solid #d1d5db;
+            padding:13px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:10px;
+            text-decoration:none;transition:.15s}}
+.google-btn:hover{{background:#f9fafb;border-color:#9ca3af}}
+.divider{{text-align:center;color:#9ca3af;font-size:12px;margin:20px 0;
+          display:flex;align-items:center;gap:8px}}
+.divider::before,.divider::after{{content:'';flex:1;height:1px;background:#e5e7eb}}
+.register-link{{text-align:center;font-size:13px;color:#6b7280;margin-top:16px}}
+.register-link a{{color:#1a2b4a;font-weight:600;text-decoration:none}}
+</style></head>
+<body>
+<div class="card">
+  <div class="logo">
+    <img src="/static/android-chrome-192x192.png" width="36" height="36"
+         style="border-radius:8px" alt="logo">
+    <div class="logo-text">ABN Consulting</div>
+  </div>
+  <h1>Welcome back</h1>
+  <p>Sign in to access your coaching dashboard and track your progress.</p>
+  <a class="google-btn" href="{google_url}">
+    <svg width="20" height="20" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
+    Continue with Google
+  </a>
+  <div class="divider">New to the program?</div>
+  <div class="register-link"><a href="/register">Register here</a></div>
+</div>
+</body></html>""")
+
+
+@app.get("/pending", response_class=HTMLResponse, include_in_schema=False)
+def pending_page(request: Request) -> HTMLResponse:
+    """Page shown to users whose account is pending admin approval."""
+    user_id = _get_user_id_from_cookie(request)
+    name = ""
+    if user_id:
+        profile = get_user_profile(user_id)
+        if profile and profile.account_status != AccountStatus.PENDING:
+            return RedirectResponse(url=f"/dashboard/{user_id}", status_code=302)
+        if profile:
+            name = profile.name
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Registration Pending – ABN Consulting</title>
+<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
+.card{{background:#fff;border-radius:16px;padding:40px 32px;max-width:420px;width:100%;
+      box-shadow:0 4px 20px rgba(0,0,0,.1);text-align:center}}
+.icon{{font-size:48px;margin-bottom:16px}}
+h1{{font-size:22px;font-weight:700;color:#1a2b4a;margin-bottom:10px}}
+p{{color:#6b7280;font-size:14px;line-height:1.6}}
+.badge{{display:inline-block;margin-top:20px;padding:6px 16px;background:#fef3c7;
+        color:#92400e;border-radius:20px;font-size:13px;font-weight:600}}
+</style></head>
+<body>
+<div class="card">
+  <div class="icon">⏳</div>
+  <h1>{"Welcome, " + name + "!" if name else "Registration Received!"}</h1>
+  <p>Your registration is pending review by the coach.<br>
+  You'll receive a confirmation once your account is activated.</p>
+  <div class="badge">Pending Approval</div>
+</div>
+</body></html>""")
+
+
+@app.get("/user/logout", include_in_schema=False)
+def user_logout() -> Response:
+    resp = RedirectResponse(url="/login", status_code=303)
+    resp.delete_cookie(_USER_COOKIE)
+    return resp
 
 
 # ── Coaching sessions ─────────────────────────────────────────────────────────
@@ -1265,6 +1489,12 @@ def start_session(
     if req.user_id:
         profile = get_user_profile(req.user_id)
         if profile:
+            if profile.account_status == AccountStatus.PENDING:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your account is pending approval. "
+                           "Please wait for the coach to activate your account.",
+                )
             if profile.account_status == AccountStatus.SUSPENDED:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -1376,6 +1606,254 @@ def _check_demo_rate(request: Request) -> None:
     if _demo_counts[ip] > _DEMO_DAILY_LIMIT:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                             detail="Demo limit reached. Please book a real session!")
+
+
+# ── User web chat (cookie-authenticated) ────────────────────────────────────
+
+def _require_user_cookie(request: Request) -> str:
+    """Return user_id from cookie or raise 401 redirect."""
+    uid = _get_user_id_from_cookie(request)
+    if not uid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Authentication required.")
+    return uid
+
+
+@app.get("/chat", response_class=HTMLResponse, include_in_schema=False)
+def chat_page(request: Request) -> Response:
+    """Web coaching chat for logged-in users."""
+    user_id = _get_user_id_from_cookie(request)
+    if not user_id:
+        return RedirectResponse(url="/login?next=/chat", status_code=302)
+    user = get_user_profile(user_id)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if user.account_status == AccountStatus.PENDING:
+        return RedirectResponse(url="/pending", status_code=302)
+    if user.account_status in (AccountStatus.SUSPENDED, AccountStatus.ARCHIVED):
+        return HTMLResponse(content=f"""<!DOCTYPE html><html><head><meta charset=UTF-8>
+<title>Account Inactive</title></head><body style="font-family:sans-serif;text-align:center;padding:60px">
+<h2>Your account is {user.account_status.value}.</h2>
+<p>Please contact your coach to reactivate.</p></body></html>""")
+    coach = coaching_config.coach_name
+    calendly = coaching_config.coach_calendly_url
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Coaching Session – ABN Consulting</title>
+<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#f0f4f8;height:100vh;display:flex;flex-direction:column;overflow:hidden}}
+.hdr{{background:#1a2b4a;color:#fff;padding:10px 18px;display:flex;align-items:center;
+      gap:10px;flex-shrink:0}}
+.hdr img{{border-radius:6px}}
+.hdr-title{{font-size:15px;font-weight:700}}
+.hdr-sub{{font-size:11px;opacity:.7}}
+.hdr-right{{margin-left:auto;display:flex;gap:8px;align-items:center}}
+.hdr-right a{{color:rgba(255,255,255,.7);font-size:12px;text-decoration:none;
+              border:1px solid rgba(255,255,255,.25);padding:4px 10px;border-radius:7px}}
+.hdr-right a:hover{{color:#fff}}
+#chat-area{{flex:1;display:flex;flex-direction:column;overflow:hidden}}
+#messages{{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}}
+.msg{{max-width:80%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;
+      word-wrap:break-word}}
+.msg-user{{background:#1a2b4a;color:#fff;align-self:flex-end;border-bottom-right-radius:4px}}
+.msg-bot{{background:#fff;color:#111827;align-self:flex-start;
+          border:1px solid #e5e7eb;border-bottom-left-radius:4px}}
+.msg-sys{{background:#fef3c7;color:#92400e;align-self:center;font-size:12px;
+          border-radius:8px;padding:6px 14px}}
+#input-row{{background:#fff;border-top:1px solid #e5e7eb;padding:12px 16px;
+            display:flex;gap:8px;flex-shrink:0}}
+#msg-input{{flex:1;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:10px;
+            font-size:14px;outline:none;resize:none;font-family:inherit}}
+#msg-input:focus{{border-color:#1a2b4a}}
+.btn-send{{background:#1a2b4a;color:#fff;border:none;padding:10px 18px;border-radius:10px;
+           font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}}
+.btn-send:hover{{background:#243d6b}}
+.btn-send:disabled{{background:#9ca3af;cursor:default}}
+.btn-end{{background:#ef4444;color:#fff;border:none;padding:6px 14px;border-radius:8px;
+          font-size:12px;font-weight:600;cursor:pointer}}
+#start-screen{{flex:1;display:flex;flex-direction:column;align-items:center;
+               justify-content:center;padding:40px 24px;gap:16px;text-align:center}}
+#start-screen h2{{font-size:20px;font-weight:700;color:#1a2b4a}}
+#start-screen p{{color:#6b7280;font-size:14px;max-width:380px;line-height:1.6}}
+.btn-start{{background:#1a2b4a;color:#fff;border:none;padding:13px 28px;border-radius:12px;
+            font-size:15px;font-weight:700;cursor:pointer}}
+.btn-start:hover{{background:#243d6b}}
+#chat-area{{display:none}}
+</style></head>
+<body>
+<div class="hdr">
+  <img src="/static/android-chrome-192x192.png" width="32" height="32" alt="logo">
+  <div>
+    <div class="hdr-title">AI Co-Navigator</div>
+    <div class="hdr-sub">Welcome, {user.name}</div>
+  </div>
+  <div class="hdr-right">
+    <a href="/dashboard/{user.user_id}">Dashboard</a>
+    <a href="/user/logout">Sign out</a>
+  </div>
+</div>
+
+<div id="start-screen">
+  <h2>Ready for your coaching session?</h2>
+  <p>Your AI coach will review your OKRs, log weekly progress, and help you stay on track.</p>
+  <button class="btn-start" onclick="startSession()">Start Session</button>
+</div>
+
+<div id="chat-area">
+  <div id="messages"></div>
+  <div id="input-row">
+    <textarea id="msg-input" rows="1" placeholder="Type your message…"
+              onkeydown="handleKey(event)"></textarea>
+    <button class="btn-send" id="sendBtn" onclick="sendMsg()">Send</button>
+    <button class="btn-end" onclick="endSession()">End</button>
+  </div>
+</div>
+
+<script>
+let sid = null;
+const msgs = document.getElementById('messages');
+
+function addMsg(text, who) {{
+  const d = document.createElement('div');
+  d.className = 'msg msg-' + who;
+  d.textContent = text;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+}}
+
+async function api(path, body) {{
+  const r = await fetch(path, {{
+    method: 'POST',
+    credentials: 'include',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify(body)
+  }});
+  if (!r.ok) {{
+    const e = await r.json().catch(()=>({{}}));
+    throw new Error(e.detail || 'Request failed');
+  }}
+  return r.json();
+}}
+
+async function startSession() {{
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('chat-area').style.display = 'flex';
+  document.getElementById('chat-area').style.flexDirection = 'column';
+  try {{
+    const d = await api('/user/session/start', {{}});
+    sid = d.session_id;
+    addMsg(d.message, 'bot');
+  }} catch(e) {{
+    addMsg('Could not start session: ' + e.message, 'sys');
+  }}
+}}
+
+async function sendMsg() {{
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if (!text || !sid) return;
+  input.value = '';
+  input.style.height = 'auto';
+  addMsg(text, 'user');
+  document.getElementById('sendBtn').disabled = true;
+  try {{
+    const d = await api('/user/session/' + sid + '/message', {{message: text}});
+    addMsg(d.reply, 'bot');
+  }} catch(e) {{
+    addMsg('Error: ' + e.message, 'sys');
+  }}
+  document.getElementById('sendBtn').disabled = false;
+  input.focus();
+}}
+
+async function endSession() {{
+  if (!sid) return;
+  if (!confirm('End this session and save your summary?')) return;
+  addMsg('Wrapping up your session…', 'sys');
+  try {{
+    const d = await api('/user/session/' + sid + '/end', {{}});
+    sid = null;
+    const lines = [];
+    if (d.mood_indicator) lines.push('Mood: ' + d.mood_indicator);
+    if (d.focus_goal) lines.push('Focus: ' + d.focus_goal);
+    if (d.summary_for_coach) lines.push(d.summary_for_coach.slice(0, 300) + '…');
+    addMsg('✅ Session saved! ' + lines.join(' · '), 'sys');
+    {"if ('" + calendly + "') {" if calendly else "if (false) {"}
+      setTimeout(() => {{
+        addMsg('📅 Book your next session: {calendly}', 'bot');
+      }}, 1500);
+    }}
+  }} catch(e) {{
+    addMsg('Could not save session: ' + e.message, 'sys');
+  }}
+}}
+
+function handleKey(e) {{
+  if (e.key === 'Enter' && !e.shiftKey) {{
+    e.preventDefault();
+    sendMsg();
+  }}
+}}
+
+// Auto-grow textarea
+document.getElementById('msg-input').addEventListener('input', function() {{
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+}});
+</script>
+</body></html>""")
+
+
+@app.post("/user/session/start", response_model=dict, summary="Start a coaching session (user cookie auth)")
+def user_session_start(request: Request) -> dict:
+    user_id = _get_user_id_from_cookie(request)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
+    profile = get_user_profile(user_id)
+    if not profile or profile.account_status != AccountStatus.ACTIVE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Account is not active.")
+    objectives = get_user_objectives(user_id)
+    past_sessions = get_past_sessions(user_id, limit=3)
+    session = CoachingSession(
+        client_id=f"web_{user_id}",
+        client_name=profile.name,
+        user_id=user_id,
+        objectives=objectives,
+        past_sessions=past_sessions,
+    )
+    _active_sessions[session.session_id] = session
+    return {"session_id": session.session_id, "message": session.open()}
+
+
+@app.post("/user/session/{session_id}/message", response_model=dict,
+          summary="Send message in a user web session (cookie auth)")
+def user_session_message(session_id: str, req: MessageRequest, request: Request) -> dict:
+    if not _get_user_id_from_cookie(request):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
+    session = _active_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+    reply = session.chat(req.message)
+    return {"session_id": session_id, "reply": reply}
+
+
+@app.post("/user/session/{session_id}/end", response_model=SessionSummary,
+          summary="End a user web session and save summary (cookie auth)")
+def user_session_end(session_id: str, request: Request) -> SessionSummary:
+    if not _get_user_id_from_cookie(request):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
+    session = _active_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+    summary = session.extract_summary()
+    save_session(summary)
+    del _active_sessions[session_id]
+    return summary
 
 
 class DemoStartRequest(BaseModel):
