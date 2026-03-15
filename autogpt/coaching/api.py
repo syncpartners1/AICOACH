@@ -7,6 +7,8 @@ import hashlib
 import hmac
 import json
 import logging
+import random
+import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date
@@ -16,7 +18,7 @@ from urllib.parse import urlencode
 import requests as http_requests
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, Security, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -678,9 +680,11 @@ def user_dashboard(
 
 _ADMIN_COOKIE = "admin_session"
 
+# In-memory OTP store: phone → (otp, expires_at)
+_otp_store: Dict[str, tuple] = {}
+
 
 def _admin_token() -> str:
-    """Return the expected HMAC value for a valid admin session cookie."""
     secret = (coaching_config.api_key or "fallback-secret").encode()
     msg = f"admin:{coaching_config.admin_username}".encode()
     return hmac.new(secret, msg, hashlib.sha256).hexdigest()
@@ -689,10 +693,71 @@ def _admin_token() -> str:
 def _is_admin_authenticated(request: Request) -> bool:
     cookie = request.cookies.get(_ADMIN_COOKIE, "")
     expected = _admin_token()
-    return hmac.compare_digest(cookie, expected) if cookie else False
+    return bool(cookie) and hmac.compare_digest(cookie, expected)
 
 
-_ADMIN_LOGIN_HTML = """<!DOCTYPE html>
+def _set_admin_cookie(response: Response) -> None:
+    response.set_cookie(
+        key=_ADMIN_COOKIE,
+        value=_admin_token(),
+        httponly=True,
+        samesite="lax",
+        max_age=8 * 3600,
+    )
+
+
+def _login_page(error: str = "", active_tab: str = "password") -> str:
+    fb_app_id = coaching_config.facebook_app_id or ""
+    fb_sdk = ""
+    if fb_app_id:
+        fb_sdk = f"""
+<script>
+  window.fbAsyncInit = function() {{
+    FB.init({{ appId: '{fb_app_id}', cookie: true, xfbml: true, version: 'v19.0' }});
+    FB.AppEvents.logPageView();
+  }};
+  (function(d,s,id){{
+    var js,fjs=d.getElementsByTagName(s)[0];
+    if(d.getElementById(id)){{return;}}
+    js=d.createElement(s);js.id=id;
+    js.src='https://connect.facebook.net/en_US/sdk.js';
+    fjs.parentNode.insertBefore(js,fjs);
+  }}(document,'script','facebook-jssdk'));
+
+  function fbLogin() {{
+    FB.login(function(resp) {{
+      if (resp.authResponse) {{
+        fetch('/admin/auth/facebook', {{
+          method: 'POST',
+          headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify({{access_token: resp.authResponse.accessToken}})
+        }}).then(r => {{
+          if (r.ok) {{ window.location.href = '/admin'; }}
+          else {{ r.json().then(d => showError(d.detail || 'Facebook login failed')); }}
+        }});
+      }} else {{
+        showError('Facebook login was cancelled.');
+      }}
+    }}, {{scope: 'public_profile'}});
+  }}
+</script>"""
+
+    error_html = f'<div class="error">{error}</div>' if error else ""
+    pw_active = "active" if active_tab == "password" else ""
+    fb_active = "active" if active_tab == "facebook" else ""
+    wa_active = "active" if active_tab == "whatsapp" else ""
+    fb_btn = "" if not fb_app_id else """
+      <button type="button" class="btn-fb" onclick="fbLogin()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+          <path d="M22.676 0H1.324C.593 0 0 .593 0 1.324v21.352C0 23.408.593 24
+          1.324 24h11.494v-9.294H9.689v-3.621h3.129V8.41c0-3.099 1.894-4.785
+          4.659-4.785 1.325 0 2.464.097 2.796.141v3.24h-1.921c-1.5 0-1.792.721
+          -1.792 1.771v2.311h3.584l-.465 3.63H16.56V24h6.115c.733 0 1.325-.592
+          1.325-1.324V1.324C24 .593 23.408 0 22.676 0z"/></svg>
+        Continue with Facebook
+      </button>"""
+
+    return f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Admin Login – ABN Consulting</title>
@@ -701,23 +766,38 @@ _ADMIN_LOGIN_HTML = """<!DOCTYPE html>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
-.card{{background:#fff;border-radius:16px;padding:40px 36px;max-width:380px;width:100%;
+.card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:400px;width:100%;
   box-shadow:0 4px 20px rgba(0,0,0,.1)}}
-.logo{{display:flex;align-items:center;gap:10px;margin-bottom:28px}}
+.logo{{display:flex;align-items:center;gap:10px;margin-bottom:24px}}
 .logo img{{width:36px;height:36px;border-radius:8px}}
 .logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
-h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:6px}}
-p{{color:#6b7280;font-size:13px;margin-bottom:24px}}
+h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:4px}}
+p{{color:#6b7280;font-size:13px;margin-bottom:20px}}
+.tabs{{display:flex;border-bottom:2px solid #e5e7eb;margin-bottom:24px}}
+.tab{{flex:1;padding:9px 4px;text-align:center;font-size:13px;font-weight:600;
+  color:#6b7280;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}}
+.tab.active{{color:#1a2b4a;border-bottom-color:#1a2b4a}}
+.panel{{display:none}}.panel.active{{display:block}}
 label{{font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:4px}}
 input{{width:100%;padding:11px 13px;border:1.5px solid #d1d5db;border-radius:9px;
-  font-size:14px;outline:none;margin-bottom:16px;transition:border-color .2s}}
+  font-size:14px;outline:none;margin-bottom:14px;transition:border-color .2s}}
 input:focus{{border-color:#1a2b4a}}
-button{{width:100%;padding:12px;background:#1a2b4a;color:#fff;border:none;
-  border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px}}
-button:hover{{background:#243d6b}}
+.btn{{width:100%;padding:12px;background:#1a2b4a;color:#fff;border:none;
+  border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px;
+  display:flex;align-items:center;justify-content:center;gap:8px}}
+.btn:hover{{background:#243d6b}}
+.btn-fb{{width:100%;padding:12px;background:#1877F2;color:#fff;border:none;
+  border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:10px}}
+.btn-fb:hover{{background:#166fe5}}
+.btn-wa{{background:#25D366}}.btn-wa:hover{{background:#1da851}}
 .error{{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;
-  font-size:13px;padding:10px 14px;border-radius:9px;margin-bottom:16px}}
-</style></head><body>
+  font-size:13px;padding:10px 14px;border-radius:9px;margin-bottom:14px}}
+.info{{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;
+  font-size:13px;padding:10px 14px;border-radius:9px;margin-bottom:14px}}
+#wa-step2{{display:none}}
+</style>{fb_sdk}
+</head><body>
 <div class="card">
   <div class="logo">
     <img src="/static/android-chrome-192x192.png" alt="logo">
@@ -725,31 +805,114 @@ button:hover{{background:#243d6b}}
   </div>
   <h1>Admin Login</h1>
   <p>Sign in to the coaching dashboard.</p>
-  {error_block}
-  <form method="post" action="/admin/login">
-    <label for="username">Username</label>
-    <input id="username" name="username" type="text" autocomplete="username" required>
-    <label for="password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="current-password" required>
-    <button type="submit">Sign in</button>
-  </form>
+  {error_html}
+  <div id="error-box" class="error" style="display:none"></div>
+
+  <div class="tabs">
+    <div class="tab {pw_active}" onclick="switchTab('password')">Password</div>
+    <div class="tab {fb_active}" onclick="switchTab('facebook')">Facebook</div>
+    <div class="tab {wa_active}" onclick="switchTab('whatsapp')">WhatsApp</div>
+  </div>
+
+  <div id="tab-password" class="panel {pw_active}">
+    <form method="post" action="/admin/login">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button class="btn" type="submit">Sign in</button>
+    </form>
+  </div>
+
+  <div id="tab-facebook" class="panel {fb_active}">
+    <p style="text-align:center;margin-bottom:20px">
+      Use your Facebook account to access the admin panel.
+    </p>
+    {fb_btn if fb_app_id else '<p class="error">Facebook Login is not configured (FACEBOOK_APP_ID missing).</p>'}
+  </div>
+
+  <div id="tab-whatsapp" class="panel {wa_active}">
+    <div id="wa-step1">
+      <label for="wa-phone">Your WhatsApp number (with country code)</label>
+      <input id="wa-phone" type="tel" placeholder="e.g. 972501234567">
+      <button class="btn btn-wa" type="button" onclick="sendOtp()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471
+          -.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075
+          -.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059
+          -.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198
+          -.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916
+          -2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0
+          -.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875
+          1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625
+          .712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694
+          .248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+          <path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.122 1.532 5.857L0
+          24l6.335-1.658A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627
+          0 12 0zm0 21.818a9.818 9.818 0 01-5.003-1.37l-.358-.214-3.76.985.999
+          -3.648-.235-.374A9.818 9.818 0 112 12 9.818 9.818 0 0112 21.818z"/>
+        </svg>
+        Send OTP via WhatsApp
+      </button>
+    </div>
+    <div id="wa-step2">
+      <div class="info">A 6-digit code was sent to your WhatsApp.</div>
+      <label for="wa-otp">Enter OTP</label>
+      <input id="wa-otp" type="text" inputmode="numeric" maxlength="6" placeholder="123456">
+      <button class="btn btn-wa" type="button" onclick="verifyOtp()">Verify &amp; Sign in</button>
+    </div>
+  </div>
 </div>
+
+<script>
+function showError(msg) {{
+  var el = document.getElementById('error-box');
+  el.textContent = msg; el.style.display = 'block';
+}}
+function switchTab(name) {{
+  ['password','facebook','whatsapp'].forEach(function(t, i) {{
+    document.getElementById('tab-'+t).classList.toggle('active', t===name);
+    document.querySelectorAll('.tab')[i].classList.toggle('active', t===name);
+  }});
+}}
+function sendOtp() {{
+  var phone = document.getElementById('wa-phone').value.trim();
+  if (!phone) {{ showError('Enter your WhatsApp number.'); return; }}
+  fetch('/admin/auth/whatsapp/send-otp', {{
+    method:'POST', headers:{{'Content-Type':'application/json'}},
+    body: JSON.stringify({{phone: phone}})
+  }}).then(r => r.json()).then(d => {{
+    if (d.ok) {{
+      document.getElementById('wa-step1').style.display='none';
+      document.getElementById('wa-step2').style.display='block';
+      document.getElementById('error-box').style.display='none';
+    }} else {{ showError(d.detail || 'Failed to send OTP.'); }}
+  }}).catch(() => showError('Network error.'));
+}}
+function verifyOtp() {{
+  var phone = document.getElementById('wa-phone').value.trim();
+  var otp   = document.getElementById('wa-otp').value.trim();
+  fetch('/admin/auth/whatsapp/verify', {{
+    method:'POST', headers:{{'Content-Type':'application/json'}},
+    body: JSON.stringify({{phone: phone, otp: otp}})
+  }}).then(r => {{
+    if (r.ok) {{ window.location.href='/admin'; }}
+    else {{ r.json().then(d => showError(d.detail || 'Invalid OTP.')); }}
+  }}).catch(() => showError('Network error.'));
+}}
+</script>
 </body></html>"""
 
 
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 def admin_dashboard(request: Request) -> HTMLResponse:
-    """Admin overview dashboard — requires username/password login."""
+    """Admin overview dashboard — requires login."""
     if not _is_admin_authenticated(request):
-        return HTMLResponse(
-            content=_ADMIN_LOGIN_HTML.format(error_block=""),
-            status_code=200,
-        )
+        return HTMLResponse(content=_login_page(), status_code=200)
 
     from autogpt.coaching.admin_ui import render_admin
 
     users = get_all_users_progress()
-    # Pending invites (not yet used)
     try:
         db = __import__("autogpt.coaching.storage", fromlist=["_get_client"])._get_client()
         inv_rows = (
@@ -762,7 +925,6 @@ def admin_dashboard(request: Request) -> HTMLResponse:
             .data or []
         )
         from autogpt.coaching.models import Invite as _Invite
-        from datetime import datetime as _dt
         pending = [
             _Invite(
                 invite_id=r["invite_id"],
@@ -782,39 +944,115 @@ def admin_dashboard(request: Request) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@app.post("/admin/login", response_class=HTMLResponse, include_in_schema=False)
-def admin_login(
-    username: str = Form(...),
-    password: str = Form(...),
-) -> Response:
-    """Validate admin credentials and set a session cookie."""
+@app.post("/admin/login", include_in_schema=False)
+def admin_login(username: str = Form(...), password: str = Form(...)) -> Response:
     valid = (
         hmac.compare_digest(username, coaching_config.admin_username)
         and hmac.compare_digest(password, coaching_config.admin_password)
     )
     if not valid:
-        error_block = '<div class="error">Incorrect username or password.</div>'
         return HTMLResponse(
-            content=_ADMIN_LOGIN_HTML.format(error_block=error_block),
+            content=_login_page(error="Incorrect username or password.", active_tab="password"),
             status_code=401,
         )
-    response = RedirectResponse(url="/admin", status_code=303)
-    response.set_cookie(
-        key=_ADMIN_COOKIE,
-        value=_admin_token(),
-        httponly=True,
-        samesite="lax",
-        max_age=8 * 3600,  # 8-hour session
-    )
-    return response
+    resp = RedirectResponse(url="/admin", status_code=303)
+    _set_admin_cookie(resp)
+    return resp
 
 
 @app.get("/admin/logout", include_in_schema=False)
 def admin_logout() -> Response:
-    """Clear the admin session cookie and redirect to login."""
-    response = RedirectResponse(url="/admin", status_code=303)
-    response.delete_cookie(key=_ADMIN_COOKIE)
-    return response
+    resp = RedirectResponse(url="/admin", status_code=303)
+    resp.delete_cookie(_ADMIN_COOKIE)
+    return resp
+
+
+# ── Admin social auth ──────────────────────────────────────────────────────────
+
+class _FbTokenRequest(BaseModel):
+    access_token: str
+
+
+class _WaOtpRequest(BaseModel):
+    phone: str
+
+
+class _WaVerifyRequest(BaseModel):
+    phone: str
+    otp: str
+
+
+@app.post("/admin/auth/facebook", include_in_schema=False)
+def admin_auth_facebook(body: _FbTokenRequest) -> JSONResponse:
+    """Verify FB user token via debug_token API using the app secret."""
+    app_id = coaching_config.facebook_app_id
+    app_secret = coaching_config.facebook_app_secret
+    if not app_id or not app_secret:
+        raise HTTPException(status_code=503, detail="Facebook Login is not configured.")
+
+    # Server-side token verification via debug_token
+    try:
+        r = http_requests.get(
+            "https://graph.facebook.com/debug_token",
+            params={
+                "input_token": body.access_token,
+                "access_token": f"{app_id}|{app_secret}",
+            },
+            timeout=8,
+        )
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not reach Facebook API.")
+
+    if r.status_code != 200:
+        raise HTTPException(status_code=403, detail="Invalid Facebook access token.")
+
+    data = r.json().get("data", {})
+    if not data.get("is_valid"):
+        raise HTTPException(status_code=403, detail="Facebook token is invalid or expired.")
+    if data.get("app_id") != app_id:
+        raise HTTPException(status_code=403, detail="Token was issued for a different app.")
+
+    fb_id = data.get("user_id", "")
+    allowed_id = coaching_config.admin_facebook_id
+    if allowed_id and not hmac.compare_digest(fb_id, allowed_id):
+        raise HTTPException(status_code=403, detail="This Facebook account is not authorised.")
+
+    resp = JSONResponse({"ok": True})
+    _set_admin_cookie(resp)
+    return resp
+
+
+@app.post("/admin/auth/whatsapp/send-otp", include_in_schema=False)
+def admin_wa_send_otp(body: _WaOtpRequest) -> JSONResponse:
+    phone = body.phone.strip().lstrip("+")
+    allowed = coaching_config.admin_whatsapp_phone.strip().lstrip("+")
+    if allowed and not hmac.compare_digest(phone, allowed):
+        raise HTTPException(status_code=403, detail="This phone number is not authorised.")
+
+    otp = f"{random.SystemRandom().randint(0, 999999):06d}"
+    _otp_store[phone] = (otp, time.time() + 300)
+
+    from autogpt.coaching.whatsapp_bot import _send_whatsapp_text
+    _send_whatsapp_text(to=phone, body=f"Your ABN Consulting admin OTP is: *{otp}*\nExpires in 5 minutes.")
+    return JSONResponse({"ok": True})
+
+
+@app.post("/admin/auth/whatsapp/verify", include_in_schema=False)
+def admin_wa_verify(body: _WaVerifyRequest) -> JSONResponse:
+    phone = body.phone.strip().lstrip("+")
+    entry = _otp_store.get(phone)
+    if not entry:
+        raise HTTPException(status_code=403, detail="No OTP found. Please request a new one.")
+    stored_otp, expires_at = entry
+    if time.time() > expires_at:
+        _otp_store.pop(phone, None)
+        raise HTTPException(status_code=403, detail="OTP expired. Please request a new one.")
+    if not hmac.compare_digest(body.otp.strip(), stored_otp):
+        raise HTTPException(status_code=403, detail="Invalid OTP.")
+    _otp_store.pop(phone, None)
+    resp = JSONResponse({"ok": True})
+    _set_admin_cookie(resp)
+    return resp
 
 
 @app.get("/admin/users", response_model=List[UserProgressSummary],
