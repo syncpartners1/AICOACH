@@ -238,6 +238,15 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
         <textarea name="note" rows="2" placeholder="Private note (optional)"
                   style="width:100%"></textarea>
       </div>
+      <div class="form-row" style="align-items:center;gap:16px;">
+        <label style="font-weight:600;font-size:13px;margin:0;">Language:</label>
+        <label style="font-weight:normal;font-size:13px;">
+          <input type="radio" name="language" value="en" checked> 🇬🇧 English
+        </label>
+        <label style="font-weight:normal;font-size:13px;">
+          <input type="radio" name="language" value="he"> 🇮🇱 עברית
+        </label>
+      </div>
       <button type="submit" class="btn">Generate Invite Link</button>
     </form>
   </div>

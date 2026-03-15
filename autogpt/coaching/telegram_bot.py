@@ -32,9 +32,10 @@ import logging
 from datetime import date, timedelta
 from typing import Dict, Optional
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -43,12 +44,13 @@ from telegram.ext import (
 )
 
 from autogpt.coaching.config import coaching_config
-from autogpt.coaching.i18n import detect_lang, t
+from autogpt.coaching.i18n import LANG_PROMPT, detect_lang, get_coach_name, t
 
 logger = logging.getLogger(__name__)
 
 # ── Conversation states ────────────────────────────────────────────────────────
 (
+    WAITING_LANG,
     WAITING_NAME,
     WAITING_PHONE,
     CHATTING,
@@ -61,7 +63,7 @@ logger = logging.getLogger(__name__)
     PLAN_CORRECTIONS,
     HIGHLIGHT_WAITING,
     MSG_WAITING,
-) = range(12)
+) = range(13)
 
 # Active AI coaching sessions: telegram_user_id → CoachingSession
 _sessions: Dict[int, object] = {}
@@ -161,7 +163,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
         return CHATTING
 
-    await update.message.reply_text(
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🇬🇧 English", callback_data="lang:en"),
+        InlineKeyboardButton("🇮🇱 עברית",   callback_data="lang:he"),
+    ]])
+    await update.message.reply_text(LANG_PROMPT, reply_markup=keyboard, parse_mode="Markdown")
+    return WAITING_LANG
+
+
+async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle the language selection inline keyboard button."""
+    query = update.callback_query
+    await query.answer()
+    lang = query.data.split(":", 1)[1] if query.data and ":" in query.data else "en"
+    context.user_data["lang"] = lang
+    await query.edit_message_text(
         t(lang, "welcome_new"),
         parse_mode="Markdown",
     )
@@ -199,7 +215,8 @@ async def _start_coaching_session(
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     name = update.message.text.strip()
-    lang = detect_lang(name)
+    # Use the language chosen at the start of registration; fall back to text detection
+    lang = context.user_data.get("lang") or detect_lang(name)
 
     if not name or len(name) > 100:
         await update.message.reply_text(t(lang, "invalid_name"))
@@ -263,6 +280,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                 name=name,
                 phone_number=phone,
                 account_status=AccountStatus.PENDING,
+                language=lang,
             )
         except ValueError:
             await update.message.reply_text(t(lang, "phone_taken"))
@@ -980,6 +998,9 @@ def _build_app(token: str) -> Application:
             CommandHandler("message", msg_start),
         ],
         states={
+            WAITING_LANG: [
+                CallbackQueryHandler(receive_lang, pattern=r"^lang:"),
+            ],
             WAITING_NAME: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name),
             ],

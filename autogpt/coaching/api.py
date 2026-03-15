@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.email_service import send_invite_email
+from autogpt.coaching.i18n import get_coach_name
 
 logger = logging.getLogger(__name__)
 from autogpt.coaching.dashboard import build_dashboard
@@ -1155,12 +1156,14 @@ def admin_set_user_status(
 def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(verify_admin_or_api_key)) -> Invite:
     # invited_by is a UUID FK — only set it when a valid user_id is configured
     admin_uid = coaching_config.admin_user_id if coaching_config.admin_user_id else None
+    lang = req.language if req.language in ("en", "he") else "en"
     invite = create_invite(
         invited_by_user_id=admin_uid,
         name=req.name,
         email=req.email,
         phone=req.phone,
         note=req.note,
+        language=lang,
         public_url=coaching_config.public_url,
     )
 
@@ -1177,7 +1180,7 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
             to_email=req.email,
             to_name=req.name or "",
             register_url=invite.register_url or "",
-            coach_name=coaching_config.coach_name,
+            coach_name=get_coach_name(lang),
             invite_note=req.note,
             expires_at=expires_str,
             service_id=coaching_config.emailjs_service_id,
@@ -1275,11 +1278,16 @@ def public_register_phone(
         new_status = AccountStatus.ACTIVE
     else:
         new_status = AccountStatus.PENDING
+    # Language: explicit in request body, falling back to invite preference
+    lang = req.language if req.language in ("en", "he") else (
+        invite.language if invite_token and invite else "en"
+    )
     try:
         user = register_user_by_phone(
             name=req.name,
             phone_number=req.phone_number,
             account_status=new_status,
+            language=lang,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
@@ -1300,7 +1308,10 @@ def register_page(token: Optional[str] = Query(default=None)) -> HTMLResponse:
     name_val = invite.name or "" if invite else ""
     phone_val = invite.phone or "" if invite else ""
     email_val = invite.email or "" if invite else ""
+    invite_lang = (invite.language if invite else None) or "en"
     token_field = f'<input type="hidden" name="invite_token" value="{token}">' if token else ""
+    en_checked = "checked" if invite_lang == "en" else ""
+    he_checked = "checked" if invite_lang == "he" else ""
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1344,7 +1355,7 @@ input:focus{{border-color:#1a2b4a}}
     <div class="logo-text">ABN Consulting</div>
   </div>
   <h1>Join the Coaching Program</h1>
-  <p>Register to start your personalised coaching journey with Adi Ben Nesher.</p>
+  <p>Register to start your personalised coaching journey with Adi Ben-Nesher.</p>
 
   <button class="google-btn" onclick="signInGoogle()">
     <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
@@ -1358,6 +1369,15 @@ input:focus{{border-color:#1a2b4a}}
     <input type="text" name="name" id="name" value="{name_val}" placeholder="Your name" required>
     <label>Phone Number</label>
     <input type="tel" name="phone_number" id="phone" value="{phone_val}" placeholder="+1 234 567 8900" required>
+    <label>Language / שפה</label>
+    <div style="display:flex;gap:20px;margin-bottom:14px;">
+      <label style="font-weight:normal;font-size:14px;">
+        <input type="radio" name="language" value="en" {en_checked}> 🇬🇧 English
+      </label>
+      <label style="font-weight:normal;font-size:14px;">
+        <input type="radio" name="language" value="he" {he_checked}> 🇮🇱 עברית
+      </label>
+    </div>
     <button type="submit" class="btn">Register with Phone</button>
   </form>
   <div id="msg"></div>
@@ -1372,7 +1392,7 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
   const msg = document.getElementById('msg');
   msg.textContent = 'Registering…';
   const fd = new FormData(this);
-  const body = {{name: fd.get('name'), phone_number: fd.get('phone_number')}};
+  const body = {{name: fd.get('name'), phone_number: fd.get('phone_number'), language: fd.get('language') || 'en'}};
   const token = fd.get('invite_token') || '';
   const url = '/public/register/phone' + (token ? '?invite_token=' + encodeURIComponent(token) : '');
   const res = await fetch(url, {{
