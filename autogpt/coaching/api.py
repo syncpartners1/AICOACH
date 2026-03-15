@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from autogpt.coaching.config import coaching_config
+from autogpt.coaching.email_service import send_invite_email, send_welcome_email
 
 logger = logging.getLogger(__name__)
 from autogpt.coaching.dashboard import build_dashboard
@@ -194,6 +195,23 @@ def auth_register(req: RegisterRequest, _: str = Depends(verify_api_key)) -> Aut
                              password=req.password, phone_number=req.phone_number)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    # Send welcome email if EmailJS is configured
+    if (
+        user.email
+        and coaching_config.emailjs_service_id
+        and coaching_config.emailjs_template_welcome
+    ):
+        send_welcome_email(
+            to_email=user.email,
+            to_name=user.name,
+            coach_name=coaching_config.coach_name,
+            service_id=coaching_config.emailjs_service_id,
+            template_id=coaching_config.emailjs_template_welcome,
+            public_key=coaching_config.emailjs_public_key,
+            private_key=coaching_config.emailjs_private_key,
+        )
+
     return AuthResponse(user_id=user.user_id, name=user.name,
                         email=user.email, phone_number=user.phone_number)
 
@@ -1153,7 +1171,7 @@ def admin_set_user_status(
 def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(verify_admin_or_api_key)) -> Invite:
     # invited_by is a UUID FK — only set it when a valid user_id is configured
     admin_uid = coaching_config.admin_user_id if coaching_config.admin_user_id else None
-    return create_invite(
+    invite = create_invite(
         invited_by_user_id=admin_uid,
         name=req.name,
         email=req.email,
@@ -1161,6 +1179,30 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
         note=req.note,
         public_url=coaching_config.public_url,
     )
+
+    # Send invite email if recipient email and EmailJS are configured
+    if (
+        req.email
+        and coaching_config.emailjs_service_id
+        and coaching_config.emailjs_template_invite
+    ):
+        expires_str = ""
+        if invite.expires_at:
+            expires_str = invite.expires_at.strftime("%B %d, %Y")
+        send_invite_email(
+            to_email=req.email,
+            to_name=req.name or "",
+            register_url=invite.register_url or "",
+            coach_name=coaching_config.coach_name,
+            invite_note=req.note,
+            expires_at=expires_str,
+            service_id=coaching_config.emailjs_service_id,
+            template_id=coaching_config.emailjs_template_invite,
+            public_key=coaching_config.emailjs_public_key,
+            private_key=coaching_config.emailjs_private_key,
+        )
+
+    return invite
 
 
 @app.get("/admin/invites/{token}", response_model=Invite, summary="Look up an invite by token")
