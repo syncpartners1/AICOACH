@@ -157,6 +157,9 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
     <div style="font-size:12px;opacity:.7;margin-top:1px">ABN Co-Navigator · Adi Ben Nesher</div>
   </div>
   <div class="hdr-badge">ADMIN</div>
+  <a href="/admin/logout" style="margin-left:8px;color:rgba(255,255,255,.65);font-size:12px;
+     text-decoration:none;border:1px solid rgba(255,255,255,.25);padding:5px 12px;
+     border-radius:8px;">Sign out</a>
 </div>
 <div class="container">
 

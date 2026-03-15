@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import hmac
 import json
 import logging
 from collections import defaultdict
@@ -12,7 +14,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlencode
 
 import requests as http_requests
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Security, status
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
@@ -674,20 +676,75 @@ def user_dashboard(
 
 # ── Admin dashboard ────────────────────────────────────────────────────────────
 
+_ADMIN_COOKIE = "admin_session"
+
+
+def _admin_token() -> str:
+    """Return the expected HMAC value for a valid admin session cookie."""
+    secret = (coaching_config.api_key or "fallback-secret").encode()
+    msg = f"admin:{coaching_config.admin_username}".encode()
+    return hmac.new(secret, msg, hashlib.sha256).hexdigest()
+
+
+def _is_admin_authenticated(request: Request) -> bool:
+    cookie = request.cookies.get(_ADMIN_COOKIE, "")
+    expected = _admin_token()
+    return hmac.compare_digest(cookie, expected) if cookie else False
+
+
+_ADMIN_LOGIN_HTML = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Login – ABN Consulting</title>
+<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
+.card{{background:#fff;border-radius:16px;padding:40px 36px;max-width:380px;width:100%;
+  box-shadow:0 4px 20px rgba(0,0,0,.1)}}
+.logo{{display:flex;align-items:center;gap:10px;margin-bottom:28px}}
+.logo img{{width:36px;height:36px;border-radius:8px}}
+.logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
+h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:6px}}
+p{{color:#6b7280;font-size:13px;margin-bottom:24px}}
+label{{font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:4px}}
+input{{width:100%;padding:11px 13px;border:1.5px solid #d1d5db;border-radius:9px;
+  font-size:14px;outline:none;margin-bottom:16px;transition:border-color .2s}}
+input:focus{{border-color:#1a2b4a}}
+button{{width:100%;padding:12px;background:#1a2b4a;color:#fff;border:none;
+  border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px}}
+button:hover{{background:#243d6b}}
+.error{{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;
+  font-size:13px;padding:10px 14px;border-radius:9px;margin-bottom:16px}}
+</style></head><body>
+<div class="card">
+  <div class="logo">
+    <img src="/static/android-chrome-192x192.png" alt="logo">
+    <span class="logo-text">ABN Consulting</span>
+  </div>
+  <h1>Admin Login</h1>
+  <p>Sign in to the coaching dashboard.</p>
+  {error_block}
+  <form method="post" action="/admin/login">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="username" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+</body></html>"""
+
+
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
-def admin_dashboard(
-    request: Request,
-    api_key: Optional[str] = Query(default=None, alias="api_key"),
-) -> HTMLResponse:
-    """Admin overview dashboard (Adi Ben Nesher)."""
-    if api_key:
-        if coaching_config.api_key and api_key != coaching_config.api_key:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
-    else:
-        try:
-            verify_api_key(request.headers.get("X-API-Key", ""))
-        except HTTPException:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="API key required.")
+def admin_dashboard(request: Request) -> HTMLResponse:
+    """Admin overview dashboard — requires username/password login."""
+    if not _is_admin_authenticated(request):
+        return HTMLResponse(
+            content=_ADMIN_LOGIN_HTML.format(error_block=""),
+            status_code=200,
+        )
 
     from autogpt.coaching.admin_ui import render_admin
 
@@ -723,6 +780,41 @@ def admin_dashboard(
 
     html = render_admin(users=users, pending_invites=pending, public_url=coaching_config.public_url)
     return HTMLResponse(content=html)
+
+
+@app.post("/admin/login", response_class=HTMLResponse, include_in_schema=False)
+def admin_login(
+    username: str = Form(...),
+    password: str = Form(...),
+) -> Response:
+    """Validate admin credentials and set a session cookie."""
+    valid = (
+        hmac.compare_digest(username, coaching_config.admin_username)
+        and hmac.compare_digest(password, coaching_config.admin_password)
+    )
+    if not valid:
+        error_block = '<div class="error">Incorrect username or password.</div>'
+        return HTMLResponse(
+            content=_ADMIN_LOGIN_HTML.format(error_block=error_block),
+            status_code=401,
+        )
+    response = RedirectResponse(url="/admin", status_code=303)
+    response.set_cookie(
+        key=_ADMIN_COOKIE,
+        value=_admin_token(),
+        httponly=True,
+        samesite="lax",
+        max_age=8 * 3600,  # 8-hour session
+    )
+    return response
+
+
+@app.get("/admin/logout", include_in_schema=False)
+def admin_logout() -> Response:
+    """Clear the admin session cookie and redirect to login."""
+    response = RedirectResponse(url="/admin", status_code=303)
+    response.delete_cookie(key=_ADMIN_COOKIE)
+    return response
 
 
 @app.get("/admin/users", response_model=List[UserProgressSummary],
