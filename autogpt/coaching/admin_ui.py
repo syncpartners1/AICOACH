@@ -1,0 +1,187 @@
+"""Server-side rendered admin dashboard for Adi Ben Nesher.
+
+Served at GET /admin?api_key=<key>
+Shows all users, their OKR progress, and invite management.
+"""
+from __future__ import annotations
+
+from typing import List
+
+from autogpt.coaching.models import Invite, UserProgressSummary
+
+
+def _pct_bar(pct: float) -> str:
+    color = "#16a34a" if pct >= 70 else "#d97706" if pct >= 40 else "#dc2626"
+    return (
+        f'<div style="background:#e5e7eb;border-radius:4px;height:8px;width:80px;display:inline-block;'
+        f'vertical-align:middle;margin-left:6px">'
+        f'<div style="background:{color};width:{min(pct,100):.0f}%;height:8px;border-radius:4px"></div>'
+        f'</div>'
+    )
+
+
+def render_admin(
+    users: List[UserProgressSummary],
+    pending_invites: List[Invite],
+    public_url: str = "",
+) -> str:
+    # ── User rows ─────────────────────────────────────────────────────────────
+    user_rows = ""
+    for u in users:
+        last_sess = u.last_session.strftime("%d %b %Y") if u.last_session else "—"
+        last_plan = u.last_weekly_plan.strftime("%d %b %Y") if u.last_weekly_plan else "—"
+        contact = u.email or u.phone_number or "—"
+        dashboard_url = f"{public_url}/dashboard/{u.user_id}" if public_url else f"/dashboard/{u.user_id}"
+        user_rows += f"""
+<tr>
+  <td style="padding:10px 12px;font-weight:600;white-space:nowrap">
+    <a href="{dashboard_url}" style="color:#1a2b4a;text-decoration:none">{u.name}</a>
+  </td>
+  <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
+  <td style="padding:10px 12px;text-align:center">{u.objectives_count}</td>
+  <td style="padding:10px 12px;white-space:nowrap">
+    <span style="font-weight:600">{u.avg_kr_pct:.0f}%</span>
+    {_pct_bar(u.avg_kr_pct)}
+  </td>
+  <td style="padding:10px 12px;font-size:12px;color:#6b7280">{last_sess}</td>
+  <td style="padding:10px 12px;font-size:12px;color:#6b7280">{last_plan}</td>
+  <td style="padding:10px 12px">
+    <a href="{dashboard_url}" style="font-size:12px;color:#1a2b4a;background:#e0e7ff;
+       padding:3px 10px;border-radius:12px;text-decoration:none">View</a>
+  </td>
+</tr>"""
+
+    if not user_rows:
+        user_rows = '<tr><td colspan="7" style="padding:20px;color:#9ca3af;text-align:center">No users yet.</td></tr>'
+
+    # ── Pending invite rows ───────────────────────────────────────────────────
+    invite_rows = ""
+    for inv in pending_invites:
+        reg_url = inv.register_url or f"{public_url}/register?token={inv.token}"
+        who = inv.name or inv.email or inv.phone or "—"
+        invite_rows += f"""
+<tr>
+  <td style="padding:8px 12px;font-size:13px">{who}</td>
+  <td style="padding:8px 12px;font-size:12px;color:#6b7280">{inv.note or "—"}</td>
+  <td style="padding:8px 12px">
+    <code style="font-size:11px;background:#f3f4f6;padding:2px 6px;border-radius:4px;
+                 word-break:break-all">{reg_url}</code>
+  </td>
+</tr>"""
+
+    if not invite_rows:
+        invite_rows = '<tr><td colspan="3" style="padding:16px;color:#9ca3af;text-align:center">No pending invites.</td></tr>'
+
+    invite_form_action = f"{public_url}/admin/invites" if public_url else "/admin/invites"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Dashboard – ABN Co-Navigator</title>
+<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#f0f4f8;color:#111827}}
+.hdr{{background:#1a2b4a;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:12px}}
+.hdr-title{{font-size:17px;font-weight:700}}
+.hdr-badge{{margin-left:auto;background:#ef4444;font-size:11px;padding:3px 10px;
+            border-radius:10px;font-weight:700}}
+.container{{max-width:1100px;margin:0 auto;padding:24px 16px}}
+.section-title{{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+               color:#6b7280;margin:28px 0 12px}}
+.card{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;
+       overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}}
+table{{width:100%;border-collapse:collapse}}
+thead th{{background:#f9fafb;padding:10px 12px;text-align:left;font-size:12px;
+          font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;
+          border-bottom:1px solid #e5e7eb}}
+tbody tr:hover{{background:#f9fafb}}
+tbody tr{{border-bottom:1px solid #f3f4f6}}
+.invite-form{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;
+             box-shadow:0 1px 3px rgba(0,0,0,.06)}}
+.invite-form h3{{font-size:14px;font-weight:700;color:#1a2b4a;margin-bottom:14px}}
+.form-row{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}}
+.form-row input,.form-row textarea{{flex:1;min-width:140px;padding:9px 12px;
+  border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none}}
+.form-row input:focus,.form-row textarea:focus{{border-color:#1a2b4a}}
+.btn{{background:#1a2b4a;color:#fff;border:none;padding:9px 18px;border-radius:8px;
+     font-size:13px;font-weight:600;cursor:pointer}}
+.btn:hover{{background:#243d6b}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <img src="/static/android-chrome-192x192.png" width="36" height="36"
+       style="border-radius:8px" alt="logo">
+  <div>
+    <div class="hdr-title">Admin Dashboard</div>
+    <div style="font-size:12px;opacity:.7;margin-top:1px">ABN Co-Navigator · Adi Ben Nesher</div>
+  </div>
+  <div class="hdr-badge">ADMIN</div>
+</div>
+<div class="container">
+
+  <div class="section-title">Program Members ({len(users)})</div>
+  <div class="card">
+    <table>
+      <thead><tr>
+        <th>Name</th><th>Contact</th><th>OKRs</th>
+        <th>Avg KR Progress</th><th>Last Session</th><th>Last Plan</th><th></th>
+      </tr></thead>
+      <tbody>{user_rows}</tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Send Invitation</div>
+  <div class="invite-form">
+    <h3>Create a program invite link</h3>
+    <form method="post" action="{invite_form_action}" id="inviteForm">
+      <div class="form-row">
+        <input type="text" name="name" placeholder="Name (optional)">
+        <input type="email" name="email" placeholder="Email (optional)">
+        <input type="text" name="phone" placeholder="Phone (optional)">
+      </div>
+      <div class="form-row">
+        <textarea name="note" rows="2" placeholder="Private note (optional)"
+                  style="width:100%"></textarea>
+      </div>
+      <button type="submit" class="btn">Generate Invite Link</button>
+    </form>
+  </div>
+
+  <div class="section-title">Pending Invites</div>
+  <div class="card">
+    <table>
+      <thead><tr><th>For</th><th>Note</th><th>Registration Link</th></tr></thead>
+      <tbody>{invite_rows}</tbody>
+    </table>
+  </div>
+
+</div>
+<script>
+// Allow form submission via fetch so the page doesn't navigate away
+document.getElementById('inviteForm').addEventListener('submit', async function(e) {{
+  e.preventDefault();
+  const fd = new FormData(this);
+  const body = {{}};
+  fd.forEach((v, k) => {{ if(v) body[k] = v; }});
+  const apiKey = new URLSearchParams(location.search).get('api_key') || '';
+  const res = await fetch('{invite_form_action}', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json', 'X-API-Key': apiKey}},
+    body: JSON.stringify(body)
+  }});
+  if (res.ok) {{
+    const data = await res.json();
+    alert('Invite created!\\n\\nShare this link:\\n' + (data.register_url || data.token));
+    location.reload();
+  }} else {{
+    alert('Error creating invite.');
+  }}
+}});
+</script>
+</body>
+</html>"""

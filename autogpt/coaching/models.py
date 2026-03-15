@@ -257,5 +257,41 @@ class WeeklyPlan(BaseModel):
     plan_id: str
     user_id: str
     week_start: date
+    week_end: Optional[date] = None   # defaults to week_start + 6 days (Saturday)
     kr_activities: List[KRActivity] = []
     daily_highlights: List[DailyHighlight] = []
+
+
+# ── Admin / Invites ───────────────────────────────────────────────────────────
+
+class InviteRequest(BaseModel):
+    """Admin creates an invitation for a prospective program member."""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    note: Optional[str] = None
+
+
+class Invite(BaseModel):
+    invite_id: str
+    token: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    note: Optional[str] = None
+    used_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    register_url: Optional[str] = None
+
+
+class UserProgressSummary(BaseModel):
+    """Lightweight progress snapshot per user — used in admin overview."""
+    user_id: str
+    name: str
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    objectives_count: int = 0
+    avg_kr_pct: float = 0.0
+    last_session: Optional[datetime] = None
+    last_weekly_plan: Optional[date] = None

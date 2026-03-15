@@ -13,6 +13,7 @@ from autogpt.coaching.models import (
     ClientStatus,
     DailyHighlight,
     DayOfWeek,
+    Invite,
     KeyResult,
     KRActivity,
     MasterKeyResult,
@@ -23,6 +24,7 @@ from autogpt.coaching.models import (
     PastSession,
     SessionSummary,
     UserProfile,
+    UserProgressSummary,
     WeeklyLog,
     WeeklyPlan,
 )
@@ -443,9 +445,14 @@ def load_session(session_id: str) -> Optional[SessionSummary]:
 # ── Weekly Plans ──────────────────────────────────────────────────────────────
 
 def _current_week_start() -> date:
-    """Return the Monday of the current ISO week."""
+    """Return the most recent Sunday (week starts on Sunday)."""
     today = date.today()
-    return today - timedelta(days=today.weekday())
+    return today - timedelta(days=(today.weekday() + 1) % 7)
+
+
+def _week_end(week_start: date) -> date:
+    """Return the Saturday that ends the week (6 days after Sunday start)."""
+    return week_start + timedelta(days=6)
 
 
 def _get_or_create_weekly_plan(db, user_id: str, week_start: date) -> str:
@@ -465,6 +472,7 @@ def _get_or_create_weekly_plan(db, user_id: str, week_start: date) -> str:
         "plan_id": plan_id,
         "user_id": user_id,
         "week_start": week_start.isoformat(),
+        "week_end": _week_end(week_start).isoformat(),
     }).execute()
     return plan_id
 
@@ -627,9 +635,192 @@ def get_weekly_plan(user_id: str, week_start: Optional[date] = None) -> WeeklyPl
         plan_id=plan_id,
         user_id=user_id,
         week_start=week_start,
+        week_end=_week_end(week_start),
         kr_activities=kr_activities,
         daily_highlights=daily_highlights,
     )
+
+
+# ── Telegram linking ──────────────────────────────────────────────────────────
+
+def link_telegram(user_id: str, telegram_user_id: int) -> None:
+    """Associate a Telegram user ID with a registered user account."""
+    db = _get_client()
+    db.table("user_profiles").update({
+        "telegram_user_id": telegram_user_id,
+    }).eq("user_id", user_id).execute()
+
+
+def get_user_by_telegram(telegram_user_id: int) -> Optional[UserProfile]:
+    db = _get_client()
+    result = db.table("user_profiles").select("user_id,name,email,phone_number").eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
+    if not result.data:
+        return None
+    row = result.data[0]
+    return UserProfile(user_id=row["user_id"], name=row["name"],
+                       email=row.get("email"), phone_number=row.get("phone_number"))
+
+
+def get_user_by_phone(phone_number: str) -> Optional[UserProfile]:
+    db = _get_client()
+    result = db.table("user_profiles").select("user_id,name,email,phone_number").eq(
+        "phone_number", phone_number
+    ).execute()
+    if not result.data:
+        return None
+    row = result.data[0]
+    return UserProfile(user_id=row["user_id"], name=row["name"],
+                       email=row.get("email"), phone_number=row.get("phone_number"))
+
+
+# ── Invites ───────────────────────────────────────────────────────────────────
+
+def create_invite(
+    invited_by_user_id: str,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    note: Optional[str] = None,
+    public_url: str = "",
+) -> Invite:
+    """Create a new program invite token. Returns the Invite with the registration URL."""
+    db = _get_client()
+    invite_id = str(uuid.uuid4())
+    import secrets
+    token = secrets.token_hex(16)
+    row = {
+        "invite_id": invite_id,
+        "token": token,
+        "invited_by": invited_by_user_id,
+    }
+    if name:
+        row["name"] = name
+    if email:
+        row["email"] = email
+    if phone:
+        row["phone"] = phone
+    if note:
+        row["note"] = note
+    db.table("invites").insert(row).execute()
+    register_url = f"{public_url}/register?token={token}" if public_url else f"/register?token={token}"
+    return Invite(
+        invite_id=invite_id,
+        token=token,
+        name=name,
+        email=email,
+        phone=phone,
+        note=note,
+        register_url=register_url,
+    )
+
+
+def get_invite(token: str) -> Optional[Invite]:
+    db = _get_client()
+    result = db.table("invites").select("*").eq("token", token).execute()
+    if not result.data:
+        return None
+    r = result.data[0]
+    return Invite(
+        invite_id=r["invite_id"],
+        token=r["token"],
+        name=r.get("name"),
+        email=r.get("email"),
+        phone=r.get("phone"),
+        note=r.get("note"),
+        used_at=datetime.fromisoformat(r["used_at"]) if r.get("used_at") else None,
+        created_at=datetime.fromisoformat(r["created_at"]) if r.get("created_at") else None,
+        expires_at=datetime.fromisoformat(r["expires_at"]) if r.get("expires_at") else None,
+    )
+
+
+def use_invite(token: str, user_id: str) -> bool:
+    """Mark invite as used. Returns False if already used or expired."""
+    db = _get_client()
+    result = db.table("invites").select("invite_id,used_at,expires_at").eq("token", token).execute()
+    if not result.data:
+        return False
+    r = result.data[0]
+    if r.get("used_at"):
+        return False
+    if r.get("expires_at"):
+        exp = datetime.fromisoformat(r["expires_at"])
+        if exp < datetime.utcnow():
+            return False
+    db.table("invites").update({
+        "used_at": datetime.utcnow().isoformat(),
+        "used_by": user_id,
+    }).eq("token", token).execute()
+    return True
+
+
+# ── Admin: user progress overview ─────────────────────────────────────────────
+
+def get_all_users_progress() -> List[UserProgressSummary]:
+    """Return a lightweight progress snapshot for every registered user."""
+    db = _get_client()
+    users = (
+        db.table("user_profiles")
+        .select("user_id,name,email,phone_number")
+        .order("created_at", desc=True)
+        .execute()
+        .data or []
+    )
+    summaries = []
+    for u in users:
+        uid = u["user_id"]
+        # Count objectives and average KR pct
+        obj_rows = (
+            db.table("objectives")
+            .select("objective_id")
+            .eq("user_id", uid)
+            .eq("status", "active")
+            .execute()
+            .data or []
+        )
+        kr_rows = (
+            db.table("user_key_results")
+            .select("current_pct")
+            .eq("user_id", uid)
+            .eq("status", "active")
+            .execute()
+            .data or []
+        )
+        avg_pct = (sum(r["current_pct"] for r in kr_rows) / len(kr_rows)) if kr_rows else 0.0
+        # Last session
+        last_sess = (
+            db.table("coaching_sessions")
+            .select("timestamp")
+            .eq("user_id", uid)
+            .order("timestamp", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        last_session_dt = datetime.fromisoformat(last_sess[0]["timestamp"]) if last_sess else None
+        # Last weekly plan
+        last_plan = (
+            db.table("weekly_plans")
+            .select("week_start")
+            .eq("user_id", uid)
+            .order("week_start", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        last_plan_date = date.fromisoformat(last_plan[0]["week_start"]) if last_plan else None
+        summaries.append(UserProgressSummary(
+            user_id=uid,
+            name=u["name"],
+            email=u.get("email"),
+            phone_number=u.get("phone_number"),
+            objectives_count=len(obj_rows),
+            avg_kr_pct=round(avg_pct, 1),
+            last_session=last_session_dt,
+            last_weekly_plan=last_plan_date,
+        ))
+    return summaries
 
 
 def get_latest_session_per_client() -> List[SessionSummary]:

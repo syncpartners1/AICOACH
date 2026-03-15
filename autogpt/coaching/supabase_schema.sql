@@ -10,18 +10,21 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Custom user table (email/password or Google OAuth).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS user_profiles (
-  user_id       UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
-  name          TEXT    NOT NULL,
-  email         TEXT    UNIQUE,            -- NULL for phone-only accounts
-  password_hash TEXT,                      -- NULL for Google/phone accounts
-  google_id     TEXT    UNIQUE,            -- NULL for email/phone accounts
-  phone_number  TEXT    UNIQUE,            -- NULL for email/Google accounts
-  created_at    TIMESTAMPTZ DEFAULT NOW()
+  user_id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             TEXT    NOT NULL,
+  email            TEXT    UNIQUE,            -- NULL for phone-only accounts
+  password_hash    TEXT,                      -- NULL for Google/phone accounts
+  google_id        TEXT    UNIQUE,            -- NULL for email/phone accounts
+  phone_number     TEXT    UNIQUE,            -- NULL for email/Google accounts
+  telegram_user_id BIGINT  UNIQUE,            -- linked Telegram account
+  is_admin         BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_email    ON user_profiles(email);
 CREATE INDEX IF NOT EXISTS idx_user_google   ON user_profiles(google_id);
 CREATE INDEX IF NOT EXISTS idx_user_phone    ON user_profiles(phone_number);
+CREATE INDEX IF NOT EXISTS idx_user_telegram ON user_profiles(telegram_user_id);
 
 -- ============================================================
 -- 2. OBJECTIVES  (user's ongoing OKR plan)
@@ -121,11 +124,12 @@ CREATE INDEX IF NOT EXISTS idx_obstacles_session_id ON obstacles(session_id);
 -- 8. WEEKLY PLANS  (one per user per week, keyed by Monday date)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS weekly_plans (
-  plan_id    UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    UUID  NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
-  week_start DATE  NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  plan_id        UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID  NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+  week_start     DATE  NOT NULL,  -- defaults to Sunday
+  week_end       DATE,            -- defaults to Saturday (6 days after week_start)
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (user_id, week_start)
 );
 
@@ -170,6 +174,25 @@ CREATE TABLE IF NOT EXISTS daily_highlights (
 CREATE INDEX IF NOT EXISTS idx_daily_highlights_user ON daily_highlights(user_id, week_start DESC);
 
 -- ============================================================
+-- 11. INVITES  (admin-generated program invitations)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS invites (
+  invite_id   UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+  token       TEXT  UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(16), 'hex'),
+  invited_by  UUID  REFERENCES user_profiles(user_id) ON DELETE SET NULL,
+  name        TEXT,                -- pre-filled name hint (optional)
+  email       TEXT,                -- pre-filled email hint (optional)
+  phone       TEXT,                -- pre-filled phone hint (optional)
+  note        TEXT,                -- private note from admin
+  used_at     TIMESTAMPTZ,
+  used_by     UUID  REFERENCES user_profiles(user_id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  expires_at  TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '30 days')
+);
+
+CREATE INDEX IF NOT EXISTS idx_invites_token ON invites(token);
+
+-- ============================================================
 -- Row Level Security — service role only
 -- ============================================================
 ALTER TABLE user_profiles        ENABLE ROW LEVEL SECURITY;
@@ -182,6 +205,7 @@ ALTER TABLE obstacles             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weekly_plans          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weekly_kr_activities  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_highlights      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invites               ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS service_only ON user_profiles;
 DROP POLICY IF EXISTS service_only ON objectives;
@@ -193,6 +217,7 @@ DROP POLICY IF EXISTS service_only ON obstacles;
 DROP POLICY IF EXISTS service_only ON weekly_plans;
 DROP POLICY IF EXISTS service_only ON weekly_kr_activities;
 DROP POLICY IF EXISTS service_only ON daily_highlights;
+DROP POLICY IF EXISTS service_only ON invites;
 
 CREATE POLICY service_only ON user_profiles        USING (auth.role() = 'service_role');
 CREATE POLICY service_only ON objectives            USING (auth.role() = 'service_role');
@@ -204,3 +229,4 @@ CREATE POLICY service_only ON obstacles             USING (auth.role() = 'servic
 CREATE POLICY service_only ON weekly_plans          USING (auth.role() = 'service_role');
 CREATE POLICY service_only ON weekly_kr_activities  USING (auth.role() = 'service_role');
 CREATE POLICY service_only ON daily_highlights      USING (auth.role() = 'service_role');
+CREATE POLICY service_only ON invites               USING (auth.role() = 'service_role');

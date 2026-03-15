@@ -28,6 +28,8 @@ from autogpt.coaching.models import (
     CoachDashboard,
     DailyHighlightRequest,
     GoogleAuthRequest,
+    Invite,
+    InviteRequest,
     KeyResultRequest,
     KRActivityRequest,
     LoginRequest,
@@ -40,10 +42,14 @@ from autogpt.coaching.models import (
     SessionSummary,
     StatusUpdateRequest,
     UserProfile,
+    UserProgressSummary,
     WeeklyPlan,
 )
 from autogpt.coaching.session import CoachingSession
 from autogpt.coaching.storage import (
+    create_invite,
+    get_all_users_progress,
+    get_invite,
     get_past_sessions,
     get_user_objectives,
     get_user_profile,
@@ -60,6 +66,7 @@ from autogpt.coaching.storage import (
     upsert_kr_activity,
     upsert_master_kr,
     upsert_objective,
+    use_invite,
 )
 
 # ── Telegram bot lifespan ─────────────────────────────────────────────────────
@@ -434,6 +441,263 @@ def upsert_user_daily_highlight(
          summary="Get past session highlights for a user")
 def user_history(user_id: str, _: str = Depends(verify_api_key)) -> List[PastSession]:
     return get_past_sessions(user_id=user_id, limit=10)
+
+
+# ── User personal dashboard ───────────────────────────────────────────────────
+
+@app.get("/dashboard/{user_id}", response_class=HTMLResponse, include_in_schema=False)
+def user_dashboard(
+    user_id: str,
+    request: Request,
+    week_start: Optional[str] = Query(default=None, description="ISO date of week start (Sunday)"),
+    api_key: Optional[str] = Query(default=None, alias="api_key"),
+) -> HTMLResponse:
+    """Personal progress dashboard for a coaching program user."""
+    # Accept API key via query param (for browser links) or header
+    if api_key:
+        if coaching_config.api_key and api_key != coaching_config.api_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
+    else:
+        try:
+            verify_api_key(request.headers.get("X-API-Key", ""))
+        except HTTPException:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="API key required.")
+
+    from datetime import date as _date
+    from autogpt.coaching.dashboard_ui import render_dashboard
+    from autogpt.coaching.storage import _current_week_start, _week_end
+
+    user = get_user_profile(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    parsed_week = _date.fromisoformat(week_start) if week_start else _current_week_start()
+    objectives = get_user_objectives(user_id)
+    weekly_plan = get_weekly_plan(user_id, parsed_week)
+    past_sessions = get_past_sessions(user_id, limit=5)
+
+    html = render_dashboard(
+        user=user,
+        objectives=objectives,
+        weekly_plan=weekly_plan,
+        past_sessions=past_sessions,
+        week_start=parsed_week,
+        week_end=_week_end(parsed_week),
+    )
+    return HTMLResponse(content=html)
+
+
+# ── Admin dashboard ────────────────────────────────────────────────────────────
+
+@app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
+def admin_dashboard(
+    request: Request,
+    api_key: Optional[str] = Query(default=None, alias="api_key"),
+) -> HTMLResponse:
+    """Admin overview dashboard (Adi Ben Nesher)."""
+    if api_key:
+        if coaching_config.api_key and api_key != coaching_config.api_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
+    else:
+        try:
+            verify_api_key(request.headers.get("X-API-Key", ""))
+        except HTTPException:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="API key required.")
+
+    from autogpt.coaching.admin_ui import render_admin
+
+    users = get_all_users_progress()
+    # Pending invites (not yet used)
+    try:
+        db = __import__("autogpt.coaching.storage", fromlist=["_get_client"])._get_client()
+        inv_rows = (
+            db.table("invites")
+            .select("*")
+            .is_("used_at", "null")
+            .order("created_at", desc=True)
+            .limit(50)
+            .execute()
+            .data or []
+        )
+        from autogpt.coaching.models import Invite as _Invite
+        from datetime import datetime as _dt
+        pending = [
+            _Invite(
+                invite_id=r["invite_id"],
+                token=r["token"],
+                name=r.get("name"),
+                email=r.get("email"),
+                phone=r.get("phone"),
+                note=r.get("note"),
+                register_url=f"{coaching_config.public_url}/register?token={r['token']}",
+            )
+            for r in inv_rows
+        ]
+    except Exception:
+        pending = []
+
+    html = render_admin(users=users, pending_invites=pending, public_url=coaching_config.public_url)
+    return HTMLResponse(content=html)
+
+
+@app.get("/admin/users", response_model=List[UserProgressSummary],
+         summary="List all program users with progress snapshot (admin)")
+def admin_list_users(_: str = Depends(verify_api_key)) -> List[UserProgressSummary]:
+    return get_all_users_progress()
+
+
+@app.post("/admin/invites", response_model=Invite, summary="Create a program invite link (admin)")
+def admin_create_invite(req: InviteRequest, _: str = Depends(verify_api_key)) -> Invite:
+    admin_uid = coaching_config.admin_user_id or "system"
+    return create_invite(
+        invited_by_user_id=admin_uid,
+        name=req.name,
+        email=req.email,
+        phone=req.phone,
+        note=req.note,
+        public_url=coaching_config.public_url,
+    )
+
+
+@app.get("/admin/invites/{token}", response_model=Invite, summary="Look up an invite by token")
+def admin_get_invite(token: str, _: str = Depends(verify_api_key)) -> Invite:
+    inv = get_invite(token)
+    if not inv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found.")
+    return inv
+
+
+@app.post(
+    "/public/register/phone",
+    response_model=AuthResponse,
+    summary="Public phone registration — requires a valid invite token",
+)
+def public_register_phone(
+    req: PhoneRegisterRequest,
+    invite_token: Optional[str] = Query(default=None),
+) -> AuthResponse:
+    """Open registration endpoint protected by an invite token."""
+    if not invite_token:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="An invite token is required to register.")
+    invite = get_invite(invite_token)
+    if not invite or invite.used_at:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Invite token is invalid or already used.")
+    try:
+        user = register_user_by_phone(name=req.name, phone_number=req.phone_number)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    use_invite(invite_token, user.user_id)
+    return AuthResponse(user_id=user.user_id, name=user.name, phone_number=user.phone_number)
+
+
+@app.get(
+    "/register",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def register_page(token: Optional[str] = Query(default=None)) -> HTMLResponse:
+    """Landing page for invited users — pre-fills name/phone from the invite token."""
+    invite = get_invite(token) if token else None
+    name_val = invite.name or "" if invite else ""
+    phone_val = invite.phone or "" if invite else ""
+    email_val = invite.email or "" if invite else ""
+    token_field = f'<input type="hidden" name="invite_token" value="{token}">' if token else ""
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Join the Coaching Program – ABN Consulting</title>
+<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
+.card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:420px;width:100%;
+      box-shadow:0 4px 20px rgba(0,0,0,.1)}}
+.logo{{display:flex;align-items:center;gap:10px;margin-bottom:24px}}
+.logo img{{border-radius:8px}}
+.logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
+h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:6px}}
+p{{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.5}}
+.tabs{{display:flex;gap:4px;background:#f3f4f6;border-radius:10px;padding:4px;margin-bottom:20px}}
+.tab{{flex:1;padding:8px;text-align:center;border-radius:7px;font-size:13px;font-weight:600;
+     cursor:pointer;color:#6b7280;transition:.2s}}
+.tab.active{{background:#fff;color:#1a2b4a;box-shadow:0 1px 4px rgba(0,0,0,.1)}}
+label{{font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:4px}}
+input{{width:100%;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:9px;
+      font-size:14px;outline:none;margin-bottom:14px;transition:border-color .2s}}
+input:focus{{border-color:#1a2b4a}}
+.btn{{width:100%;background:#1a2b4a;color:#fff;border:none;padding:12px;border-radius:10px;
+     font-size:15px;font-weight:700;cursor:pointer;margin-top:4px}}
+.btn:hover{{background:#243d6b}}
+.google-btn{{width:100%;background:#fff;color:#374151;border:1.5px solid #d1d5db;
+            padding:11px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:14px}}
+.google-btn:hover{{background:#f9fafb}}
+.divider{{text-align:center;color:#9ca3af;font-size:12px;margin:4px 0 16px;
+          display:flex;align-items:center;gap:8px}}
+.divider::before,.divider::after{{content:'';flex:1;height:1px;background:#e5e7eb}}
+#msg{{margin-top:12px;font-size:13px;text-align:center}}
+</style></head>
+<body>
+<div class="card">
+  <div class="logo">
+    <img src="/static/android-chrome-192x192.png" width="36" height="36" alt="logo">
+    <div class="logo-text">ABN Consulting</div>
+  </div>
+  <h1>Join the Coaching Program</h1>
+  <p>Register to start your personalised coaching journey with Adi Ben Nesher.</p>
+
+  <button class="google-btn" onclick="signInGoogle()">
+    <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
+    Continue with Google
+  </button>
+  <div class="divider">or register with phone</div>
+
+  <form id="phoneForm">
+    {token_field}
+    <label>Full Name</label>
+    <input type="text" name="name" id="name" value="{name_val}" placeholder="Your name" required>
+    <label>Phone Number</label>
+    <input type="tel" name="phone_number" id="phone" value="{phone_val}" placeholder="+1 234 567 8900" required>
+    <button type="submit" class="btn">Register with Phone</button>
+  </form>
+  <div id="msg"></div>
+</div>
+<script>
+function signInGoogle() {{
+  const returnTo = location.href;
+  window.location = '/auth/google/url?redirect_to=' + encodeURIComponent(returnTo);
+}}
+document.getElementById('phoneForm').addEventListener('submit', async function(e) {{
+  e.preventDefault();
+  const msg = document.getElementById('msg');
+  msg.textContent = 'Registering…';
+  const fd = new FormData(this);
+  const body = {{name: fd.get('name'), phone_number: fd.get('phone_number')}};
+  const token = fd.get('invite_token') || '';
+  const url = '/public/register/phone' + (token ? '?invite_token=' + encodeURIComponent(token) : '');
+  const res = await fetch(url, {{
+    method:'POST',
+    headers:{{'Content-Type':'application/json'}},
+    body: JSON.stringify(body)
+  }});
+  if (res.ok) {{
+    const data = await res.json();
+    msg.style.color='#16a34a';
+    msg.textContent = 'Welcome, ' + data.name + '! Redirecting to your dashboard…';
+    setTimeout(() => {{
+      window.location = '/dashboard/' + data.user_id;
+    }}, 1500);
+  }} else {{
+    const err = await res.json().catch(()=>({{}}));
+    msg.style.color='#dc2626';
+    msg.textContent = err.detail || 'Registration failed. Please try again.';
+  }}
+}});
+</script>
+</body></html>""")
 
 
 # ── Coaching sessions ─────────────────────────────────────────────────────────
