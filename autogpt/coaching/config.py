@@ -56,6 +56,12 @@ class CoachingConfig(metaclass=Singleton):
         if _domain and not _domain.startswith("http"):
             _domain = f"https://{_domain}"
         self.public_url: str = _domain or os.getenv("PUBLIC_URL", "")
+        # EmailJS (server-side REST API)
+        self.emailjs_service_id: str = os.getenv("EMAILJS_SERVICE_ID", "")
+        self.emailjs_template_invite: str = os.getenv("EMAILJS_TEMPLATE_INVITE", "")
+        self.emailjs_template_welcome: str = os.getenv("EMAILJS_TEMPLATE_WELCOME", "")
+        self.emailjs_public_key: str = os.getenv("EMAILJS_PUBLIC_KEY", "nxguxr-WfLhUpXOhn")
+        self.emailjs_private_key: str = os.getenv("EMAILJS_PRIVATE_KEY", "tmZ2kU1dW4lSDxNzRe43T")
 
     def validate(self) -> None:
         """Raise if required env vars are missing."""
