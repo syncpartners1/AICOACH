@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>You're invited to {{program_name}}</title>
+  <style>
+    /* Reset */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f0f4f8;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .email-wrapper {
+      width: 100%;
+      background-color: #f0f4f8;
+      padding: 40px 0;
+    }
+
+    .email-container {
+      max-width: 580px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1a2b4a 0%, #243d6b 100%);
+      padding: 36px 40px 32px;
+      text-align: center;
+    }
+
+    .header-title {
+      color: #ffffff;
+      font-size: 26px;
+      font-weight: 800;
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    .header-subtitle {
+      color: rgba(255,255,255,0.75);
+      font-size: 14px;
+      margin: 8px 0 0;
+    }
+
+    /* Body */
+    .body-content {
+      padding: 40px 40px 32px;
+    }
+
+    .greeting {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1a2b4a;
+      margin: 0 0 16px;
+    }
+
+    .body-text {
+      font-size: 14px;
+      color: #4b5563;
+      line-height: 1.7;
+      margin: 0 0 16px;
+    }
+
+    /* Personal note card */
+    .note-card {
+      background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+      border-left: 4px solid #1a2b4a;
+      border-radius: 0 10px 10px 0;
+      padding: 16px 20px;
+      margin: 24px 0;
+    }
+
+    .note-card p {
+      font-size: 13px;
+      color: #374151;
+      line-height: 1.6;
+      margin: 0;
+      font-style: italic;
+    }
+
+    /* CTA block */
+    .cta-wrapper {
+      text-align: center;
+      margin: 32px 0 8px;
+    }
+
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, #1a2b4a 0%, #243d6b 100%);
+      color: #ffffff !important;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 700;
+      padding: 16px 44px;
+      border-radius: 10px;
+      letter-spacing: 0.3px;
+    }
+
+    /* Fallback link */
+    .link-fallback {
+      text-align: center;
+      margin: 12px 0 0;
+    }
+
+    .link-fallback p {
+      font-size: 11px;
+      color: #9ca3af;
+      margin: 0;
+      line-height: 1.6;
+    }
+
+    .link-fallback a {
+      color: #6b7280;
+      word-break: break-all;
+    }
+
+    /* Expiry badge */
+    .expiry-note {
+      text-align: center;
+      margin: 16px 0 0;
+    }
+
+    .expiry-note p {
+      font-size: 12px;
+      color: #9ca3af;
+      margin: 0;
+    }
+
+    .expiry-note strong {
+      color: #6b7280;
+    }
+
+    /* Feature list */
+    .feature-list {
+      list-style: none;
+      padding: 0;
+      margin: 20px 0 28px;
+    }
+
+    .feature-list li {
+      font-size: 13.5px;
+      color: #374151;
+      padding: 8px 0 8px 28px;
+      position: relative;
+      border-bottom: 1px solid #f3f4f6;
+      line-height: 1.5;
+    }
+
+    .feature-list li:last-child {
+      border-bottom: none;
+    }
+
+    .feature-list li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #1a2b4a;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .sign-off {
+      font-size: 14px;
+      color: #6b7280;
+      line-height: 1.7;
+      margin: 28px 0 0;
+    }
+
+    .sign-off strong {
+      color: #1a2b4a;
+      display: block;
+      font-size: 15px;
+      margin-bottom: 2px;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background-color: #e5e7eb;
+      margin: 32px 0;
+    }
+
+    /* Footer */
+    .footer {
+      background-color: #f9fafb;
+      padding: 24px 40px;
+      text-align: center;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .footer p {
+      font-size: 11px;
+      color: #9ca3af;
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    .footer a {
+      color: #6b7280;
+      text-decoration: underline;
+    }
+
+    /* Mobile */
+    @media only screen and (max-width: 600px) {
+      .email-wrapper { padding: 16px 0; }
+      .email-container { border-radius: 10px; }
+      .header { padding: 28px 24px 24px; }
+      .header-title { font-size: 22px; }
+      .body-content { padding: 28px 24px 24px; }
+      .footer { padding: 20px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <div class="email-container">
+
+      <!-- Header -->
+      <div class="header">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td align="center" style="padding-bottom:20px;">
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="width:48px;height:48px;background:rgba(255,255,255,0.15);border-radius:12px;text-align:center;vertical-align:middle;font-size:24px;">
+                    🧭
+                  </td>
+                  <td style="padding-left:12px;vertical-align:middle;">
+                    <div style="color:#ffffff;font-size:15px;font-weight:700;line-height:1.3;">ABN Consulting</div>
+                    <div style="color:rgba(255,255,255,0.65);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:0.5px;">AI Co-Navigator</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center">
+              <h1 style="color:#ffffff;font-size:26px;font-weight:800;margin:0;line-height:1.2;">
+                You're invited! 🎉
+              </h1>
+              <p style="color:rgba(255,255,255,0.75);font-size:14px;margin:8px 0 0;">
+                Join the {{program_name}}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Body -->
+      <div class="body-content">
+
+        <p class="greeting">Hi {{to_name}},</p>
+
+        <p class="body-text">
+          <strong>{{coach_name}}</strong> has personally invited you to join the
+          <strong>{{program_name}}</strong> — an AI-powered coaching program designed
+          to help you set meaningful goals and achieve them with clarity and confidence.
+        </p>
+
+        <!-- Personal note from coach (shown only when invite_note is set) -->
+        {{#if invite_note}}
+        <div class="note-card">
+          <p>"{{invite_note}}"</p>
+        </div>
+        {{/if}}
+
+        <!-- What to expect -->
+        <p class="body-text" style="font-weight:700;color:#1a2b4a;margin-bottom:4px;">
+          What you'll get access to:
+        </p>
+        <ul class="feature-list">
+          <li>AI-powered weekly check-ins tailored to your goals</li>
+          <li>OKR tracking to keep your objectives clear and measurable</li>
+          <li>Real-time alerts to catch obstacles before they slow you down</li>
+          <li>Direct access to your coach via Telegram or WhatsApp</li>
+          <li>A private dashboard to review your progress anytime</li>
+        </ul>
+
+        <!-- CTA -->
+        <div class="cta-wrapper">
+          <a href="{{register_url}}" class="cta-button">Accept Invitation</a>
+        </div>
+
+        <!-- Fallback plain-text link for email clients that block buttons -->
+        <div class="link-fallback">
+          <p>
+            Button not working? Copy and paste this link into your browser:<br/>
+            <a href="{{register_url}}">{{register_url}}</a>
+          </p>
+        </div>
+
+        <!-- Expiry -->
+        {{#if expires_at}}
+        <div class="expiry-note">
+          <p>This invitation expires on <strong>{{expires_at}}</strong>.</p>
+        </div>
+        {{/if}}
+
+        <div class="divider"></div>
+
+        <!-- Sign off -->
+        <p class="sign-off">
+          Looking forward to working with you,<br/>
+          <strong>{{coach_name}}</strong>
+          ABN Consulting · AI Co-Navigator Program
+        </p>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>
+          This invitation was sent to <a href="mailto:{{to_email}}">{{to_email}}</a>
+          by {{coach_name}} via the ABN Consulting AI Co-Navigator program.<br/>
+          If you did not expect this email, you can safely ignore it.<br/>
+          &copy; 2026 ABN Consulting. All rights reserved.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

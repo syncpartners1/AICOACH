@@ -48,6 +48,7 @@ def _row_to_profile(row: dict) -> UserProfile:
         email=row.get("email"),
         account_status=AccountStatus(row.get("account_status", "active")),
         language=row.get("language") or "en",
+        telegram_user_id=row.get("telegram_user_id"),
     )
 
 
@@ -86,6 +87,7 @@ def register_user_by_phone(
     name: str,
     phone_number: str,
     account_status: AccountStatus = AccountStatus.ACTIVE,
+    language: str = "en",
 ) -> UserProfile:
     """Create a new user identified by phone number (Telegram/WhatsApp join).
     Raises ValueError on duplicate."""
@@ -98,9 +100,10 @@ def register_user_by_phone(
         "name": name,
         "phone_number": phone_number,
         "account_status": account_status.value,
+        "language": language,
     }).execute()
     return UserProfile(user_id=uid, name=name, phone_number=phone_number,
-                       account_status=account_status)
+                       account_status=account_status, language=language)
 
 
 def google_auth(
@@ -158,7 +161,7 @@ def google_auth(
 def get_user_profile(user_id: str) -> Optional[UserProfile]:
     db = _get_client()
     result = db.table("user_profiles").select(
-        "user_id,name,phone_number,email,account_status,language"
+        "user_id,name,phone_number,email,account_status,language,telegram_user_id"
     ).eq("user_id", user_id).execute()
     if not result.data:
         return None
@@ -755,6 +758,7 @@ def create_invite(
     email: Optional[str] = None,
     phone: Optional[str] = None,
     note: Optional[str] = None,
+    language: str = "en",
     public_url: str = "",
 ) -> Invite:
     """Create a new program invite token. Returns the Invite with the registration URL."""
@@ -777,6 +781,7 @@ def create_invite(
         row["phone"] = phone
     if note:
         row["note"] = note
+    row["language"] = language if language in ("en", "he") else "en"
     db.table("invites").insert(row).execute()
     register_url = f"{public_url}/register?token={token}" if public_url else f"/register?token={token}"
     return Invite(
@@ -786,6 +791,7 @@ def create_invite(
         email=email,
         phone=phone,
         note=note,
+        language=row["language"],
         register_url=register_url,
     )
 
@@ -803,6 +809,7 @@ def get_invite(token: str) -> Optional[Invite]:
         email=r.get("email"),
         phone=r.get("phone"),
         note=r.get("note"),
+        language=r.get("language") or "en",
         used_at=datetime.fromisoformat(r["used_at"]) if r.get("used_at") else None,
         created_at=datetime.fromisoformat(r["created_at"]) if r.get("created_at") else None,
         expires_at=datetime.fromisoformat(r["expires_at"]) if r.get("expires_at") else None,

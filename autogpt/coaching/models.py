@@ -54,6 +54,7 @@ class UserProfile(BaseModel):
     email: Optional[str] = None
     account_status: AccountStatus = AccountStatus.ACTIVE
     language: str = "en"                       # "en" or "he"
+    telegram_user_id: Optional[int] = None
 
 
 class RegisterRequest(BaseModel):
@@ -68,6 +69,7 @@ class PhoneRegisterRequest(BaseModel):
     """Register with name + phone number only (Telegram / WhatsApp join flow)."""
     name: str
     phone_number: str
+    language: str = "en"
 
 
 class CompleteGoogleSignupRequest(BaseModel):
@@ -306,6 +308,7 @@ class InviteRequest(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     note: Optional[str] = None
+    language: str = "en"
 
 
 class Invite(BaseModel):
@@ -315,6 +318,7 @@ class Invite(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     note: Optional[str] = None
+    language: str = "en"
     used_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None

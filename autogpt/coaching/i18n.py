@@ -58,6 +58,15 @@ _S: dict[str, dict[str, str]] = {
             "You'll receive a message here as soon as it's activated.\n\n"
             "You can also reach the coach via the web: /start will check your status."
         ),
+        "welcome_activated": (
+            "✅ *Welcome to the program, {name}!*\n\n"
+            "Your account has been activated by your coach. "
+            "I'm your AI Co-Navigator — here to guide your weekly check-ins, "
+            "track your OKRs, and help you stay on course.\n\n"
+            "Send /start to kick off your first coaching session. 🚀"
+        ),
+        # ── Coach identity ────────────────────────────────────────────────────
+        "coach_name": "Adi Ben-Nesher",
         "linked_existing": "✅ Your Telegram is now linked to *{name}*'s account. Starting your session…",
         "starting_session": "Starting your session… ⏳",
         "start_failed": "Sorry, I couldn't start your session. Please try again with /start.",
@@ -247,6 +256,15 @@ _S: dict[str, dict[str, str]] = {
             "חשבונך ממתין לאישור המאמן. "
             "תקבל הודעה כאן ברגע שהוא יופעל."
         ),
+        "welcome_activated": (
+            "✅ *ברוכים הבאים לתוכנית, {name}!*\n\n"
+            "חשבונך הופעל על ידי המאמן שלך. "
+            "אני ה-AI Co-Navigator שלך — כאן כדי לנחות אותך בפגישות שבועיות, "
+            "לעקוב אחרי ה-OKR שלך ולעזור לך להישאר במסלול.\n\n"
+            "שלח /start להתחלת פגישת האימון הראשונה. 🚀"
+        ),
+        # ── Coach identity ────────────────────────────────────────────────────
+        "coach_name": "עדי בן נשר",
         "linked_existing": "✅ חשבון הטלגרם שלך קושר לפרופיל של *{name}*. מתחיל את הפגישה…",
         "starting_session": "מתחיל את הפגישה… ⏳",
         "start_failed": "מצטער, לא הצלחתי להתחיל את הפגישה. נסה שוב עם /start.",
@@ -410,3 +428,19 @@ def t(lang: str, key: str, **kwargs: object) -> str:
     bucket = _S.get(lang, _S["en"])
     text: str = bucket.get(key) or _S["en"].get(key, key)
     return text.format(**kwargs) if kwargs else text
+
+
+def get_coach_name(lang: str = "en") -> str:
+    """Return the coach's display name in the given language.
+
+    Always 'Adi Ben-Nesher' in English and 'עדי בן נשר' in Hebrew,
+    regardless of the COACHING_COACH_NAME env var.
+    """
+    return t(lang, "coach_name")
+
+
+# Bilingual language-selection prompt shown to new bot users before
+# their language preference is known.
+LANG_PROMPT = (
+    "🌐 *Please choose your language / בחר שפה:*"
+)
