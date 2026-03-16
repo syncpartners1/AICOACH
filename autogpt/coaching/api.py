@@ -1171,11 +1171,20 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
     )
 
     # Send invite email only when explicitly requested by the admin
+    register_url = invite.register_url or ""
+    if req.send_email and req.email and not register_url.startswith("http"):
+        logger.warning(
+            "Invite email NOT sent to %s — register_url is relative (%s). "
+            "Set PUBLIC_URL or RAILWAY_PUBLIC_DOMAIN env var.",
+            req.email,
+            register_url,
+        )
     if (
         req.send_email
         and req.email
         and coaching_config.emailjs_service_id
         and coaching_config.emailjs_template_invite
+        and register_url.startswith("http")
     ):
         expires_str = ""
         if invite.expires_at:
@@ -1183,7 +1192,7 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
         send_invite_email(
             to_email=req.email,
             to_name=req.name or "",
-            register_url=invite.register_url or "",
+            register_url=register_url,
             coach_name=get_coach_name(lang),
             invite_note=req.note,
             expires_at=expires_str,
