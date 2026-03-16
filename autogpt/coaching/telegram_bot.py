@@ -6,18 +6,21 @@ Language support: English (en) and Hebrew (he).
   • Use /lang en or /lang he to switch explicitly.
 
 Commands (users):
-  /start     – register or start a free-form AI coaching session
-  /link      – link this Telegram account to a registered user (by phone)
-  /plan      – guided weekly plan entry (per KR)
-  /highlight – add today's key highlight
-  /myplan    – view current week's plan summary
-  /message   – send a message to the coach (Adi Ben Nesher)
-  /done      – end an active AI coaching session and save summary
-  /suspend   – pause your coaching until you choose to resume
-  /resume    – reactivate a paused coaching account
-  /lang      – change language (/lang en or /lang he)
-  /cancel    – cancel current operation
-  /help      – show this list
+  /start          – register or start a free-form AI coaching session
+  /link           – link this Telegram account to a registered user (by phone)
+  /plan           – guided weekly plan entry (per KR)
+  /highlight      – add today's key highlight
+  /myplan         – view current week's plan summary
+  /book           – book a meeting with Adi Ben Nesher
+  /mybookings     – view upcoming bookings
+  /cancelmeeting  – cancel a booking
+  /message        – send a message to the coach (Adi Ben Nesher)
+  /done           – end an active AI coaching session and save summary
+  /suspend        – pause your coaching until you choose to resume
+  /resume         – reactivate a paused coaching account
+  /lang           – change language (/lang en or /lang he)
+  /cancel         – cancel current operation
+  /help           – show this list
 
 Commands (admin — only for ADMIN_TELEGRAM_ID):
   /users     – list all program members with progress
@@ -63,7 +66,13 @@ logger = logging.getLogger(__name__)
     PLAN_CORRECTIONS,
     HIGHLIGHT_WAITING,
     MSG_WAITING,
-) = range(13)
+    BOOK_TYPE,
+    BOOK_DATE,
+    BOOK_SLOT,
+    BOOK_EMAIL,
+    BOOK_CONFIRM,
+    CANCEL_SELECT,
+) = range(19)
 
 # Active AI coaching sessions: telegram_user_id → CoachingSession
 _sessions: Dict[int, object] = {}
@@ -984,6 +993,395 @@ def _format_summary(summary) -> str:
     return "\n".join(lines)
 
 
+# ── Scheduling helpers ─────────────────────────────────────────────────────────
+
+_MEETING_TYPES = {
+    "intro":    {"label_key": "book_type_intro",    "subject": "Free 30-min Introduction & Evaluation", "duration": 30},
+    "coaching": {"label_key": "book_type_coaching", "subject": "Coaching Session",                      "duration": 60},
+}
+
+
+def _scheduler_ok() -> bool:
+    return bool(coaching_config.scheduler_url and coaching_config.scheduler_api_key)
+
+
+def _slot_label(slot: dict) -> str:
+    """Return a human-readable HH:MM label for a slot dict."""
+    start = slot.get("startISO") or slot.get("start") or ""
+    if "T" in start:
+        time_part = start.split("T")[1][:5]
+        return time_part
+    return start
+
+
+def _user_email(user) -> Optional[str]:
+    """Return user email if stored on their profile."""
+    return getattr(user, "email", None) or None
+
+
+# ── /book conversation ─────────────────────────────────────────────────────────
+
+async def book_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
+
+    if not _scheduler_ok():
+        await update.message.reply_text(t(lang, "book_not_configured"))
+        return ConversationHandler.END
+
+    context.user_data["book_lang"] = lang
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "book_type_intro"),    callback_data="book_type:intro")],
+        [InlineKeyboardButton(t(lang, "book_type_coaching"), callback_data="book_type:coaching")],
+    ])
+    await update.message.reply_text(t(lang, "book_choose_type"), reply_markup=keyboard, parse_mode="Markdown")
+    return BOOK_TYPE
+
+
+async def book_receive_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get("book_lang", "en")
+    mtype = query.data.split(":", 1)[1]  # "intro" or "coaching"
+    if mtype not in _MEETING_TYPES:
+        return BOOK_TYPE
+
+    context.user_data["book_type"] = mtype
+    label = t(lang, _MEETING_TYPES[mtype]["label_key"])
+    await query.edit_message_text(
+        t(lang, "book_choose_date", type=label),
+        reply_markup=_date_keyboard(),
+        parse_mode="Markdown",
+    )
+    return BOOK_DATE
+
+
+def _date_keyboard() -> InlineKeyboardMarkup:
+    from datetime import date, timedelta
+    rows = []
+    today = date.today()
+    for i in range(1, 8):
+        d = today + timedelta(days=i)
+        label = d.strftime("%a, %b %-d")
+        rows.append([InlineKeyboardButton(label, callback_data=f"book_date:{d.isoformat()}")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def book_receive_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    import asyncio
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get("book_lang", "en")
+    date_str = query.data.split(":", 1)[1]
+    context.user_data["book_date"] = date_str
+
+    mtype = context.user_data.get("book_type", "coaching")
+    duration = _MEETING_TYPES[mtype]["duration"]
+
+    await query.edit_message_text("⏳ Checking available slots…")
+    slots = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: __import__("autogpt.coaching.scheduler_client", fromlist=["get_slots"]).get_slots(
+            coaching_config.scheduler_url,
+            coaching_config.scheduler_api_key,
+            date_str,
+            coaching_config.scheduler_timezone,
+            duration,
+        ),
+    )
+
+    if not slots:
+        label = _MEETING_TYPES[mtype]["label_key"]
+        await query.edit_message_text(
+            t(lang, "book_no_slots", date=date_str),
+            reply_markup=_date_keyboard(),
+            parse_mode="Markdown",
+        )
+        return BOOK_DATE
+
+    context.user_data["book_slots"] = slots
+    rows = []
+    for i, slot in enumerate(slots[:10]):
+        rows.append([InlineKeyboardButton(_slot_label(slot), callback_data=f"book_slot:{i}")])
+    keyboard = InlineKeyboardMarkup(rows)
+    await query.edit_message_text(
+        t(lang, "book_choose_slot", date=date_str),
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+    return BOOK_SLOT
+
+
+async def book_receive_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get("book_lang", "en")
+    idx = int(query.data.split(":", 1)[1])
+    slots = context.user_data.get("book_slots", [])
+    if idx >= len(slots):
+        return BOOK_SLOT
+
+    slot = slots[idx]
+    context.user_data["book_slot"] = slot
+
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    email = _user_email(user) or context.user_data.get("book_email")
+
+    if not email:
+        await query.edit_message_text(t(lang, "book_ask_email"), parse_mode="Markdown")
+        return BOOK_EMAIL
+
+    context.user_data["book_email"] = email
+    return await _show_booking_confirm(query, context, lang)
+
+
+async def book_receive_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    import re
+    lang = context.user_data.get("book_lang", "en")
+    email = update.message.text.strip() if update.message else ""
+
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        await update.message.reply_text(t(lang, "book_invalid_email"))
+        return BOOK_EMAIL
+
+    context.user_data["book_email"] = email
+    return await _show_booking_confirm(update, context, lang)
+
+
+async def _show_booking_confirm(msg_or_query, context, lang: str) -> int:
+    slot = context.user_data.get("book_slot", {})
+    mtype = context.user_data.get("book_type", "coaching")
+    subject = _MEETING_TYPES[mtype]["subject"]
+    email = context.user_data.get("book_email", "")
+    start_iso = slot.get("startISO") or slot.get("start") or ""
+    date_part = start_iso.split("T")[0] if "T" in start_iso else start_iso
+    time_part = start_iso.split("T")[1][:5] if "T" in start_iso else ""
+
+    text = t(lang, "book_confirm_prompt",
+             subject=subject, date=date_part, time=time_part, email=email)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(t(lang, "book_btn_confirm"), callback_data="book_confirm:yes"),
+        InlineKeyboardButton(t(lang, "book_btn_cancel"),  callback_data="book_confirm:no"),
+    ]])
+
+    if hasattr(msg_or_query, "edit_message_text"):
+        await msg_or_query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    else:
+        await msg_or_query.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    return BOOK_CONFIRM
+
+
+async def book_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    import asyncio
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get("book_lang", "en")
+    action = query.data.split(":", 1)[1]
+
+    if action == "no":
+        await query.edit_message_text(t(lang, "book_aborted"))
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    slot  = context.user_data.get("book_slot", {})
+    mtype = context.user_data.get("book_type", "coaching")
+    mt    = _MEETING_TYPES[mtype]
+    email = context.user_data.get("book_email", "")
+
+    tg_id = update.effective_user.id
+    user  = _get_linked_user(tg_id)
+    name  = (user.name if user else None) or update.effective_user.first_name or "Guest"
+
+    start_iso = slot.get("startISO") or slot.get("start") or ""
+    await query.edit_message_text("⏳ Confirming your booking…")
+
+    from autogpt.coaching.scheduler_client import book_meeting
+    result = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: book_meeting(
+            coaching_config.scheduler_url,
+            coaching_config.scheduler_api_key,
+            name,
+            email,
+            mt["subject"],
+            start_iso,
+            mt["duration"],
+            coaching_config.scheduler_timezone,
+        ),
+    )
+
+    if not result.get("ok"):
+        await query.edit_message_text(t(lang, "book_failed"), parse_mode="Markdown")
+        return ConversationHandler.END
+
+    meet_link = result.get("meetLink") or ""
+    start_fmt = result.get("startISO") or start_iso
+    if "T" in start_fmt:
+        start_fmt = start_fmt.replace("T", " ").replace("Z", " UTC")[:16]
+
+    if meet_link:
+        msg = t(lang, "book_confirmed", subject=mt["subject"], start=start_fmt, meet_link=meet_link)
+    else:
+        msg = t(lang, "book_confirmed_no_meet", subject=mt["subject"], start=start_fmt)
+
+    await query.edit_message_text(msg, parse_mode="Markdown")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+# ── /mybookings command ────────────────────────────────────────────────────────
+
+async def mybookings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    import asyncio
+    tg_id = update.effective_user.id
+    user  = _get_linked_user(tg_id)
+    lang  = _lang(user, update.message.text or "")
+
+    if not _scheduler_ok():
+        await update.message.reply_text(t(lang, "mybookings_not_configured"))
+        return
+
+    email = _user_email(user) or context.user_data.get("book_email")
+    if not email:
+        await update.message.reply_text(t(lang, "mybookings_ask_email"))
+        context.user_data["mybookings_lang"] = lang
+        context.user_data["awaiting_mybookings_email"] = True
+        return
+
+    await _send_bookings(update.message, email, lang)
+
+
+async def _send_bookings(message, email: str, lang: str) -> None:
+    import asyncio
+    from autogpt.coaching.scheduler_client import get_bookings
+    bookings = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: get_bookings(
+            coaching_config.scheduler_url,
+            coaching_config.scheduler_api_key,
+            email,
+        ),
+    )
+
+    if not bookings:
+        await message.reply_text(t(lang, "mybookings_none"))
+        return
+
+    lines = [t(lang, "mybookings_header")]
+    for b in bookings:
+        subject   = b.get("subject", "Meeting")
+        start_raw = b.get("start_time") or b.get("startISO") or ""
+        if "T" in start_raw:
+            start_raw = start_raw.replace("T", " ").replace("Z", " UTC")[:16]
+        meet_link = b.get("meet_link") or b.get("meetLink") or ""
+        if meet_link:
+            lines.append(t(lang, "mybookings_item", subject=subject, start=start_raw, meet_link=meet_link))
+        else:
+            lines.append(t(lang, "mybookings_item_no_meet", subject=subject, start=start_raw))
+    await message.reply_text("".join(lines), parse_mode="Markdown")
+
+
+# ── /cancelmeeting conversation ────────────────────────────────────────────────
+
+async def cancelmeeting_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    import asyncio
+    tg_id = update.effective_user.id
+    user  = _get_linked_user(tg_id)
+    lang  = _lang(user, update.message.text or "")
+
+    if not _scheduler_ok():
+        await update.message.reply_text(t(lang, "mybookings_not_configured"))
+        return ConversationHandler.END
+
+    email = _user_email(user) or context.user_data.get("book_email")
+    if not email:
+        await update.message.reply_text(t(lang, "mybookings_ask_email"))
+        context.user_data["cancelmeeting_lang"] = lang
+        context.user_data["awaiting_cancel_email"] = True
+        return CANCEL_SELECT
+
+    context.user_data["cancelmeeting_lang"] = lang
+    return await _show_cancel_list(update.message, email, lang, context)
+
+
+async def _show_cancel_list(message, email: str, lang: str, context) -> int:
+    import asyncio
+    from autogpt.coaching.scheduler_client import get_bookings
+    bookings = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: get_bookings(
+            coaching_config.scheduler_url,
+            coaching_config.scheduler_api_key,
+            email,
+        ),
+    )
+
+    if not bookings:
+        await message.reply_text(t(lang, "cancel_meeting_none"))
+        return ConversationHandler.END
+
+    context.user_data["cancel_bookings"] = bookings
+    rows = []
+    for i, b in enumerate(bookings[:8]):
+        subject   = b.get("subject", "Meeting")
+        start_raw = b.get("start_time") or b.get("startISO") or ""
+        if "T" in start_raw:
+            start_raw = start_raw.replace("T", " ")[:16]
+        rows.append([InlineKeyboardButton(f"{subject} — {start_raw}", callback_data=f"cancel_pick:{i}")])
+    keyboard = InlineKeyboardMarkup(rows)
+    await message.reply_text(t(lang, "cancel_meeting_choose"), reply_markup=keyboard, parse_mode="Markdown")
+    return CANCEL_SELECT
+
+
+async def cancelmeeting_receive_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    import re
+    lang  = context.user_data.get("cancelmeeting_lang", "en")
+    email = update.message.text.strip() if update.message else ""
+
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        await update.message.reply_text(t(lang, "book_invalid_email"))
+        return CANCEL_SELECT
+
+    context.user_data["book_email"] = email
+    context.user_data.pop("awaiting_cancel_email", None)
+    return await _show_cancel_list(update.message, email, lang, context)
+
+
+async def cancelmeeting_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    import asyncio
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get("cancelmeeting_lang", "en")
+    idx  = int(query.data.split(":", 1)[1])
+    bookings = context.user_data.get("cancel_bookings", [])
+
+    if idx >= len(bookings):
+        return CANCEL_SELECT
+
+    event_id = bookings[idx].get("event_id") or bookings[idx].get("eventId") or ""
+    await query.edit_message_text("⏳ Cancelling…")
+
+    from autogpt.coaching.scheduler_client import cancel_meeting
+    result = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: cancel_meeting(
+            coaching_config.scheduler_url,
+            coaching_config.scheduler_api_key,
+            event_id,
+        ),
+    )
+
+    if result.get("ok") is False:
+        await query.edit_message_text(t(lang, "cancel_meeting_failed"), parse_mode="Markdown")
+    else:
+        await query.edit_message_text(t(lang, "cancel_meeting_ok"), parse_mode="Markdown")
+
+    context.user_data.pop("cancel_bookings", None)
+    return ConversationHandler.END
+
+
 # ── Bot builder ────────────────────────────────────────────────────────────────
 
 def _build_app(token: str) -> Application:
@@ -996,6 +1394,8 @@ def _build_app(token: str) -> Application:
             CommandHandler("plan", plan_start),
             CommandHandler("highlight", highlight_start),
             CommandHandler("message", msg_start),
+            CommandHandler("book", book_start),
+            CommandHandler("cancelmeeting", cancelmeeting_start),
         ],
         states={
             WAITING_LANG: [
@@ -1041,6 +1441,27 @@ def _build_app(token: str) -> Application:
             MSG_WAITING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, msg_receive),
             ],
+            # ── Booking flow ────────────────────────────────────────────────
+            BOOK_TYPE: [
+                CallbackQueryHandler(book_receive_type, pattern=r"^book_type:"),
+            ],
+            BOOK_DATE: [
+                CallbackQueryHandler(book_receive_date, pattern=r"^book_date:"),
+            ],
+            BOOK_SLOT: [
+                CallbackQueryHandler(book_receive_slot, pattern=r"^book_slot:"),
+            ],
+            BOOK_EMAIL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, book_receive_email),
+            ],
+            BOOK_CONFIRM: [
+                CallbackQueryHandler(book_confirm_handler, pattern=r"^book_confirm:"),
+            ],
+            # ── Cancel meeting flow ─────────────────────────────────────────
+            CANCEL_SELECT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, cancelmeeting_receive_email),
+                CallbackQueryHandler(cancelmeeting_confirm, pattern=r"^cancel_pick:"),
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
@@ -1052,6 +1473,7 @@ def _build_app(token: str) -> Application:
     app.add_handler(conv)
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("myplan", myplan))
+    app.add_handler(CommandHandler("mybookings", mybookings_command))
     app.add_handler(CommandHandler("suspend", suspend_self))
     app.add_handler(CommandHandler("resume", resume_self))
     app.add_handler(CommandHandler("lang", set_language))

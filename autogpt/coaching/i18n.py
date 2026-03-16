@@ -150,6 +150,62 @@ _S: dict[str, dict[str, str]] = {
         "admin_reply_fmt": "💬 *Message from Adi Ben Nesher:*\n\n{text}",
         "admin_reply_ok": "✅ Reply delivered.",
         "admin_reply_fail": "Could not deliver the reply.",
+        # ── Bot: /book ────────────────────────────────────────────────────────
+        "book_not_configured": (
+            "📅 Booking is not available yet.\n"
+            "Please contact Adi directly to schedule a meeting."
+        ),
+        "book_choose_type": "📅 What kind of meeting would you like to book?",
+        "book_type_intro": "🆓 Free Introduction & Evaluation (30 min)",
+        "book_type_coaching": "💼 Coaching Session (60 min)",
+        "book_choose_date": "📅 Choose a date for your *{type}*:",
+        "book_no_slots": (
+            "😕 No available slots on *{date}*.\n"
+            "Please choose another date."
+        ),
+        "book_choose_slot": "🕐 Available times on *{date}*:",
+        "book_ask_email": "📧 Please share your email address for the booking confirmation:",
+        "book_invalid_email": "That doesn't look like a valid email. Please try again.",
+        "book_confirm_prompt": (
+            "✅ *Confirm your booking:*\n\n"
+            "📋 {subject}\n"
+            "📅 {date}\n"
+            "🕐 {time}\n"
+            "📧 {email}\n\n"
+            "Ready to confirm?"
+        ),
+        "book_btn_confirm": "✅ Confirm",
+        "book_btn_cancel": "✗ Cancel",
+        "book_confirmed": (
+            "🎉 *Booking confirmed!*\n\n"
+            "📋 {subject}\n"
+            "📅 {start}\n"
+            "🔗 [Join Google Meet]({meet_link})\n\n"
+            "_A confirmation has been sent to your email._"
+        ),
+        "book_confirmed_no_meet": (
+            "🎉 *Booking confirmed!*\n\n"
+            "📋 {subject}\n"
+            "📅 {start}\n\n"
+            "_A confirmation has been sent to your email._"
+        ),
+        "book_failed": (
+            "❌ Sorry, I couldn't complete the booking.\n"
+            "Please try again or contact Adi directly."
+        ),
+        "book_aborted": "Booking cancelled. Use /book to start again.",
+        # ── Bot: /mybookings ──────────────────────────────────────────────────
+        "mybookings_not_configured": "Booking lookup is not available yet.",
+        "mybookings_ask_email": "📧 Please share your email to look up your bookings:",
+        "mybookings_none": "📅 You have no upcoming bookings.",
+        "mybookings_header": "📅 *Your upcoming bookings:*\n\n",
+        "mybookings_item": "• *{subject}*\n  📅 {start}\n  🔗 [Meet link]({meet_link})\n\n",
+        "mybookings_item_no_meet": "• *{subject}*\n  📅 {start}\n\n",
+        # ── Bot: /cancelmeeting ───────────────────────────────────────────────
+        "cancel_meeting_none": "📅 You have no upcoming meetings to cancel.",
+        "cancel_meeting_choose": "Which meeting would you like to cancel?",
+        "cancel_meeting_ok": "✅ Meeting cancelled successfully.",
+        "cancel_meeting_failed": "❌ Sorry, I couldn't cancel that meeting. Please try again.",
         # ── Bot: /lang ────────────────────────────────────────────────────────
         "lang_set_he": "🇮🇱 Language set to *Hebrew*. Bot messages will now appear in Hebrew.",
         "lang_set_en": "🇬🇧 Language set to *English*. Bot messages will now appear in English.",
@@ -164,6 +220,9 @@ _S: dict[str, dict[str, str]] = {
             "/plan — Fill in your weekly plan (per key result)\n"
             "/highlight — Add today's key highlight\n"
             "/myplan — View your current week's plan\n"
+            "/book — Book a meeting with Adi Ben Nesher\n"
+            "/mybookings — View your upcoming bookings\n"
+            "/cancelmeeting — Cancel a booking\n"
             "/message — Send a message to Adi Ben Nesher\n"
             "/done — End session and receive summary\n"
             "/suspend — Pause your coaching\n"
@@ -349,6 +408,62 @@ _S: dict[str, dict[str, str]] = {
         "admin_reply_fmt": "💬 *הודעה מעדי בן נשר:*\n\n{text}",
         "admin_reply_ok": "✅ התשובה נמסרה.",
         "admin_reply_fail": "לא ניתן היה למסור את התשובה.",
+        # ── Bot: /book ────────────────────────────────────────────────────────
+        "book_not_configured": (
+            "📅 הזמנת פגישות אינה זמינה עדיין.\n"
+            "אנא צור קשר עם עדי ישירות לתיאום פגישה."
+        ),
+        "book_choose_type": "📅 איזה סוג פגישה תרצה להזמין?",
+        "book_type_intro": "🆓 היכרות והערכה חינם (30 דק׳)",
+        "book_type_coaching": "💼 פגישת אימון (60 דק׳)",
+        "book_choose_date": "📅 בחר תאריך ל*{type}*:",
+        "book_no_slots": (
+            "😕 אין תורים פנויים ב-*{date}*.\n"
+            "אנא בחר תאריך אחר."
+        ),
+        "book_choose_slot": "🕐 שעות פנויות ב-*{date}*:",
+        "book_ask_email": "📧 אנא שתף את כתובת האימייל שלך לאישור ההזמנה:",
+        "book_invalid_email": "כתובת האימייל אינה תקינה. נסה שוב.",
+        "book_confirm_prompt": (
+            "✅ *אשר את ההזמנה:*\n\n"
+            "📋 {subject}\n"
+            "📅 {date}\n"
+            "🕐 {time}\n"
+            "📧 {email}\n\n"
+            "האם לאשר?"
+        ),
+        "book_btn_confirm": "✅ אשר",
+        "book_btn_cancel": "✗ בטל",
+        "book_confirmed": (
+            "🎉 *הפגישה אושרה!*\n\n"
+            "📋 {subject}\n"
+            "📅 {start}\n"
+            "🔗 [הצטרף ל-Google Meet]({meet_link})\n\n"
+            "_אישור נשלח לאימייל שלך._"
+        ),
+        "book_confirmed_no_meet": (
+            "🎉 *הפגישה אושרה!*\n\n"
+            "📋 {subject}\n"
+            "📅 {start}\n\n"
+            "_אישור נשלח לאימייל שלך._"
+        ),
+        "book_failed": (
+            "❌ מצטער, לא הצלחתי להשלים את ההזמנה.\n"
+            "נסה שוב או פנה ישירות לעדי."
+        ),
+        "book_aborted": "ההזמנה בוטלה. השתמש ב-/book להתחלה מחדש.",
+        # ── Bot: /mybookings ──────────────────────────────────────────────────
+        "mybookings_not_configured": "חיפוש הזמנות אינו זמין עדיין.",
+        "mybookings_ask_email": "📧 אנא שתף את האימייל שלך לחיפוש ההזמנות:",
+        "mybookings_none": "📅 אין לך הזמנות קרובות.",
+        "mybookings_header": "📅 *ההזמנות הקרובות שלך:*\n\n",
+        "mybookings_item": "• *{subject}*\n  📅 {start}\n  🔗 [קישור ל-Meet]({meet_link})\n\n",
+        "mybookings_item_no_meet": "• *{subject}*\n  📅 {start}\n\n",
+        # ── Bot: /cancelmeeting ───────────────────────────────────────────────
+        "cancel_meeting_none": "📅 אין לך פגישות קרובות לביטול.",
+        "cancel_meeting_choose": "איזו פגישה תרצה לבטל?",
+        "cancel_meeting_ok": "✅ הפגישה בוטלה בהצלחה.",
+        "cancel_meeting_failed": "❌ מצטער, לא הצלחתי לבטל את הפגישה. נסה שוב.",
         # ── Bot: /lang ────────────────────────────────────────────────────────
         "lang_set_he": "🇮🇱 השפה הוגדרה ל*עברית*. הודעות הבוט יוצגו בעברית.",
         "lang_set_en": "🇬🇧 Language set to *English*. Bot messages will now appear in English.",
@@ -363,6 +478,9 @@ _S: dict[str, dict[str, str]] = {
             "/plan — מלא את התכנית השבועית (לכל תוצאת מפתח)\n"
             "/highlight — הוסף הדגשה יומית\n"
             "/myplan — צפה בתכנית השבוע הנוכחי\n"
+            "/book — הזמן פגישה עם עדי בן נשר\n"
+            "/mybookings — צפה בהזמנות הקרובות שלך\n"
+            "/cancelmeeting — בטל הזמנה\n"
             "/message — שלח הודעה לעדי בן נשר\n"
             "/done — סיים פגישה וקבל סיכום\n"
             "/suspend — השהה את האימון\n"
