@@ -2,11 +2,13 @@
 
 Served at GET /admin?api_key=<key>
 Shows all users, their OKR progress, and invite management.
+Supports ?lang=en (default) or ?lang=he for bilingual UI.
 """
 from __future__ import annotations
 
 from typing import List
 
+from autogpt.coaching.i18n import t
 from autogpt.coaching.models import Invite, UserProgressSummary
 
 
@@ -25,9 +27,16 @@ def render_admin(
     pending_invites: List[Invite],
     public_url: str = "",
     pending_users: List[UserProgressSummary] = None,
+    lang: str = "en",
 ) -> str:
     if pending_users is None:
         pending_users = []
+    is_rtl = lang == "he"
+    dir_attr = 'dir="rtl"' if is_rtl else ""
+    # opposite-lang toggle link
+    other_lang = "he" if lang == "en" else "en"
+    lang_toggle_label = t(lang, "admin_view_lang")  # shows the OTHER lang to switch to
+
     # ── User rows ─────────────────────────────────────────────────────────────
     _status_colors = {
         "active": ("#16a34a", "#dcfce7"),
@@ -50,25 +59,25 @@ def render_admin(
             actions = (f'<button onclick="setStatus(\'{u.user_id}\',\'suspended\')" '
                        f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
                        f'background:#fef3c7;color:#92400e;border:1px solid #fbbf24;margin-right:4px">'
-                       f'Suspend</button>'
+                       f'{t(lang, "admin_btn_suspend")}</button>'
                        f'<button onclick="setStatus(\'{u.user_id}\',\'archived\')" '
                        f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
                        f'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">'
-                       f'Archive</button>')
+                       f'{t(lang, "admin_btn_archive")}</button>')
         elif st == "suspended":
             actions = (f'<button onclick="setStatus(\'{u.user_id}\',\'active\')" '
                        f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
                        f'background:#dcfce7;color:#166534;border:1px solid #86efac;margin-right:4px">'
-                       f'Reactivate</button>'
+                       f'{t(lang, "admin_btn_reactivate")}</button>'
                        f'<button onclick="setStatus(\'{u.user_id}\',\'archived\')" '
                        f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
                        f'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">'
-                       f'Archive</button>')
+                       f'{t(lang, "admin_btn_archive")}</button>')
         else:
             actions = (f'<button onclick="setStatus(\'{u.user_id}\',\'active\')" '
                        f'style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;'
                        f'background:#dcfce7;color:#166534;border:1px solid #86efac">'
-                       f'Reactivate</button>')
+                       f'{t(lang, "admin_btn_reactivate")}</button>')
         user_rows += f"""
 <tr>
   <td style="padding:10px 12px;font-weight:600;white-space:nowrap">
@@ -85,13 +94,13 @@ def render_admin(
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{last_plan}</td>
   <td style="padding:10px 12px;white-space:nowrap">
     <a href="{dashboard_url}" style="font-size:12px;color:#1a2b4a;background:#e0e7ff;
-       padding:3px 10px;border-radius:12px;text-decoration:none;margin-right:6px">View</a>
+       padding:3px 10px;border-radius:12px;text-decoration:none;margin-right:6px">{t(lang, "admin_btn_view")}</a>
     {actions}
   </td>
 </tr>"""
 
     if not user_rows:
-        user_rows = '<tr><td colspan="8" style="padding:20px;color:#9ca3af;text-align:center">No users yet.</td></tr>'
+        user_rows = f'<tr><td colspan="8" style="padding:20px;color:#9ca3af;text-align:center">{t(lang, "admin_no_users")}</td></tr>'
 
     # ── Pending registration rows ─────────────────────────────────────────────
     pending_rows = ""
@@ -109,15 +118,15 @@ def render_admin(
     <button onclick="approveUser('{u.user_id}')"
       style="font-size:11px;cursor:pointer;padding:2px 10px;border-radius:6px;
              background:#dcfce7;color:#166534;border:1px solid #86efac;margin-right:4px">
-      Approve</button>
+      {t(lang, "admin_btn_approve")}</button>
     <button onclick="setStatus('{u.user_id}','archived')"
       style="font-size:11px;cursor:pointer;padding:2px 10px;border-radius:6px;
              background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">
-      Reject</button>
+      {t(lang, "admin_btn_reject")}</button>
   </td>
 </tr>"""
     if not pending_rows:
-        pending_rows = '<tr><td colspan="3" style="padding:16px;color:#9ca3af;text-align:center">No pending registrations.</td></tr>'
+        pending_rows = f'<tr><td colspan="3" style="padding:16px;color:#9ca3af;text-align:center">{t(lang, "admin_no_pending")}</td></tr>'
 
     # ── Pending invite rows ───────────────────────────────────────────────────
     invite_rows = ""
@@ -135,21 +144,26 @@ def render_admin(
 </tr>"""
 
     if not invite_rows:
-        invite_rows = '<tr><td colspan="3" style="padding:16px;color:#9ca3af;text-align:center">No pending invites.</td></tr>'
+        invite_rows = f'<tr><td colspan="3" style="padding:16px;color:#9ca3af;text-align:center">{t(lang, "admin_no_invites")}</td></tr>'
 
     invite_form_action = f"{public_url}/admin/invites" if public_url else "/admin/invites"
+    # Build lang toggle URL  — appends/replaces ?lang= param
+    lang_toggle_href = f"?lang={other_lang}"
+    font_import = '<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700&display=swap" rel="stylesheet">' if is_rtl else ""
+    font_family = "'Noto Sans Hebrew',-apple-system,BlinkMacSystemFont" if is_rtl else "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto"
+    th_align = "right" if is_rtl else "left"
 
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="{lang}" {dir_attr}>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin Dashboard – ABN Co-Navigator</title>
+<title>{t(lang, "admin_title")} – ABN Co-Navigator</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+{font_import}
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-     background:#f0f4f8;color:#111827}}
+body{{font-family:{font_family},sans-serif;background:#f0f4f8;color:#111827}}
 .hdr{{background:#1a2b4a;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:12px}}
 .hdr-title{{font-size:17px;font-weight:700}}
 .hdr-badge{{margin-left:auto;background:#ef4444;font-size:11px;padding:3px 10px;
@@ -160,7 +174,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .card{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;
        overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}}
 table{{width:100%;border-collapse:collapse}}
-thead th{{background:#f9fafb;padding:10px 12px;text-align:left;font-size:12px;
+thead th{{background:#f9fafb;padding:10px 12px;text-align:{th_align};font-size:12px;
           font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;
           border-bottom:1px solid #e5e7eb}}
 tbody tr:hover{{background:#f9fafb}}
@@ -182,64 +196,69 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
   <img src="/static/android-chrome-192x192.png" width="36" height="36"
        style="border-radius:8px" alt="logo">
   <div>
-    <div class="hdr-title">Admin Dashboard</div>
-    <div style="font-size:12px;opacity:.7;margin-top:1px">ABN Co-Navigator · Adi Ben Nesher</div>
+    <div class="hdr-title">{t(lang, "admin_title")}</div>
+    <div style="font-size:12px;opacity:.7;margin-top:1px">{t(lang, "admin_subtitle")}</div>
   </div>
-  <div class="hdr-badge">ADMIN</div>
-  <a href="/admin/logout" style="margin-left:8px;color:rgba(255,255,255,.65);font-size:12px;
+  <div class="hdr-badge">{t(lang, "admin_badge")}</div>
+  <a href="{lang_toggle_href}" style="margin-left:8px;color:rgba(255,255,255,.8);font-size:12px;
+     text-decoration:none;border:1px solid rgba(255,255,255,.35);padding:5px 12px;
+     border-radius:8px;">{lang_toggle_label}</a>
+  <a href="/admin/logout" style="color:rgba(255,255,255,.65);font-size:12px;
      text-decoration:none;border:1px solid rgba(255,255,255,.25);padding:5px 12px;
-     border-radius:8px;">Sign out</a>
+     border-radius:8px;">{t(lang, "admin_signout")}</a>
 </div>
 <div class="container">
 
-  <div class="section-title">Pending Approval ({len(pending_users)})</div>
+  <div class="section-title">{t(lang, "admin_section_pending")} ({len(pending_users)})</div>
   <div class="card">
     <table>
-      <thead><tr><th>Name</th><th>Contact</th><th>Actions</th></tr></thead>
+      <thead><tr><th>{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th><th>{t(lang, "admin_col_actions")}</th></tr></thead>
       <tbody>{pending_rows}</tbody>
     </table>
   </div>
 
-  <div class="section-title">Program Members ({len(users)})</div>
+  <div class="section-title">{t(lang, "admin_section_members")} ({len(users)})</div>
   <div class="card">
     <table>
       <thead><tr>
-        <th>Name</th><th>Contact</th><th>Status</th><th>OKRs</th>
-        <th>Avg KR Progress</th><th>Last Session</th><th>Last Plan</th><th>Actions</th>
+        <th>{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th>
+        <th>{t(lang, "admin_col_status")}</th><th>{t(lang, "admin_col_okrs")}</th>
+        <th>{t(lang, "admin_col_progress")}</th><th>{t(lang, "admin_col_last_session")}</th>
+        <th>{t(lang, "admin_col_last_plan")}</th><th>{t(lang, "admin_col_actions")}</th>
       </tr></thead>
       <tbody>{user_rows}</tbody>
     </table>
   </div>
 
-  <div class="section-title">Register New User</div>
+  <div class="section-title">{t(lang, "admin_section_register")}</div>
   <div class="invite-form">
-    <h3>Create a user account directly (account is immediately active)</h3>
+    <h3>{t(lang, "admin_register_desc")}</h3>
     <form id="registerForm">
       <div class="form-row">
-        <input type="text" name="name" placeholder="Full Name *" required>
-        <input type="tel" name="phone_number" placeholder="Phone Number * (+1234567890)" required>
-        <input type="email" name="email" placeholder="Email (optional)">
+        <input type="text" name="name" placeholder="{t(lang, "admin_field_name")}" required>
+        <input type="tel" name="phone_number" placeholder="{t(lang, "admin_field_phone")}" required>
+        <input type="email" name="email" placeholder="{t(lang, "admin_field_email")}">
       </div>
-      <button type="submit" class="btn">Register User</button>
+      <button type="submit" class="btn">{t(lang, "admin_btn_register")}</button>
     </form>
     <div id="regMsg" style="margin-top:10px;font-size:13px"></div>
   </div>
 
-  <div class="section-title">Send Invitation</div>
+  <div class="section-title">{t(lang, "admin_section_invite")}</div>
   <div class="invite-form">
-    <h3>Create a program invite link</h3>
+    <h3>{t(lang, "admin_invite_desc")}</h3>
     <form method="post" action="{invite_form_action}" id="inviteForm">
       <div class="form-row">
-        <input type="text" name="name" placeholder="Name (optional)">
-        <input type="email" name="email" placeholder="Email (optional)">
-        <input type="text" name="phone" placeholder="Phone (optional)">
+        <input type="text" name="name" placeholder="{t(lang, "admin_field_inv_name")}">
+        <input type="email" name="email" placeholder="{t(lang, "admin_field_inv_email")}">
+        <input type="text" name="phone" placeholder="{t(lang, "admin_field_inv_phone")}">
       </div>
       <div class="form-row">
-        <textarea name="note" rows="2" placeholder="Private note (optional)"
+        <textarea name="note" rows="2" placeholder="{t(lang, "admin_field_note")}"
                   style="width:100%"></textarea>
       </div>
       <div class="form-row" style="align-items:center;gap:16px;">
-        <label style="font-weight:600;font-size:13px;margin:0;">Language:</label>
+        <label style="font-weight:600;font-size:13px;margin:0;">{t(lang, "admin_lang_label")}</label>
         <label style="font-weight:normal;font-size:13px;">
           <input type="radio" name="language" value="en" checked> 🇬🇧 English
         </label>
@@ -249,17 +268,17 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
       </div>
       <div style="display:flex;gap:10px;margin-top:4px;">
         <button type="button" class="btn" onclick="submitInvite(false)"
-                style="flex:1;">🔗 Generate Invite Link</button>
+                style="flex:1;">{t(lang, "admin_btn_gen_link")}</button>
         <button type="button" class="btn" onclick="submitInvite(true)"
-                style="flex:1;background:linear-gradient(135deg,#1a6b3a,#2d9e5a);">✉️ Send Invite Email</button>
+                style="flex:1;background:linear-gradient(135deg,#1a6b3a,#2d9e5a);">{t(lang, "admin_btn_send_email")}</button>
       </div>
     </form>
   </div>
 
-  <div class="section-title">Pending Invites</div>
+  <div class="section-title">{t(lang, "admin_section_invites")}</div>
   <div class="card">
     <table>
-      <thead><tr><th>For</th><th>Note</th><th>Registration Link</th></tr></thead>
+      <thead><tr><th>{t(lang, "admin_col_for")}</th><th>{t(lang, "admin_col_note")}</th><th>{t(lang, "admin_col_link")}</th></tr></thead>
       <tbody>{invite_rows}</tbody>
     </table>
   </div>

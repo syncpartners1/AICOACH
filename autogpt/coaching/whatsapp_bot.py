@@ -45,6 +45,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
 
 from autogpt.coaching.config import coaching_config
+from autogpt.coaching.i18n import detect_lang, t
 
 logger = logging.getLogger(__name__)
 
@@ -53,19 +54,27 @@ router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 # phone_number (E.164 string) → CoachingSession
 _wa_sessions: Dict[str, Any] = {}
 
+# phone_number → detected/stored language ("en" | "he")
+_wa_langs: Dict[str, str] = {}
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 GRAPH_API_VERSION = "v19.0"
 GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 
-HELP_TEXT = (
-    "👋 *ABN Co-Navigator — WhatsApp commands*\n\n"
-    "• Type *start* or *hi* — begin a new coaching session\n"
-    "• Send any message   — chat with the Navigator\n"
-    "• Type *done* or *end* — close session and receive summary\n"
-    "• Type *cancel*        — discard session without saving\n"
-    "• Type *help*          — show this message"
-)
+
+def _get_lang(phone: str) -> str:
+    return _wa_langs.get(phone, "en")
+
+
+def _set_lang(phone: str, text: str) -> str:
+    """Detect language from text and persist for this phone. Returns the lang."""
+    detected = detect_lang(text)
+    if detected == "he":
+        _wa_langs[phone] = "he"
+    elif phone not in _wa_langs:
+        _wa_langs[phone] = "en"
+    return _wa_langs[phone]
 
 
 def _send_whatsapp_text(to: str, body: str) -> None:
@@ -116,40 +125,40 @@ def _verify_signature(body_bytes: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(expected, signature_header or "")
 
 
-def _format_summary(summary) -> str:
+def _format_summary(summary, lang: str = "en") -> str:
     """Render a SessionSummary as a readable WhatsApp message."""
     wl = summary.weekly_log
     lines = [
-        "✅ *Session Summary*\n",
-        f"*Focus goal:* {wl.focus_goal or '—'}",
-        f"*Mood:* {wl.mood_indicator or '—'}",
-        f"*Environmental changes:* {wl.environmental_changes or '—'}",
+        t(lang, "wa_summary_title"),
+        t(lang, "wa_summary_focus", value=wl.focus_goal or "—"),
+        t(lang, "wa_summary_mood", value=wl.mood_indicator or "—"),
+        t(lang, "wa_summary_env", value=wl.environmental_changes or "—"),
     ]
     if wl.key_results:
-        lines.append("\n*Key Results:*")
+        lines.append(t(lang, "wa_summary_krs"))
         for kr in wl.key_results:
             lines.append(f"  • {kr.description} — {kr.status_pct}%")
     unresolved = [o.description for o in wl.obstacles if not o.resolved]
     if unresolved:
-        lines.append("\n⚠ *Open obstacles:*")
+        lines.append(t(lang, "wa_summary_obstacles"))
         for obs in unresolved:
             lines.append(f"  - {obs}")
     lines += [
-        f"\n*Alert:* {summary.alerts.level.value.upper()} — {summary.alerts.reason}",
-        f"\n*Coach note:* {summary.summary_for_coach}",
-        "\nSession saved. See you next week! 🚢",
+        t(lang, "wa_summary_alert", level=summary.alerts.level.value.upper(), reason=summary.alerts.reason),
+        t(lang, "wa_summary_coach_note", note=summary.summary_for_coach),
+        "\n" + t(lang, "wa_session_saved_footer"),
     ]
     return "\n".join(lines)
 
 
 # ── Session logic ─────────────────────────────────────────────────────────────
 
-def _handle_start(phone: str, sender_name: str) -> str:
+def _handle_start(phone: str, sender_name: str, lang: str) -> str:
     from autogpt.coaching.session import CoachingSession
     from autogpt.coaching.storage import get_past_sessions, get_user_objectives
 
     if phone in _wa_sessions:
-        return "You already have an active session. Send *done* to close it or keep chatting!"
+        return t(lang, "wa_already_session")
 
     client_id = f"wa_{phone}"
 
@@ -174,63 +183,62 @@ def _handle_start(phone: str, sender_name: str) -> str:
     except Exception as exc:
         logger.error("session.open failed for wa_phone=%s: %s", phone, exc)
         del _wa_sessions[phone]
-        return "Sorry, I couldn't start the session right now. Please try again."
+        return t(lang, "start_failed")
 
 
-def _handle_end(phone: str) -> str:
+def _handle_end(phone: str, lang: str) -> str:
     from autogpt.coaching.storage import save_session
 
     session = _wa_sessions.get(phone)
     if session is None:
-        return "No active session. Send *start* to begin a coaching session."
+        return t(lang, "wa_no_session_end")
 
     try:
         summary = session.extract_summary()
         save_session(summary)
-        result = _format_summary(summary)
+        result = _format_summary(summary, lang)
     except Exception as exc:
         logger.error("Session end failed for wa_phone=%s: %s", phone, exc)
-        result = "Something went wrong saving your session. Please contact your coach."
+        result = t(lang, "wa_session_end_error")
     finally:
         _wa_sessions.pop(phone, None)
 
     return result
 
 
-def _handle_cancel(phone: str) -> str:
+def _handle_cancel(phone: str, lang: str) -> str:
     if _wa_sessions.pop(phone, None) is None:
-        return "No active session to cancel."
-    return "Session discarded. Nothing was saved. Send *start* to begin again."
+        return t(lang, "wa_no_session_cancel")
+    return t(lang, "wa_session_discarded")
 
 
-def _handle_message(phone: str, text: str) -> str:
+def _handle_message(phone: str, text: str, lang: str) -> str:
     session = _wa_sessions.get(phone)
     if session is None:
-        return (
-            "No active session. Send *start* to begin your weekly coaching check-in.\n\n"
-            + HELP_TEXT
-        )
+        return t(lang, "wa_no_session_chat")
     try:
         return session.chat(text)
     except Exception as exc:
         logger.error("session.chat failed for wa_phone=%s: %s", phone, exc)
-        return "I'm having trouble responding right now. Please try again in a moment."
+        return t(lang, "chat_error")
 
 
 def _route_message(phone: str, sender_name: str, text: str) -> str:
     """Dispatch the incoming message to the right handler."""
+    # Update stored language if Hebrew detected; get current lang
+    lang = _set_lang(phone, text)
     keyword = text.strip().lower()
 
     if keyword in ("start", "hi", "hello", "hey"):
-        return _handle_start(phone, sender_name)
+        return _handle_start(phone, sender_name, lang)
     if keyword in ("done", "end", "finish"):
-        return _handle_end(phone)
+        return _handle_end(phone, lang)
     if keyword == "cancel":
-        return _handle_cancel(phone)
+        return _handle_cancel(phone, lang)
     if keyword == "help":
-        return HELP_TEXT
+        return t(lang, "wa_help")
 
-    return _handle_message(phone, text)
+    return _handle_message(phone, text, lang)
 
 
 # ── FastAPI routes ─────────────────────────────────────────────────────────────

@@ -276,7 +276,97 @@ _S: dict[str, dict[str, str]] = {
         "db_day_thursday": "Thu",
         "db_day_friday": "Fri",
         "db_day_saturday": "Sat",
+        # ── WhatsApp bot ──────────────────────────────────────────────────────
+        "wa_help": (
+            "👋 *ABN Co-Navigator — WhatsApp commands*\n\n"
+            "• Type *start* or *hi* — begin a new coaching session\n"
+            "• Send any message   — chat with the Navigator\n"
+            "• Type *done* or *end* — close session and receive summary\n"
+            "• Type *cancel*        — discard session without saving\n"
+            "• Type *help*          — show this message"
+        ),
+        "wa_already_session": (
+            "You already have an active session. Keep chatting, "
+            "or type *done* to end it and receive your summary."
+        ),
+        "wa_no_session_end": "No active session. Type *start* to begin a coaching session.",
+        "wa_no_session_cancel": "No active session to cancel.",
+        "wa_session_discarded": "Session discarded. Nothing was saved. Type *start* to begin again.",
+        "wa_no_session_chat": (
+            "No active session. Type *start* to begin your weekly coaching check-in.\n\n"
+            "• *start* — begin session\n• *help* — show all commands"
+        ),
+        "wa_session_saved_footer": "Session saved. See you next week! 🚢",
+        "wa_session_end_error": "Something went wrong saving your session. Please contact your coach.",
+        "wa_summary_title": "✅ *Session Summary*\n",
+        "wa_summary_focus": "*Focus goal:* {value}",
+        "wa_summary_mood": "*Mood:* {value}",
+        "wa_summary_env": "*Environmental changes:* {value}",
+        "wa_summary_krs": "\n*Key Results:*",
+        "wa_summary_obstacles": "\n⚠ *Open obstacles:*",
+        "wa_summary_alert": "\n*Alert:* {level} — {reason}",
+        "wa_summary_coach_note": "\n*Coach note:* {note}",
+        # ── Register page ─────────────────────────────────────────────────────
+        "reg_title": "Join the Coaching Program",
+        "reg_subtitle": "Register to start your personalised coaching journey with {coach}.",
+        "reg_google_btn": "Continue with Google",
+        "reg_divider": "or register with phone",
+        "reg_label_name": "Full Name",
+        "reg_label_phone": "Phone Number",
+        "reg_label_lang": "Language / שפה",
+        "reg_btn_submit": "Register with Phone",
+        "reg_status_registering": "Registering…",
+        "reg_status_pending": "Registration submitted! Awaiting coach approval…",
+        "reg_status_success": "Welcome, {name}! Redirecting to your dashboard…",
+        "reg_status_error": "Registration failed. Please try again.",
+        # ── Admin dashboard ───────────────────────────────────────────────────
+        "admin_title": "Admin Dashboard",
+        "admin_subtitle": "ABN Co-Navigator · Adi Ben Nesher",
+        "admin_badge": "ADMIN",
+        "admin_signout": "Sign out",
+        "admin_section_pending": "Pending Approval",
+        "admin_section_members": "Program Members",
+        "admin_section_register": "Register New User",
+        "admin_register_desc": "Create a user account directly (account is immediately active)",
+        "admin_section_invite": "Send Invitation",
+        "admin_invite_desc": "Create a program invite link",
+        "admin_section_invites": "Pending Invites",
+        "admin_col_name": "Name",
+        "admin_col_contact": "Contact",
+        "admin_col_status": "Status",
+        "admin_col_okrs": "OKRs",
+        "admin_col_progress": "Avg KR Progress",
+        "admin_col_last_session": "Last Session",
+        "admin_col_last_plan": "Last Plan",
+        "admin_col_actions": "Actions",
+        "admin_col_note": "Note",
+        "admin_col_link": "Registration Link",
+        "admin_col_for": "For",
+        "admin_btn_approve": "Approve",
+        "admin_btn_reject": "Reject",
+        "admin_btn_suspend": "Suspend",
+        "admin_btn_archive": "Archive",
+        "admin_btn_reactivate": "Reactivate",
+        "admin_btn_register": "Register User",
+        "admin_btn_gen_link": "🔗 Generate Invite Link",
+        "admin_btn_send_email": "✉️ Send Invite Email",
+        "admin_btn_view": "View",
+        "admin_no_users": "No users yet.",
+        "admin_no_pending": "No pending registrations.",
+        "admin_no_invites": "No pending invites.",
+        "admin_field_name": "Full Name *",
+        "admin_field_phone": "Phone Number * (+1234567890)",
+        "admin_field_email": "Email (optional)",
+        "admin_field_inv_name": "Name (optional)",
+        "admin_field_inv_email": "Email (optional)",
+        "admin_field_inv_phone": "Phone (optional)",
+        "admin_field_note": "Private note (optional)",
+        "admin_lang_label": "Language:",
+        "admin_registering": "Registering…",
+        "admin_view_lang": "🇬🇧 EN",
     },
+
+    # ══════════════════════════════════════════════════════════════════════════
 
     # ══════════════════════════════════════════════════════════════════════════
     "he": {
@@ -534,6 +624,94 @@ _S: dict[str, dict[str, str]] = {
         "db_day_thursday": "ה׳",
         "db_day_friday": "ו׳",
         "db_day_saturday": "ש׳",
+        # ── WhatsApp bot ──────────────────────────────────────────────────────
+        "wa_help": (
+            "👋 *ABN Co-Navigator — פקודות WhatsApp*\n\n"
+            "• שלח *start* או *hi* — פתח פגישת אימון חדשה\n"
+            "• שלח כל הודעה       — שוחח עם הנווטן\n"
+            "• שלח *done* או *end*  — סיים פגישה וקבל סיכום\n"
+            "• שלח *cancel*         — בטל פגישה ללא שמירה\n"
+            "• שלח *help*           — הצג הודעה זו"
+        ),
+        "wa_already_session": (
+            "יש לך פגישה פעילה. המשך לשוחח, "
+            "או שלח *done* לסיום ולקבלת הסיכום."
+        ),
+        "wa_no_session_end": "אין פגישה פעילה. שלח *start* להתחיל פגישת אימון.",
+        "wa_no_session_cancel": "אין פגישה פעילה לביטול.",
+        "wa_session_discarded": "הפגישה בוטלה. לא נשמר כלום. שלח *start* להתחיל מחדש.",
+        "wa_no_session_chat": (
+            "אין פגישה פעילה. שלח *start* להתחיל את הצ'ק-אין השבועי שלך.\n\n"
+            "• *start* — פתח פגישה\n• *help* — הצג פקודות"
+        ),
+        "wa_session_saved_footer": "הפגישה נשמרה. להתראות בשבוע הבא! 🚢",
+        "wa_session_end_error": "משהו השתבש בשמירת הפגישה. אנא צור קשר עם המאמן שלך.",
+        "wa_summary_title": "✅ *סיכום פגישה*\n",
+        "wa_summary_focus": "*מטרת מיקוד:* {value}",
+        "wa_summary_mood": "*מצב רוח:* {value}",
+        "wa_summary_env": "*שינויים סביבתיים:* {value}",
+        "wa_summary_krs": "\n*תוצאות מפתח:*",
+        "wa_summary_obstacles": "\n⚠ *מכשולים פתוחים:*",
+        "wa_summary_alert": "\n*התראה:* {level} — {reason}",
+        "wa_summary_coach_note": "\n*הערת מאמן:* {note}",
+        # ── Register page ─────────────────────────────────────────────────────
+        "reg_title": "הצטרף לתוכנית האימון",
+        "reg_subtitle": "הירשם להתחיל את מסע האימון האישי שלך עם {coach}.",
+        "reg_google_btn": "המשך עם Google",
+        "reg_divider": "או הירשם עם טלפון",
+        "reg_label_name": "שם מלא",
+        "reg_label_phone": "מספר טלפון",
+        "reg_label_lang": "Language / שפה",
+        "reg_btn_submit": "הירשם עם טלפון",
+        "reg_status_registering": "מבצע רישום…",
+        "reg_status_pending": "הרישום נשלח! ממתין לאישור המאמן…",
+        "reg_status_success": "ברוך הבא, {name}! מפנה ללוח הבקרה…",
+        "reg_status_error": "הרישום נכשל. אנא נסה שוב.",
+        # ── Admin dashboard ───────────────────────────────────────────────────
+        "admin_title": "לוח בקרה למנהל",
+        "admin_subtitle": "ABN Co-Navigator · עדי בן נשר",
+        "admin_badge": "מנהל",
+        "admin_signout": "יציאה",
+        "admin_section_pending": "ממתינים לאישור",
+        "admin_section_members": "חברי התוכנית",
+        "admin_section_register": "רישום משתמש חדש",
+        "admin_register_desc": "צור חשבון משתמש ישירות (החשבון פעיל מיד)",
+        "admin_section_invite": "שלח הזמנה",
+        "admin_invite_desc": "צור קישור הזמנה לתוכנית",
+        "admin_section_invites": "הזמנות ממתינות",
+        "admin_col_name": "שם",
+        "admin_col_contact": "פרטי קשר",
+        "admin_col_status": "סטטוס",
+        "admin_col_okrs": "OKRs",
+        "admin_col_progress": "התקדמות ממוצעת",
+        "admin_col_last_session": "פגישה אחרונה",
+        "admin_col_last_plan": "תכנית אחרונה",
+        "admin_col_actions": "פעולות",
+        "admin_col_note": "הערה",
+        "admin_col_link": "קישור רישום",
+        "admin_col_for": "עבור",
+        "admin_btn_approve": "אשר",
+        "admin_btn_reject": "דחה",
+        "admin_btn_suspend": "השהה",
+        "admin_btn_archive": "ארכיון",
+        "admin_btn_reactivate": "הפעל מחדש",
+        "admin_btn_register": "רשום משתמש",
+        "admin_btn_gen_link": "🔗 צור קישור הזמנה",
+        "admin_btn_send_email": "✉️ שלח אימייל הזמנה",
+        "admin_btn_view": "צפה",
+        "admin_no_users": "אין משתמשים עדיין.",
+        "admin_no_pending": "אין רישומים ממתינים.",
+        "admin_no_invites": "אין הזמנות ממתינות.",
+        "admin_field_name": "שם מלא *",
+        "admin_field_phone": "מספר טלפון * (+1234567890)",
+        "admin_field_email": "אימייל (אופציונלי)",
+        "admin_field_inv_name": "שם (אופציונלי)",
+        "admin_field_inv_email": "אימייל (אופציונלי)",
+        "admin_field_inv_phone": "טלפון (אופציונלי)",
+        "admin_field_note": "הערה פרטית (אופציונלי)",
+        "admin_lang_label": "שפה:",
+        "admin_registering": "מבצע רישום…",
+        "admin_view_lang": "🇮🇱 עב",
     },
 }
 
