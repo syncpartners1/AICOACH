@@ -58,8 +58,10 @@ from autogpt.coaching.models import (
 from autogpt.coaching.session import CoachingSession
 from autogpt.coaching.storage import (
     create_invite,
+    delete_invite,
     get_all_users_progress,
     get_invite,
+    get_invite_by_id,
     get_past_sessions,
     get_user_objectives,
     get_user_profile,
@@ -1211,6 +1213,58 @@ def admin_get_invite(token: str, _: str = Depends(verify_api_key)) -> Invite:
     if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found.")
     return inv
+
+
+@app.delete("/admin/invites/{invite_id}", summary="Delete a pending invite (admin)")
+def admin_delete_invite(invite_id: str, _: None = Depends(verify_admin_or_api_key)) -> dict:
+    inv = get_invite_by_id(invite_id)
+    if not inv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found.")
+    if inv.used_at:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invite already used; cannot delete.")
+    delete_invite(invite_id)
+    return {"ok": True}
+
+
+@app.post("/admin/invites/{invite_id}/resend", summary="Resend invite email (admin)")
+def admin_resend_invite(invite_id: str, _: None = Depends(verify_admin_or_api_key)) -> dict:
+    inv = get_invite_by_id(invite_id)
+    if not inv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found.")
+    if not inv.email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invite has no email address.")
+    if inv.used_at:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invite already used.")
+
+    lang = inv.language or "en"
+    register_url = f"{coaching_config.public_url}/register?token={inv.token}" if coaching_config.public_url else ""
+    if not register_url.startswith("http"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PUBLIC_URL is not configured; cannot build invite link.",
+        )
+    if not (coaching_config.emailjs_service_id and coaching_config.emailjs_template_invite):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="EmailJS is not configured.",
+        )
+
+    expires_str = inv.expires_at.strftime("%B %d, %Y") if inv.expires_at else ""
+    ok = send_invite_email(
+        to_email=inv.email,
+        to_name=inv.name or "",
+        register_url=register_url,
+        coach_name=get_coach_name(lang),
+        invite_note=inv.note,
+        expires_at=expires_str,
+        service_id=coaching_config.emailjs_service_id,
+        template_id=coaching_config.emailjs_template_invite,
+        public_key=coaching_config.emailjs_public_key,
+        private_key=coaching_config.emailjs_private_key,
+    )
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="EmailJS failed to send.")
+    return {"ok": True, "email": inv.email}
 
 
 class AdminRegisterRequest(BaseModel):
