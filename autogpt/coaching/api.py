@@ -978,8 +978,10 @@ function verifyOtp() {{
 
 
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
-def admin_dashboard(request: Request) -> HTMLResponse:
-    """Admin overview dashboard — requires login."""
+def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLResponse:
+    """Admin overview dashboard — requires login. ?lang=en|he switches UI language."""
+    if lang not in ("en", "he"):
+        lang = "en"
     if not _is_admin_authenticated(request):
         return HTMLResponse(content=_login_page(), status_code=200)
 
@@ -1016,7 +1018,8 @@ def admin_dashboard(request: Request) -> HTMLResponse:
         pending = []
 
     html = render_admin(users=users, pending_invites=pending,
-                        public_url=coaching_config.public_url, pending_users=pending_users)
+                        public_url=coaching_config.public_url, pending_users=pending_users,
+                        lang=lang)
     return HTMLResponse(content=html)
 
 
@@ -1298,29 +1301,67 @@ def public_register_phone(
                         account_status=user.account_status)
 
 
+def _detect_lang_from_header(accept_language: str) -> str:
+    """Return 'he' if Accept-Language header prefers Hebrew, else 'en'."""
+    if not accept_language:
+        return "en"
+    # Accept-Language header example: "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7"
+    # Check if any 'he' tag appears before any 'en' tag
+    import re as _re
+    tokens = _re.split(r"[,;]", accept_language.lower())
+    for tok in tokens:
+        tok = tok.strip().split(";")[0].strip()
+        if tok.startswith("he"):
+            return "he"
+        if tok.startswith("en"):
+            return "en"
+    return "en"
+
+
 @app.get(
     "/register",
     response_class=HTMLResponse,
     include_in_schema=False,
 )
-def register_page(token: Optional[str] = Query(default=None)) -> HTMLResponse:
+def register_page(request: Request, token: Optional[str] = Query(default=None)) -> HTMLResponse:
     """Landing page for invited users — pre-fills name/phone from the invite token."""
+    from autogpt.coaching.i18n import t as _t, get_coach_name as _coach_name
     invite = get_invite(token) if token else None
     name_val = invite.name or "" if invite else ""
     phone_val = invite.phone or "" if invite else ""
-    email_val = invite.email or "" if invite else ""
-    invite_lang = (invite.language if invite else None) or "en"
+    invite_lang = invite.language if invite and invite.language else None
+    # Fall back to browser Accept-Language when no invite language is set
+    if not invite_lang:
+        accept_lang = request.headers.get("accept-language", "")
+        invite_lang = _detect_lang_from_header(accept_lang)
+    lang = invite_lang or "en"
+    is_rtl = lang == "he"
+    dir_attr = 'dir="rtl"' if is_rtl else ''
     token_field = f'<input type="hidden" name="invite_token" value="{token}">' if token else ""
-    en_checked = "checked" if invite_lang == "en" else ""
-    he_checked = "checked" if invite_lang == "he" else ""
+    en_checked = "checked" if lang == "en" else ""
+    he_checked = "checked" if lang == "he" else ""
+    coach = _coach_name(lang)
+    title = _t(lang, "reg_title")
+    subtitle = _t(lang, "reg_subtitle", coach=coach)
+    google_btn = _t(lang, "reg_google_btn")
+    divider = _t(lang, "reg_divider")
+    label_name = _t(lang, "reg_label_name")
+    label_phone = _t(lang, "reg_label_phone")
+    label_lang = _t(lang, "reg_label_lang")
+    btn_submit = _t(lang, "reg_btn_submit")
+    js_registering = _t(lang, "reg_status_registering")
+    js_pending = _t(lang, "reg_status_pending")
+    js_success_tpl = _t(lang, "reg_status_success", name="__NAME__")
+    js_error = _t(lang, "reg_status_error")
     return HTMLResponse(content=f"""<!DOCTYPE html>
-<html lang="en"><head>
+<html lang="{lang}" {dir_attr}><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Join the Coaching Program – ABN Consulting</title>
+<title>{title} – ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+{'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700&display=swap" rel="stylesheet">' if is_rtl else ''}
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+body{{font-family:{"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto" if not is_rtl else "'Noto Sans Hebrew',-apple-system,BlinkMacSystemFont"},sans-serif;
      background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
 .card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:420px;width:100%;
       box-shadow:0 4px 20px rgba(0,0,0,.1)}}
@@ -1329,13 +1370,10 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
 h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:6px}}
 p{{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.5}}
-.tabs{{display:flex;gap:4px;background:#f3f4f6;border-radius:10px;padding:4px;margin-bottom:20px}}
-.tab{{flex:1;padding:8px;text-align:center;border-radius:7px;font-size:13px;font-weight:600;
-     cursor:pointer;color:#6b7280;transition:.2s}}
-.tab.active{{background:#fff;color:#1a2b4a;box-shadow:0 1px 4px rgba(0,0,0,.1)}}
 label{{font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:4px}}
-input{{width:100%;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:9px;
-      font-size:14px;outline:none;margin-bottom:14px;transition:border-color .2s}}
+input[type=text],input[type=tel]{{width:100%;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:9px;
+      font-size:14px;outline:none;margin-bottom:14px;transition:border-color .2s;
+      text-align:{"right" if is_rtl else "left"};direction:{lang if lang == "he" else "ltr"}}}
 input:focus{{border-color:#1a2b4a}}
 .btn{{width:100%;background:#1a2b4a;color:#fff;border:none;padding:12px;border-radius:10px;
      font-size:15px;font-weight:700;cursor:pointer;margin-top:4px}}
@@ -1355,22 +1393,22 @@ input:focus{{border-color:#1a2b4a}}
     <img src="/static/android-chrome-192x192.png" width="36" height="36" alt="logo">
     <div class="logo-text">ABN Consulting</div>
   </div>
-  <h1>Join the Coaching Program</h1>
-  <p>Register to start your personalised coaching journey with Adi Ben-Nesher.</p>
+  <h1>{title}</h1>
+  <p>{subtitle}</p>
 
   <button class="google-btn" onclick="signInGoogle()">
     <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
-    Continue with Google
+    {google_btn}
   </button>
-  <div class="divider">or register with phone</div>
+  <div class="divider">{divider}</div>
 
   <form id="phoneForm">
     {token_field}
-    <label>Full Name</label>
-    <input type="text" name="name" id="name" value="{name_val}" placeholder="Your name" required>
-    <label>Phone Number</label>
+    <label>{label_name}</label>
+    <input type="text" name="name" id="name" value="{name_val}" placeholder="{label_name}" required>
+    <label>{label_phone}</label>
     <input type="tel" name="phone_number" id="phone" value="{phone_val}" placeholder="+1 234 567 8900" required>
-    <label>Language / שפה</label>
+    <label>{label_lang}</label>
     <div style="display:flex;gap:20px;margin-bottom:14px;">
       <label style="font-weight:normal;font-size:14px;">
         <input type="radio" name="language" value="en" {en_checked}> 🇬🇧 English
@@ -1379,11 +1417,17 @@ input:focus{{border-color:#1a2b4a}}
         <input type="radio" name="language" value="he" {he_checked}> 🇮🇱 עברית
       </label>
     </div>
-    <button type="submit" class="btn">Register with Phone</button>
+    <button type="submit" class="btn">{btn_submit}</button>
   </form>
   <div id="msg"></div>
 </div>
 <script>
+const _i18n = {{
+  registering: {json.dumps(js_registering)},
+  pending:     {json.dumps(js_pending)},
+  successTpl:  {json.dumps(js_success_tpl)},
+  error:       {json.dumps(js_error)},
+}};
 function signInGoogle() {{
   const returnTo = location.href;
   window.location = '/auth/google/url?redirect_to=' + encodeURIComponent(returnTo);
@@ -1391,7 +1435,8 @@ function signInGoogle() {{
 document.getElementById('phoneForm').addEventListener('submit', async function(e) {{
   e.preventDefault();
   const msg = document.getElementById('msg');
-  msg.textContent = 'Registering…';
+  msg.style.color='#6b7280';
+  msg.textContent = _i18n.registering;
   const fd = new FormData(this);
   const body = {{name: fd.get('name'), phone_number: fd.get('phone_number'), language: fd.get('language') || 'en'}};
   const token = fd.get('invite_token') || '';
@@ -1405,16 +1450,16 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
     const data = await res.json();
     msg.style.color='#16a34a';
     if (data.account_status === 'pending') {{
-      msg.textContent = 'Registration submitted! Awaiting coach approval…';
+      msg.textContent = _i18n.pending;
       setTimeout(() => {{ window.location = '/pending'; }}, 1500);
     }} else {{
-      msg.textContent = 'Welcome, ' + data.name + '! Redirecting to your dashboard…';
+      msg.textContent = _i18n.successTpl.replace('__NAME__', data.name);
       setTimeout(() => {{ window.location = '/dashboard/' + data.user_id; }}, 1500);
     }}
   }} else {{
     const err = await res.json().catch(()=>({{}}));
     msg.style.color='#dc2626';
-    msg.textContent = err.detail || 'Registration failed. Please try again.';
+    msg.textContent = err.detail || _i18n.error;
   }}
 }});
 </script>
