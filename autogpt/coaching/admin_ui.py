@@ -133,6 +133,7 @@ def render_admin(
     for inv in pending_invites:
         reg_url = inv.register_url or f"{public_url}/register?token={inv.token}"
         who = inv.name or inv.email or inv.phone or "—"
+        has_email = "true" if inv.email else "false"
         invite_rows += f"""
 <tr>
   <td style="padding:8px 12px;font-size:13px">{who}</td>
@@ -141,10 +142,22 @@ def render_admin(
     <code style="font-size:11px;background:#f3f4f6;padding:2px 6px;border-radius:4px;
                  word-break:break-all">{reg_url}</code>
   </td>
+  <td style="padding:8px 12px;white-space:nowrap">
+    <button onclick="resendInvite('{inv.invite_id}','{inv.email or ''}')"
+      {"" if inv.email else 'disabled title="No email on this invite"'}
+      style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;
+             background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;margin-right:4px;
+             {'opacity:.4;cursor:not-allowed;' if not inv.email else ''}">
+      {t(lang, "admin_btn_resend")}</button>
+    <button onclick="removeInvite('{inv.invite_id}')"
+      style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;
+             background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">
+      {t(lang, "admin_btn_remove")}</button>
+  </td>
 </tr>"""
 
     if not invite_rows:
-        invite_rows = f'<tr><td colspan="3" style="padding:16px;color:#9ca3af;text-align:center">{t(lang, "admin_no_invites")}</td></tr>'
+        invite_rows = f'<tr><td colspan="4" style="padding:16px;color:#9ca3af;text-align:center">{t(lang, "admin_no_invites")}</td></tr>'
 
     invite_form_action = f"{public_url}/admin/invites" if public_url else "/admin/invites"
     # Build lang toggle URL  — appends/replaces ?lang= param
@@ -278,7 +291,7 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
   <div class="section-title">{t(lang, "admin_section_invites")}</div>
   <div class="card">
     <table>
-      <thead><tr><th>{t(lang, "admin_col_for")}</th><th>{t(lang, "admin_col_note")}</th><th>{t(lang, "admin_col_link")}</th></tr></thead>
+      <thead><tr><th>{t(lang, "admin_col_for")}</th><th>{t(lang, "admin_col_note")}</th><th>{t(lang, "admin_col_link")}</th><th>{t(lang, "admin_col_actions")}</th></tr></thead>
       <tbody>{invite_rows}</tbody>
     </table>
   </div>
@@ -333,6 +346,32 @@ document.getElementById('registerForm').addEventListener('submit', async functio
     msg.textContent='Error: ' + (err.detail || 'unknown error');
   }}
 }});
+
+async function resendInvite(inviteId, email) {{
+  if (!confirm('Resend invite email to ' + email + '?')) return;
+  const res = await fetch(`/admin/invites/${{inviteId}}/resend`, {{
+    method: 'POST',
+    credentials: 'include',
+  }});
+  if (res.ok) alert('Invite email resent to ' + email);
+  else {{
+    const err = await res.json().catch(()=>({{}}));
+    alert('Error: ' + (err.detail || 'unknown error'));
+  }}
+}}
+
+async function removeInvite(inviteId) {{
+  if (!confirm('Delete this invite? This cannot be undone.')) return;
+  const res = await fetch(`/admin/invites/${{inviteId}}`, {{
+    method: 'DELETE',
+    credentials: 'include',
+  }});
+  if (res.ok) location.reload();
+  else {{
+    const err = await res.json().catch(()=>({{}}));
+    alert('Error: ' + (err.detail || 'unknown error'));
+  }}
+}}
 
 async function submitInvite(sendEmail) {{
   const form = document.getElementById('inviteForm');

@@ -816,6 +816,34 @@ def get_invite(token: str) -> Optional[Invite]:
     )
 
 
+def get_invite_by_id(invite_id: str) -> Optional["Invite"]:
+    """Look up an invite by its UUID (not the token)."""
+    db = _get_client()
+    result = db.table("invites").select("*").eq("invite_id", invite_id).execute()
+    if not result.data:
+        return None
+    r = result.data[0]
+    return Invite(
+        invite_id=r["invite_id"],
+        token=r["token"],
+        name=r.get("name"),
+        email=r.get("email"),
+        phone=r.get("phone"),
+        note=r.get("note"),
+        language=r.get("language") or "en",
+        used_at=datetime.fromisoformat(r["used_at"]) if r.get("used_at") else None,
+        created_at=datetime.fromisoformat(r["created_at"]) if r.get("created_at") else None,
+        expires_at=datetime.fromisoformat(r["expires_at"]) if r.get("expires_at") else None,
+    )
+
+
+def delete_invite(invite_id: str) -> bool:
+    """Delete an invite by its UUID. Returns True if the row was deleted."""
+    db = _get_client()
+    db.table("invites").delete().eq("invite_id", invite_id).execute()
+    return True
+
+
 def use_invite(token: str, user_id: str) -> bool:
     """Mark invite as used. Returns False if already used or expired."""
     db = _get_client()
