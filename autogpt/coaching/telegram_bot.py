@@ -988,8 +988,8 @@ def _format_summary(summary) -> str:
     if summary.summary_for_coach:
         excerpt = summary.summary_for_coach[:280]
         lines.append(f"\n📝 *Coach Notes:* {excerpt}…")
-    if coaching_config.coach_calendly_url:
-        lines.append(f"\n📅 [Book your next session]({coaching_config.coach_calendly_url})")
+    if coaching_config.scheduler_url:
+        lines.append(f"\n📅 [Book your next session]({coaching_config.scheduler_url})")
     return "\n".join(lines)
 
 

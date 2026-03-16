@@ -5,7 +5,7 @@ Template variables injected at request time:
   {api_base}      — Railway service URL (e.g. https://abn.up.railway.app)
   {demo_key}      — COACHING_DEMO_KEY value
   {coach_name}    — COACHING_COACH_NAME value
-  {calendly_url}  — COACHING_COACH_CALENDLY_URL value
+  {scheduler_url} — SCHEDULER_URL value (booking page)
 """
 
 # NOTE: JavaScript braces are doubled ({{ }}) to escape Python's str.format().
@@ -163,7 +163,7 @@ input[type=text]:focus{{border-color:#1a2b4a}}
     <div class="sum-title">Session Complete ✅</div>
     <div id="sum-content"></div>
     <button class="btn-restart" onclick="restart()">Start a New Session</button>
-    <a class="cta-link" id="cta" href="{calendly_url}" target="_blank">
+    <a class="cta-link" id="cta" href="{scheduler_url}" target="_blank">
       📅 Book a real session with {coach_name}
     </a>
   </div>
