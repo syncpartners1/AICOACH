@@ -1809,7 +1809,7 @@ def chat_page(request: Request) -> Response:
 <h2>Your account is {user.account_status.value}.</h2>
 <p>Please contact your coach to reactivate.</p></body></html>""")
     coach = coaching_config.coach_name
-    calendly = coaching_config.coach_calendly_url
+    scheduler_url = coaching_config.scheduler_url
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1955,9 +1955,9 @@ async function endSession() {{
     if (d.focus_goal) lines.push('Focus: ' + d.focus_goal);
     if (d.summary_for_coach) lines.push(d.summary_for_coach.slice(0, 300) + '…');
     addMsg('✅ Session saved! ' + lines.join(' · '), 'sys');
-    {"if ('" + calendly + "') {" if calendly else "if (false) {"}
+    {"if ('" + scheduler_url + "') {" if scheduler_url else "if (false) {"}
       setTimeout(() => {{
-        addMsg('📅 Book your next session: {calendly}', 'bot');
+        addMsg('📅 Book your next session: {scheduler_url}', 'bot');
       }}, 1500);
     }}
   }} catch(e) {{
@@ -2061,7 +2061,7 @@ def root() -> HTMLResponse:
 
     html = PRODUCTION_HTML.format(
         coach_name=coaching_config.coach_name,
-        calendly_url=coaching_config.coach_calendly_url,
+        scheduler_url=coaching_config.scheduler_url,
         telegram_button=telegram_button,
         google_button=google_button,
     )
@@ -2081,7 +2081,7 @@ def demo_page(request: Request) -> HTMLResponse:
         api_base="",
         demo_key=coaching_config.demo_key,
         coach_name=coaching_config.coach_name,
-        calendly_url=coaching_config.coach_calendly_url,
+        scheduler_url=coaching_config.scheduler_url,
     )
     return HTMLResponse(content=html)
 

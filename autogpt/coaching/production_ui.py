@@ -5,7 +5,7 @@ Template variables injected at request time:
   {coach_name}        — COACHING_COACH_NAME value
   {telegram_url}      — t.me/<TELEGRAM_BOT_USERNAME> or empty string
   {google_oauth_url}  — /auth/google/url?redirect_to=... or empty string
-  {calendly_url}      — COACHING_COACH_CALENDLY_URL value
+  {scheduler_url}     — SCHEDULER_URL value (booking page)
 """
 
 PRODUCTION_HTML = """<!DOCTYPE html>
@@ -104,7 +104,7 @@ footer a{{color:#6b7280;text-decoration:none}}
     <a href="/login" class="btn btn-google" style="font-size:14px">
       Already registered? <strong style="margin-left:4px">Sign In →</strong>
     </a>
-    <a href="{calendly_url}" target="_blank" rel="noopener" class="btn btn-calendly">
+    <a href="{scheduler_url}" target="_blank" rel="noopener" class="btn btn-calendly">
       📅&nbsp; Book a session with {coach_name}
     </a>
   </div>
