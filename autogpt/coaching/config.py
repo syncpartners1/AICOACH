@@ -56,6 +56,10 @@ class CoachingConfig(metaclass=Singleton):
         if _domain and not _domain.startswith("http"):
             _domain = f"https://{_domain}"
         self.public_url: str = _domain or os.getenv("PUBLIC_URL", "")
+        # Scheduler (calendar booking service)
+        self.scheduler_url: str = os.getenv("SCHEDULER_URL", "https://abn-sch.up.railway.app")
+        self.scheduler_api_key: str = os.getenv("SCHEDULER_API_KEY", "")
+        self.scheduler_timezone: str = os.getenv("SCHEDULER_TIMEZONE", "Asia/Jerusalem")
         # EmailJS (server-side REST API)
         self.emailjs_service_id: str = os.getenv("EMAILJS_SERVICE_ID", "service_a85ap2g")
         self.emailjs_template_invite: str = os.getenv("EMAILJS_TEMPLATE_INVITE", "CNAPP_Invite")
