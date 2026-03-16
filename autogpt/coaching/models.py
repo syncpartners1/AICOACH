@@ -309,6 +309,7 @@ class InviteRequest(BaseModel):
     phone: Optional[str] = None
     note: Optional[str] = None
     language: str = "en"
+    send_email: bool = False
 
 
 class Invite(BaseModel):

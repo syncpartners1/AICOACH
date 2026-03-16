@@ -1167,9 +1167,10 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
         public_url=coaching_config.public_url,
     )
 
-    # Send invite email if recipient email and EmailJS are configured
+    # Send invite email only when explicitly requested by the admin
     if (
-        req.email
+        req.send_email
+        and req.email
         and coaching_config.emailjs_service_id
         and coaching_config.emailjs_template_invite
     ):

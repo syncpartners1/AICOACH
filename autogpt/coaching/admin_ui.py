@@ -247,7 +247,12 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
           <input type="radio" name="language" value="he"> 🇮🇱 עברית
         </label>
       </div>
-      <button type="submit" class="btn">Generate Invite Link</button>
+      <div style="display:flex;gap:10px;margin-top:4px;">
+        <button type="button" class="btn" onclick="submitInvite(false)"
+                style="flex:1;">🔗 Generate Invite Link</button>
+        <button type="button" class="btn" onclick="submitInvite(true)"
+                style="flex:1;background:linear-gradient(135deg,#1a6b3a,#2d9e5a);">✉️ Send Invite Email</button>
+      </div>
     </form>
   </div>
 
@@ -310,11 +315,10 @@ document.getElementById('registerForm').addEventListener('submit', async functio
   }}
 }});
 
-// Allow form submission via fetch so the page doesn't navigate away
-document.getElementById('inviteForm').addEventListener('submit', async function(e) {{
-  e.preventDefault();
-  const fd = new FormData(this);
-  const body = {{}};
+async function submitInvite(sendEmail) {{
+  const form = document.getElementById('inviteForm');
+  const fd = new FormData(form);
+  const body = {{ send_email: sendEmail }};
   fd.forEach((v, k) => {{ if(v) body[k] = v; }});
   const res = await fetch('{invite_form_action}', {{
     method: 'POST',
@@ -324,13 +328,17 @@ document.getElementById('inviteForm').addEventListener('submit', async function(
   }});
   if (res.ok) {{
     const data = await res.json();
-    alert('Invite created!\\n\\nShare this link:\\n' + (data.register_url || data.token));
+    if (sendEmail) {{
+      alert('Invite email sent!\\n\\nRegistration link (also in email):\\n' + (data.register_url || data.token));
+    }} else {{
+      alert('Invite link created!\\n\\nShare this link:\\n' + (data.register_url || data.token));
+    }}
     location.reload();
   }} else {{
     const err = await res.json().catch(()=>({{}}));
-    alert('Error creating invite: ' + (err.detail || 'unknown error'));
+    alert('Error: ' + (err.detail || 'unknown error'));
   }}
-}});
+}}
 </script>
 </body>
 </html>"""
