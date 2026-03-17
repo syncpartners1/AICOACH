@@ -219,6 +219,7 @@ class SessionSummary(BaseModel):
     alerts: Alert
     summary_for_coach: str
     okr_changes: List[Dict[str, Any]] = []  # structured OKR mutations to apply
+    raw_conversation: Optional[List[Dict[str, str]]] = None  # full message history
 
 
 # ── History ───────────────────────────────────────────────────────────────────

@@ -190,8 +190,27 @@ def _set_user_cookie(response: Response, user_id: str) -> None:
 
 
 # ── In-memory active session store ───────────────────────────────────────────
+# Sessions are stored with a last-accessed timestamp so stale sessions can be
+# pruned. NOTE: sessions are in-memory only — a Railway redeploy clears them.
+# The web chat handles this gracefully by detecting the 404 and prompting restart.
+
+_SESSION_TTL_SECS = 3 * 60 * 60   # 3 hours of inactivity → expire
 
 _active_sessions: Dict[str, CoachingSession] = {}
+_session_last_access: Dict[str, float] = {}   # session_id → epoch time
+
+
+def _touch_session(session_id: str) -> None:
+    _session_last_access[session_id] = time.monotonic()
+
+
+def _prune_stale_sessions() -> None:
+    """Remove sessions inactive for longer than _SESSION_TTL_SECS."""
+    cutoff = time.monotonic() - _SESSION_TTL_SECS
+    stale = [sid for sid, ts in _session_last_access.items() if ts < cutoff]
+    for sid in stale:
+        _active_sessions.pop(sid, None)
+        _session_last_access.pop(sid, None)
 
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
@@ -1849,7 +1868,9 @@ def chat_page(request: Request) -> Response:
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI Coaching Session – ABN Consulting</title>
-<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
+<link rel="shortcut icon" href="/static/android-chrome-192x192.png">
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -1863,6 +1884,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .hdr-right a{{color:rgba(255,255,255,.7);font-size:12px;text-decoration:none;
               border:1px solid rgba(255,255,255,.25);padding:4px 10px;border-radius:7px}}
 .hdr-right a:hover{{color:#fff}}
+.lang-btn{{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);
+           padding:4px 10px;border-radius:7px;font-size:12px;cursor:pointer;font-weight:600}}
 #chat-area{{flex:1;display:flex;flex-direction:column;overflow:hidden}}
 #messages{{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}}
 .msg{{max-width:80%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;
@@ -1872,6 +1895,17 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
           border:1px solid #e5e7eb;border-bottom-left-radius:4px}}
 .msg-sys{{background:#fef3c7;color:#92400e;align-self:center;font-size:12px;
           border-radius:8px;padding:6px 14px}}
+/* Markdown inside bot bubbles */
+.msg-bot h1,.msg-bot h2,.msg-bot h3{{color:#1a2b4a;font-weight:700;margin:10px 0 4px}}
+.msg-bot h1{{font-size:16px}}.msg-bot h2{{font-size:15px}}.msg-bot h3{{font-size:14px}}
+.msg-bot p{{margin:4px 0;line-height:1.55}}
+.msg-bot ul,.msg-bot ol{{padding-left:20px;margin:4px 0}}
+.msg-bot li{{margin:2px 0;line-height:1.5}}
+.msg-bot hr{{border:none;border-top:1px solid #e5e7eb;margin:10px 0}}
+.msg-bot strong{{font-weight:700}}
+.msg-bot em{{font-style:italic}}
+.msg-bot code{{background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:12px}}
+.msg-bot a{{color:#2563eb;text-decoration:underline;word-break:break-all}}
 #input-row{{background:#fff;border-top:1px solid #e5e7eb;padding:12px 16px;
             display:flex;gap:8px;flex-shrink:0}}
 #msg-input{{flex:1;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:10px;
@@ -1900,15 +1934,16 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     <div class="hdr-sub">Welcome, {user.name}</div>
   </div>
   <div class="hdr-right">
-    <a href="/dashboard/{user.user_id}">Dashboard</a>
-    <a href="/user/logout">Sign out</a>
+    <button class="lang-btn" id="langBtn" onclick="toggleLang()">עב</button>
+    <a href="/dashboard/{user.user_id}" id="dashLink">Dashboard</a>
+    <a href="/user/logout" id="logoutLink">Sign out</a>
   </div>
 </div>
 
 <div id="start-screen">
-  <h2>Ready for your coaching session?</h2>
-  <p>Your AI coach will review your OKRs, log weekly progress, and help you stay on track.</p>
-  <button class="btn-start" onclick="startSession()">Start Session</button>
+  <h2 id="startTitle">Ready for your coaching session?</h2>
+  <p id="startDesc">Your AI coach will review your OKRs, log weekly progress, and help you stay on track.</p>
+  <button class="btn-start" id="startBtn" onclick="startSession()">Start Session</button>
 </div>
 
 <div id="chat-area">
@@ -1917,20 +1952,93 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     <textarea id="msg-input" rows="1" placeholder="Type your message…"
               onkeydown="handleKey(event)"></textarea>
     <button class="btn-send" id="sendBtn" onclick="sendMsg()">Send</button>
-    <button class="btn-end" onclick="endSession()">End</button>
+    <button class="btn-end" id="endBtn" onclick="endSession()">End</button>
   </div>
 </div>
 
 <script>
-let sid = null;
+let sid  = null;
+let lang = 'en';
 const msgs = document.getElementById('messages');
+
+const UI = {{
+  en: {{
+    startTitle:  'Ready for your coaching session?',
+    startDesc:   'Your AI coach will review your OKRs, log weekly progress, and help you stay on track.',
+    startBtn:    'Start Session',
+    placeholder: 'Type your message…',
+    sendBtn:     'Send',
+    endBtn:      'End',
+    dashLink:    'Dashboard',
+    logoutLink:  'Sign out',
+    langBtn:     'עב',
+    expired:     '⏱️ Your session expired.',
+    newSession:  'Start new session',
+  }},
+  he: {{
+    startTitle:  'מוכן לפגישת הקואצ׳ינג שלך?',
+    startDesc:   'המאמן הדיגיטלי שלך יסקור את ה-OKR, ירשום התקדמות שבועית ויעזור לך להישאר בכיוון.',
+    startBtn:    'התחל פגישה',
+    placeholder: 'הקלד את הודעתך…',
+    sendBtn:     'שלח',
+    endBtn:      'סיים',
+    dashLink:    'לוח בקרה',
+    logoutLink:  'התנתק',
+    langBtn:     'EN',
+    expired:     '⏱️ הפגישה פגה. ',
+    newSession:  'התחל פגישה חדשה',
+  }},
+}};
+
+function applyLang() {{
+  const t = UI[lang];
+  document.documentElement.dir = lang === 'he' ? 'rtl' : 'ltr';
+  document.getElementById('startTitle').textContent  = t.startTitle;
+  document.getElementById('startDesc').textContent   = t.startDesc;
+  document.getElementById('startBtn').textContent    = t.startBtn;
+  document.getElementById('msg-input').placeholder   = t.placeholder;
+  document.getElementById('sendBtn').textContent     = t.sendBtn;
+  document.getElementById('endBtn').textContent      = t.endBtn;
+  document.getElementById('dashLink').textContent    = t.dashLink;
+  document.getElementById('logoutLink').textContent  = t.logoutLink;
+  document.getElementById('langBtn').textContent     = t.langBtn;
+}}
+
+function toggleLang() {{
+  lang = lang === 'en' ? 'he' : 'en';
+  applyLang();
+}}
 
 function addMsg(text, who) {{
   const d = document.createElement('div');
   d.className = 'msg msg-' + who;
-  d.textContent = text;
+  if (who === 'bot' && window.marked) {{
+    d.innerHTML = marked.parse(text, {{ breaks: true, gfm: true }});
+  }} else {{
+    d.textContent = text;
+  }}
   msgs.appendChild(d);
   msgs.scrollTop = msgs.scrollHeight;
+}}
+
+function showExpired() {{
+  sid = null;
+  const t = UI[lang];
+  const d = document.createElement('div');
+  d.className = 'msg msg-sys';
+  d.innerHTML = t.expired + ' <button onclick="restartSession()" '
+    + 'style="background:#1a2b4a;color:#fff;border:none;padding:3px 10px;'
+    + 'border-radius:6px;cursor:pointer;font-size:12px;margin-left:6px">' + t.newSession + '</button>';
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+  document.getElementById('sendBtn').disabled = true;
+}}
+
+function restartSession() {{
+  msgs.innerHTML = '';
+  sid = null;
+  document.getElementById('chat-area').style.display = 'none';
+  document.getElementById('start-screen').style.display = 'flex';
 }}
 
 async function api(path, body) {{
@@ -1942,7 +2050,9 @@ async function api(path, body) {{
   }});
   if (!r.ok) {{
     const e = await r.json().catch(()=>({{}}));
-    throw new Error(e.detail || 'Request failed');
+    const err = new Error(e.detail || 'Request failed');
+    err.status = r.status;
+    throw err;
   }}
   return r.json();
 }}
@@ -1952,7 +2062,7 @@ async function startSession() {{
   document.getElementById('chat-area').style.display = 'flex';
   document.getElementById('chat-area').style.flexDirection = 'column';
   try {{
-    const d = await api('/user/session/start', {{}});
+    const d = await api('/user/session/start', {{ lang }});
     sid = d.session_id;
     addMsg(d.message, 'bot');
   }} catch(e) {{
@@ -1972,6 +2082,7 @@ async function sendMsg() {{
     const d = await api('/user/session/' + sid + '/message', {{message: text}});
     addMsg(d.reply, 'bot');
   }} catch(e) {{
+    if (e.status === 404) {{ showExpired(); return; }}
     addMsg('Error: ' + e.message, 'sys');
   }}
   document.getElementById('sendBtn').disabled = false;
@@ -2016,8 +2127,12 @@ document.getElementById('msg-input').addEventListener('input', function() {{
 </body></html>""")
 
 
+class UserSessionStartRequest(BaseModel):
+    lang: str = "en"   # 'en' or 'he'
+
+
 @app.post("/user/session/start", response_model=dict, summary="Start a coaching session (user cookie auth)")
-def user_session_start(request: Request) -> dict:
+def user_session_start(req: UserSessionStartRequest, request: Request) -> dict:
     user_id = _get_user_id_from_cookie(request)
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
@@ -2033,8 +2148,11 @@ def user_session_start(request: Request) -> dict:
         user_id=user_id,
         objectives=objectives,
         past_sessions=past_sessions,
+        lang=req.lang if req.lang in ("en", "he") else "en",
     )
     _active_sessions[session.session_id] = session
+    _touch_session(session.session_id)
+    _prune_stale_sessions()
     return {"session_id": session.session_id, "message": session.open()}
 
 
@@ -2045,7 +2163,11 @@ def user_session_message(session_id: str, req: MessageRequest, request: Request)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
     session = _active_sessions.get(session_id)
     if not session:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session expired or not found. Please start a new session.",
+        )
+    _touch_session(session_id)
     reply = session.chat(req.message)
     return {"session_id": session_id, "reply": reply}
 
@@ -2057,10 +2179,14 @@ def user_session_end(session_id: str, request: Request) -> SessionSummary:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
     session = _active_sessions.get(session_id)
     if not session:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session expired or not found. Please start a new session.",
+        )
     summary = session.extract_summary()
     save_session(summary)
     del _active_sessions[session_id]
+    _session_last_access.pop(session_id, None)
     return summary
 
 
