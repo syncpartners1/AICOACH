@@ -1,6 +1,7 @@
 """Supabase storage layer for the ABN Co-Navigator."""
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -417,7 +418,9 @@ def save_session(summary: SessionSummary) -> None:
         "alert_level": summary.alerts.level.value,
         "alert_reason": summary.alerts.reason,
         "summary_for_coach": summary.summary_for_coach,
-        "raw_conversation": None,
+        "raw_conversation": json.dumps(summary.raw_conversation, ensure_ascii=False)
+        if summary.raw_conversation
+        else None,
     }
     if summary.user_id:
         session_row["user_id"] = summary.user_id

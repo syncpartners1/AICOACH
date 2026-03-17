@@ -33,20 +33,30 @@ class CoachingSession:
         user_id: Optional[str] = None,
         objectives: Optional[List[Objective]] = None,
         past_sessions: Optional[List[PastSession]] = None,
+        lang: str = "en",
     ) -> None:
         self.session_id: str = str(uuid.uuid4())
         self.client_id: str = client_id
         self.client_name: str = client_name
         self.user_id: Optional[str] = user_id
+        self.lang: str = lang
         self.objectives: List[Objective] = objectives or []
         self.timestamp: datetime = datetime.utcnow()
         self.full_message_history: List[Message] = []
-        self._system_prompt: str = build_navigator_system_prompt(
+        base_prompt = build_navigator_system_prompt(
             coach_name=coaching_config.coach_name,
             calendly_url=coaching_config.coach_calendly_url,
             objectives=objectives,
             past_sessions=past_sessions,
         )
+        if lang == "he":
+            base_prompt += (
+                "\n\n---\n**LANGUAGE INSTRUCTION**: The user has selected Hebrew. "
+                "You MUST respond entirely in Hebrew (עברית) for all messages in this session, "
+                "including greetings, questions, and summaries. "
+                "Keep OKR/KR acronyms in English but explain them in Hebrew."
+            )
+        self._system_prompt: str = base_prompt
 
     def open(self) -> str:
         """Generate the opening Navigator message for this session."""
@@ -112,6 +122,7 @@ class CoachingSession:
             alerts=alert,
             summary_for_coach=summary_text,
             okr_changes=okr_changes,
+            raw_conversation=list(self.full_message_history),
         )
 
     # ── Parsers ────────────────────────────────────────────────────────────────
