@@ -155,12 +155,35 @@ def _format_summary(summary, lang: str = "en") -> str:
 
 def _handle_start(phone: str, sender_name: str, lang: str) -> str:
     from autogpt.coaching.session import CoachingSession
-    from autogpt.coaching.storage import get_past_sessions, get_user_objectives
+    from autogpt.coaching.storage import (
+        get_past_sessions, get_user_objectives,
+        get_user_by_phone, link_whatsapp, AccountStatus,
+    )
 
     if phone in _wa_sessions:
         return t(lang, "wa_already_session")
 
-    client_id = f"wa_{phone}"
+    # Look up the registered user by phone number
+    user = None
+    try:
+        user = get_user_by_phone(phone)
+    except Exception as exc:
+        logger.warning("Could not look up user for wa_phone=%s: %s", phone, exc)
+
+    # Only approved (ACTIVE) participants may use the coaching bot
+    if user is None:
+        return t(lang, "wa_not_registered")
+    if user.account_status != AccountStatus.ACTIVE:
+        return t(lang, "wa_account_pending")
+
+    # Bind WhatsApp phone to this account (no-op if already set)
+    try:
+        link_whatsapp(user.user_id, phone)
+    except Exception as exc:
+        logger.warning("link_whatsapp failed for user_id=%s: %s", user.user_id, exc)
+
+    client_id = user.user_id
+    display_name = user.name or sender_name
 
     objectives = []
     past_sessions = []
@@ -168,20 +191,21 @@ def _handle_start(phone: str, sender_name: str, lang: str) -> str:
         objectives = get_user_objectives(client_id)
         past_sessions = get_past_sessions(client_id, limit=3)
     except Exception as exc:
-        logger.warning("Could not load context for wa_phone=%s: %s", phone, exc)
+        logger.warning("Could not load context for user_id=%s: %s", client_id, exc)
 
     session = CoachingSession(
         client_id=client_id,
-        client_name=sender_name,
+        client_name=display_name,
         objectives=objectives,
         past_sessions=past_sessions,
+        lang=user.language or lang,
     )
     _wa_sessions[phone] = session
 
     try:
         return session.open()
     except Exception as exc:
-        logger.error("session.open failed for wa_phone=%s: %s", phone, exc)
+        logger.error("session.open failed for user_id=%s: %s", client_id, exc)
         del _wa_sessions[phone]
         return t(lang, "start_failed")
 

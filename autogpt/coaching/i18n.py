@@ -289,6 +289,14 @@ _S: dict[str, dict[str, str]] = {
             "You already have an active session. Keep chatting, "
             "or type *done* to end it and receive your summary."
         ),
+        "wa_not_registered": (
+            "👋 Hi! This coaching bot is for registered participants only.\n"
+            "Please contact your coach to join the programme."
+        ),
+        "wa_account_pending": (
+            "Your registration is pending coach approval. "
+            "You'll be notified as soon as your account is activated."
+        ),
         "wa_no_session_end": "No active session. Type *start* to begin a coaching session.",
         "wa_no_session_cancel": "No active session to cancel.",
         "wa_session_discarded": "Session discarded. Nothing was saved. Type *start* to begin again.",
@@ -638,6 +646,14 @@ _S: dict[str, dict[str, str]] = {
         "wa_already_session": (
             "יש לך פגישה פעילה. המשך לשוחח, "
             "או שלח *done* לסיום ולקבלת הסיכום."
+        ),
+        "wa_not_registered": (
+            "👋 שלום! הבוט הזה מיועד למשתתפים רשומים בלבד.\n"
+            "אנא צור קשר עם המאמן שלך כדי להצטרף לתוכנית."
+        ),
+        "wa_account_pending": (
+            "ההרשמה שלך ממתינה לאישור המאמן. "
+            "תקבל הודעה ברגע שהחשבון שלך יופעל."
         ),
         "wa_no_session_end": "אין פגישה פעילה. שלח *start* להתחיל פגישת אימון.",
         "wa_no_session_cancel": "אין פגישה פעילה לביטול.",

@@ -139,11 +139,20 @@ def google_auth(
         db.table("user_profiles").update(upd).eq("user_id", row["user_id"]).execute()
         row.update(upd)
         return _row_to_profile(row)
-    # 3. New user
-    if phone_number and db.table("user_profiles").select("user_id").eq(
-        "phone_number", phone_number
-    ).execute().data:
-        raise ValueError("Phone number already registered.")
+    # 3. Phone matches an existing account (e.g. registered via Telegram/WhatsApp) — merge
+    if phone_number:
+        by_phone = db.table("user_profiles").select("*").eq(
+            "phone_number", phone_number
+        ).execute()
+        if by_phone.data:
+            row = by_phone.data[0]
+            upd: dict = {"google_id": google_id}
+            if not row.get("email") and email:
+                upd["email"] = email
+            db.table("user_profiles").update(upd).eq("user_id", row["user_id"]).execute()
+            row.update(upd)
+            return _row_to_profile(row)
+    # 4. Truly new user
     uid = str(uuid.uuid4())
     row_data: dict = {
         "user_id": uid,
@@ -731,6 +740,18 @@ def link_telegram(user_id: str, telegram_user_id: int) -> None:
     db.table("user_profiles").update({
         "telegram_user_id": telegram_user_id,
     }).eq("user_id", user_id).execute()
+
+
+def link_whatsapp(user_id: str, phone: str) -> None:
+    """Associate a WhatsApp phone number with a registered user account.
+    The phone is stored as the canonical phone_number if not already set."""
+    db = _get_client()
+    row = db.table("user_profiles").select("phone_number").eq("user_id", user_id).execute()
+    upd: dict = {}
+    if row.data and not row.data[0].get("phone_number"):
+        upd["phone_number"] = phone
+    if upd:
+        db.table("user_profiles").update(upd).eq("user_id", user_id).execute()
 
 
 def get_user_by_telegram(telegram_user_id: int) -> Optional[UserProfile]:
