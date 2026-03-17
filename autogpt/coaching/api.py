@@ -115,6 +115,12 @@ _static_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "stati
 if _os.path.isdir(_static_dir):
     app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    """Redirect legacy /favicon.ico requests to the PNG app icon."""
+    return RedirectResponse(url="/static/android-chrome-192x192.png", status_code=301)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -1533,10 +1539,34 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
 
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
-    """User-facing login page — sign in with Google."""
-    # Pass local next URL encoded as redirect_to so callback detects web flow
+    """User-facing login page — sign in with Google (when configured)."""
     dest = next or "/dashboard"
     google_url = f"/auth/google/url?redirect_to={dest}"
+
+    google_configured = bool(
+        coaching_config.google_client_id and coaching_config.google_redirect_uri
+    )
+
+    if google_configured:
+        sign_in_block = (
+            f'<a class="google-btn" href="{google_url}">'
+            '<svg width="20" height="20" viewBox="0 0 18 18">'
+            '<path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/>'
+            '<path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/>'
+            '<path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/>'
+            '<path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/>'
+            '</svg>'
+            ' Continue with Google'
+            '</a>'
+        )
+    else:
+        sign_in_block = (
+            '<div class="notice">'
+            '⚙️ Web sign-in is not yet configured on this server.<br>'
+            'Please use the <strong>Telegram</strong> bot or contact your coach to access your account.'
+            '</div>'
+        )
+
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1555,13 +1585,18 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
 .google-btn{{width:100%;background:#fff;color:#374151;border:1.5px solid #d1d5db;
             padding:13px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;
             display:flex;align-items:center;justify-content:center;gap:10px;
-            text-decoration:none;transition:.15s}}
+            text-decoration:none;transition:.15s;box-sizing:border-box}}
 .google-btn:hover{{background:#f9fafb;border-color:#9ca3af}}
+.notice{{background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;
+         padding:16px;font-size:13px;color:#92400e;line-height:1.6;text-align:center}}
 .divider{{text-align:center;color:#9ca3af;font-size:12px;margin:20px 0;
           display:flex;align-items:center;gap:8px}}
 .divider::before,.divider::after{{content:'';flex:1;height:1px;background:#e5e7eb}}
 .register-link{{text-align:center;font-size:13px;color:#6b7280;margin-top:16px}}
 .register-link a{{color:#1a2b4a;font-weight:600;text-decoration:none}}
+.back-link{{display:block;text-align:center;margin-top:20px;font-size:13px;
+           color:#6b7280;text-decoration:none}}
+.back-link:hover{{color:#1a2b4a}}
 </style></head>
 <body>
 <div class="card">
@@ -1572,12 +1607,10 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
   </div>
   <h1>Welcome back</h1>
   <p>Sign in to access your coaching dashboard and track your progress.</p>
-  <a class="google-btn" href="{google_url}">
-    <svg width="20" height="20" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
-    Continue with Google
-  </a>
+  {sign_in_block}
   <div class="divider">New to the program?</div>
   <div class="register-link"><a href="/register">Register here</a></div>
+  <a href="/" class="back-link">← Back to home</a>
 </div>
 </body></html>""")
 

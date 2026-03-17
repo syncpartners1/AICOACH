@@ -53,6 +53,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .btn-google{{background:#fff;color:#1a2b4a;
   border:1.5px solid #d1d5db;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
 .btn-google:hover{{border-color:#1a2b4a;box-shadow:0 2px 8px rgba(0,0,0,.12)}}
+.btn-webchat{{background:#0f766e;color:#fff}}
+.btn-webchat:hover{{background:#0d6460}}
 .btn-calendly{{background:#1a2b4a;color:#fff}}
 .btn-calendly:hover{{background:#243d6b}}
 
@@ -97,6 +99,9 @@ footer a{{color:#6b7280;text-decoration:none}}
   <div class="cta-group">
     {google_button}
     {telegram_button}
+    <a href="/chat" class="btn btn-webchat">
+      💬&nbsp; Chat on Web
+    </a>
     <div class="divider"><div class="divider-line"></div><div class="divider-text">or</div><div class="divider-line"></div></div>
     <a href="/register" class="btn btn-calendly" style="background:#16a34a">
       ✏️&nbsp; Sign Up with Phone
