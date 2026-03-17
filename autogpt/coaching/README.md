@@ -273,4 +273,3 @@ See the [Tasks & Next Steps](#tasks--next-steps) section below for outstanding w
 | ⏳ Open | 🟡 Medium | Set `ADMIN_PASSWORD` in production `.env` (password login disabled until set) |
 | ⏳ Open | 🟢 Low | Unit tests for `render_dashboard` (both langs) and storage CRUD |
 | ⏳ Open | 🟢 Low | Push notifications / reminders: weekly plan reminder on Sunday evenings |
-| ⏳ Open | 🟢 Low | Add Arabic (`ar`) as a third language — RTL already supported |
