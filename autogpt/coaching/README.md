@@ -261,14 +261,15 @@ All endpoints require `X-API-Key` header or `?api_key=` query param (except `/he
 
 See the [Tasks & Next Steps](#tasks--next-steps) section below for outstanding work.
 
-| Priority | Task |
-|---|---|
-| 🔴 High | Run `ALTER TABLE` migration on production Supabase to add `language` column |
-| 🔴 High | Set `ADMIN_TELEGRAM_ID` and `ADMIN_USER_ID` in production `.env` |
-| 🟡 Medium | WhatsApp bot (`whatsapp_bot.py`) — apply same bilingual pattern using `i18n.t()` |
-| 🟡 Medium | `/register` web page — detect browser `Accept-Language` header for HE/EN |
-| 🟡 Medium | Admin dashboard (`admin_ui.py`) — add language selector for viewing user data |
-| 🟢 Low | Add Arabic (`ar`) as a third language — RTL already supported |
-| 🟢 Low | Unit tests for `i18n.detect_lang`, `render_dashboard` (both langs), storage CRUD |
-| 🟢 Low | CI pipeline: `pytest autogpt/coaching/tests/` on every PR |
-| 🟢 Low | Push notifications / reminders: weekly plan reminder on Sunday evenings |
+| Status | Priority | Task |
+|---|---|---|
+| ✅ Done | 🔴 High | Run `ALTER TABLE` migration on production Supabase to add `language` column |
+| ✅ Done | 🔴 High | Set `ADMIN_TELEGRAM_ID` and `ADMIN_USER_ID` in production `.env` |
+| ✅ Done | 🟡 Medium | WhatsApp bot (`whatsapp_bot.py`) — apply same bilingual pattern using `i18n.t()` |
+| ✅ Done | 🟡 Medium | `/register` web page — detect browser `Accept-Language` header for HE/EN |
+| ✅ Done | 🟡 Medium | Admin dashboard (`admin_ui.py`) — add language selector (`?lang=en\|he`) |
+| ✅ Done | 🟢 Low | CI pipeline: `pytest autogpt/coaching/tests/` on every PR |
+| ✅ Done | 🔴 High | Remove hardcoded secrets from `config.py` (`FACEBOOK_APP_SECRET`, `ADMIN_PASSWORD`, `EMAILJS_PRIVATE_KEY`) |
+| ⏳ Open | 🟡 Medium | Set `ADMIN_PASSWORD` in production `.env` (password login disabled until set) |
+| ⏳ Open | 🟢 Low | Unit tests for `render_dashboard` (both langs) and storage CRUD |
+| ⏳ Open | 🟢 Low | Push notifications / reminders: weekly plan reminder on Sunday evenings |

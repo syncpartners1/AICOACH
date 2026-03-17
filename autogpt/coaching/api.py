@@ -1027,9 +1027,11 @@ def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLRe
 
 @app.post("/admin/login", include_in_schema=False)
 def admin_login(username: str = Form(...), password: str = Form(...)) -> Response:
+    configured_password = coaching_config.admin_password
     valid = (
-        hmac.compare_digest(username, coaching_config.admin_username)
-        and hmac.compare_digest(password, coaching_config.admin_password)
+        bool(configured_password)
+        and hmac.compare_digest(username, coaching_config.admin_username)
+        and hmac.compare_digest(password, configured_password)
     )
     if not valid:
         return HTMLResponse(

@@ -37,7 +37,7 @@ class CoachingConfig(metaclass=Singleton):
         self.whatsapp_verify_token: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
         # Facebook / Meta Login
         self.facebook_app_id: str = os.getenv("FACEBOOK_APP_ID", "2003921883519698")
-        self.facebook_app_secret: str = os.getenv("FACEBOOK_APP_SECRET", "0e13ca8b594c869e62cb2939e6c4e888")
+        self.facebook_app_secret: str = os.getenv("FACEBOOK_APP_SECRET", "")
         # Facebook User ID allowed as admin (leave blank to allow any valid FB login)
         self.admin_facebook_id: str = os.getenv("ADMIN_FACEBOOK_ID", "")
         # Admin phone for WhatsApp OTP login (E.164 without +, e.g. 972501234567)
@@ -47,7 +47,7 @@ class CoachingConfig(metaclass=Singleton):
         self.admin_user_id: str = os.getenv("ADMIN_USER_ID", "")
         # Admin web dashboard credentials
         self.admin_username: str = os.getenv("ADMIN_USERNAME", "Adi")
-        self.admin_password: str = os.getenv("ADMIN_PASSWORD", "@D!9989010")
+        self.admin_password: str = os.getenv("ADMIN_PASSWORD", "")
         # Demo page — separate key so the main API key isn't exposed in the browser
         self.demo_key: str = os.getenv("COACHING_DEMO_KEY", "")
         # Public URL of this service (used to build the demo page's API_BASE).
@@ -65,7 +65,7 @@ class CoachingConfig(metaclass=Singleton):
         self.emailjs_template_invite: str = os.getenv("EMAILJS_TEMPLATE_INVITE", "CNAPP_Invite")
         self.emailjs_template_welcome: str = os.getenv("EMAILJS_TEMPLATE_WELCOME", "CNAPP_Welcome")
         self.emailjs_public_key: str = os.getenv("EMAILJS_PUBLIC_KEY", "nxguxr-WfLhUpXOhn")
-        self.emailjs_private_key: str = os.getenv("EMAILJS_PRIVATE_KEY", "tmZ2kU1dW4lSDxNzRe43T")
+        self.emailjs_private_key: str = os.getenv("EMAILJS_PRIVATE_KEY", "")
 
     def validate(self) -> None:
         """Raise if required env vars are missing."""
