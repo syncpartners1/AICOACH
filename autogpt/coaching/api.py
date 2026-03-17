@@ -121,6 +121,12 @@ def favicon() -> Response:
     """Redirect legacy /favicon.ico requests to the PNG app icon."""
     return RedirectResponse(url="/static/android-chrome-192x192.png", status_code=301)
 
+
+@app.get("/google33b061ce0c60767e.html", include_in_schema=False)
+def google_site_verification() -> Response:
+    return Response(content="google-site-verification: google33b061ce0c60767e.html",
+                    media_type="text/html")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
