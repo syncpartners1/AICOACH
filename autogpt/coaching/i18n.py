@@ -27,6 +27,8 @@ _S: dict[str, dict[str, str]] = {
             "You already have an active session. Keep chatting, "
             "or use /done to end it and receive your summary."
         ),
+        "welcome_title": "ABN Co-Navigator — AI Coaching",
+        "welcome_name": "Welcome, {name}! Ready to start your coaching session?",
         "welcome_back": "Welcome back, *{name}*! 👋\n\nStarting your weekly check-in session…",
         "welcome_new": (
             "👋 *Welcome to the ABN Consulting AI Co-Navigator!*\n\n"
@@ -385,6 +387,8 @@ _S: dict[str, dict[str, str]] = {
             "יש לך פגישה פעילה. המשך לשוחח, "
             "או שלח /done לסיום ולקבלת הסיכום."
         ),
+        "welcome_title": "ABN Co-Navigator — אימון AI",
+        "welcome_name": "ברוך הבא, {name}! מוכן להתחיל את פגישת האימון שלך?",
         "welcome_back": "ברוך שובך, *{name}*! 👋\n\nמתחיל את הפגישה השבועית שלך…",
         "welcome_new": (
             "👋 *ברוכים הבאים ל-ABN Consulting AI Co-Navigator!*\n\n"
