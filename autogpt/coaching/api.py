@@ -1359,6 +1359,49 @@ def admin_approve_user(user_id: str, request: Request,
     return {"user_id": user_id, "account_status": "active"}
 
 
+@app.post("/admin/analyze-transcripts", summary="Admin: analyse recent session transcripts and save coaching insights")
+def admin_analyze_transcripts(
+    limit: int = Query(default=50, ge=1, le=200),
+    _: None = Depends(verify_admin_or_api_key),
+) -> dict:
+    """Fetch the most recent *limit* session transcripts from Supabase, send them to
+    Claude for analysis, and persist the resulting coaching insights.
+
+    The insights are automatically injected into new coaching sessions via the system
+    prompt so the AI coach continuously improves from real participant interactions.
+    """
+    from autogpt.coaching.storage import get_recent_transcripts, save_learning
+    from autogpt.coaching.learning import analyze_transcripts
+
+    transcripts = get_recent_transcripts(limit=limit)
+    if not transcripts:
+        raise HTTPException(status_code=404, detail="No session transcripts found.")
+
+    insights = analyze_transcripts(transcripts)
+    if insights.get("error"):
+        raise HTTPException(status_code=502, detail=f"Analysis failed: {insights['error']}")
+
+    learning_id = save_learning(insights, sessions_analyzed=len(transcripts))
+    return {
+        "ok": True,
+        "learning_id": learning_id,
+        "sessions_analyzed": len(transcripts),
+        "insights": insights,
+    }
+
+
+@app.get("/admin/learning-insights", summary="Admin: return the latest coaching learning insights")
+def admin_learning_insights(
+    _: None = Depends(verify_admin_or_api_key),
+) -> dict:
+    """Return the most recently generated global coaching insights, or 404 if none exist."""
+    from autogpt.coaching.storage import get_latest_global_learning
+    insights = get_latest_global_learning()
+    if not insights:
+        raise HTTPException(status_code=404, detail="No coaching insights found. Run /admin/analyze-transcripts first.")
+    return {"ok": True, "insights": insights}
+
+
 @app.post(
     "/public/register/phone",
     response_model=AuthResponse,

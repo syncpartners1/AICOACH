@@ -1003,3 +1003,51 @@ def get_client_statuses() -> List[ClientStatus]:
             )
         )
     return statuses
+
+
+# ── Coaching Learnings ────────────────────────────────────────────────────────
+
+def get_recent_transcripts(limit: int = 50) -> List[List[dict]]:
+    """Return the raw_conversation lists from the most recent *limit* sessions."""
+    db = _get_client()
+    rows = (
+        db.table("coaching_sessions")
+        .select("raw_conversation")
+        .order("timestamp", desc=True)
+        .limit(limit)
+        .execute()
+    ).data or []
+    result = []
+    for row in rows:
+        convo = row.get("raw_conversation")
+        if isinstance(convo, list) and convo:
+            result.append(convo)
+    return result
+
+
+def save_learning(insights: dict, sessions_analyzed: int, scope: str = "global") -> str:
+    """Persist a coaching_learnings row and return the new learning_id."""
+    db = _get_client()
+    row = {
+        "sessions_analyzed": sessions_analyzed,
+        "scope": scope,
+        "insights": insights,
+    }
+    resp = db.table("coaching_learnings").insert(row).execute()
+    return (resp.data or [{}])[0].get("learning_id", "")
+
+
+def get_latest_global_learning() -> Optional[dict]:
+    """Return the most recent global coaching_learnings insights dict, or None."""
+    db = _get_client()
+    rows = (
+        db.table("coaching_learnings")
+        .select("insights")
+        .eq("scope", "global")
+        .order("generated_at", desc=True)
+        .limit(1)
+        .execute()
+    ).data or []
+    if rows:
+        return rows[0].get("insights")
+    return None

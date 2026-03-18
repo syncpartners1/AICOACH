@@ -1,275 +1,227 @@
-# AutoGPT: Build, Deploy, and Run AI Agents
+# ABN Co-Navigator — AI Coaching Platform
 
-[![Discord Follow](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2Fautogpt%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=total%20members&logo=discord&logoColor=white&color=7289da)](https://discord.gg/autogpt) &ensp;
-[![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
-
-<!-- Keep these links. Translations will automatically update with the README. -->
-[Deutsch](https://zdoc.app/de/Significant-Gravitas/AutoGPT) | 
-[Español](https://zdoc.app/es/Significant-Gravitas/AutoGPT) | 
-[français](https://zdoc.app/fr/Significant-Gravitas/AutoGPT) | 
-[日本語](https://zdoc.app/ja/Significant-Gravitas/AutoGPT) | 
-[한국어](https://zdoc.app/ko/Significant-Gravitas/AutoGPT) | 
-[Português](https://zdoc.app/pt/Significant-Gravitas/AutoGPT) | 
-[Русский](https://zdoc.app/ru/Significant-Gravitas/AutoGPT) | 
-[中文](https://zdoc.app/zh/Significant-Gravitas/AutoGPT)
-
-**AutoGPT** is a powerful platform that allows you to create, deploy, and manage continuous AI agents that automate complex workflows. 
-
-## Hosting Options 
-   - Download to self-host (Free!)
-   - [Join the Waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta (Closed Beta - Public release Coming Soon!)
-
-## How to Self-Host the AutoGPT Platform
-> [!NOTE]
-> Setting up and hosting the AutoGPT Platform yourself is a technical process. 
-> If you'd rather something that just works, we recommend [joining the waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta.
-
-### System Requirements
-
-Before proceeding with the installation, ensure your system meets the following requirements:
-
-#### Hardware Requirements
-- CPU: 4+ cores recommended
-- RAM: Minimum 8GB, 16GB recommended
-- Storage: At least 10GB of free space
-
-#### Software Requirements
-- Operating Systems:
-  - Linux (Ubuntu 20.04 or newer recommended)
-  - macOS (10.15 or newer)
-  - Windows 10/11 with WSL2
-- Required Software (with minimum versions):
-  - Docker Engine (20.10.0 or newer)
-  - Docker Compose (2.0.0 or newer)
-  - Git (2.30 or newer)
-  - Node.js (16.x or newer)
-  - npm (8.x or newer)
-  - VSCode (1.60 or newer) or any modern code editor
-
-#### Network Requirements
-- Stable internet connection
-- Access to required ports (will be configured in Docker)
-- Ability to make outbound HTTPS connections
-
-### Updated Setup Instructions:
-We've moved to a fully maintained and regularly updated documentation site.
-
-👉 [Follow the official self-hosting guide here](https://agpt.co/docs/platform/getting-started/getting-started)
-
-
-This tutorial assumes you have Docker, VSCode, git and npm installed.
+An OKR-driven, bilingual AI coaching assistant that delivers structured coaching
+sessions via **Telegram**, **WhatsApp**, and a personalised **web portal**, backed
+by a **FastAPI** service connected to **Supabase**.
 
 ---
 
-#### ⚡ Quick Setup with One-Line Script (Recommended for Local Hosting)
-
-Skip the manual steps and get started in minutes using our automatic setup script.
-
-For macOS/Linux:
-```
-curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
-```
-
-For Windows (PowerShell):
-```
-powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
-```
-
-This will install dependencies, configure Docker, and launch your local instance — all in one go.
-
-### 🧱 AutoGPT Frontend
-
-The AutoGPT frontend is where users interact with our powerful AI automation platform. It offers multiple ways to engage with and leverage our AI agents. This is the interface where you'll bring your AI automation ideas to life:
-
-   **Agent Builder:** For those who want to customize, our intuitive, low-code interface allows you to design and configure your own AI agents. 
-   
-   **Workflow Management:** Build, modify, and optimize your automation workflows with ease. You build your agent by connecting blocks, where each block     performs a single action.
-   
-   **Deployment Controls:** Manage the lifecycle of your agents, from testing to production.
-   
-   **Ready-to-Use Agents:** Don't want to build? Simply select from our library of pre-configured agents and put them to work immediately.
-   
-   **Agent Interaction:** Whether you've built your own or are using pre-configured agents, easily run and interact with them through our user-friendly      interface.
-
-   **Monitoring and Analytics:** Keep track of your agents' performance and gain insights to continually improve your automation processes.
-
-[Read this guide](https://docs.agpt.co/platform/new_blocks/) to learn how to build your own custom blocks.
-
-### 💽 AutoGPT Server
-
-The AutoGPT Server is the powerhouse of our platform This is where your agents run. Once deployed, agents can be triggered by external sources and can operate continuously. It contains all the essential components that make AutoGPT run smoothly.
-
-   **Source Code:** The core logic that drives our agents and automation processes.
-   
-   **Infrastructure:** Robust systems that ensure reliable and scalable performance.
-   
-   **Marketplace:** A comprehensive marketplace where you can find and deploy a wide range of pre-built agents.
-
-### 🐙 Example Agents
-
-Here are two examples of what you can do with AutoGPT:
-
-1. **Generate Viral Videos from Trending Topics**
-   - This agent reads topics on Reddit.
-   - It identifies trending topics.
-   - It then automatically creates a short-form video based on the content. 
-
-2. **Identify Top Quotes from Videos for Social Media**
-   - This agent subscribes to your YouTube channel.
-   - When you post a new video, it transcribes it.
-   - It uses AI to identify the most impactful quotes to generate a summary.
-   - Then, it writes a post to automatically publish to your social media. 
-
-These examples show just a glimpse of what you can achieve with AutoGPT! You can create customized workflows to build agents for any use case.
-
----
-
-## 🧭 ABN Co-Navigator — AI Coaching Module
-
-> An OKR-driven, bilingual coaching assistant built on the AutoGPT platform.
-> Delivers structured coaching sessions via **Telegram**, a personalised
-> **web dashboard**, and a **FastAPI** back-end connected to **Supabase**.
-
-### What it does
+## What it does
 
 | Feature | Details |
 |---|---|
-| **AI coaching sessions** | GPT-powered weekly check-ins anchored to each user's OKRs |
-| **Guided weekly plan** | `/plan` walks through activities, progress, insights, gaps, and corrective actions per Key Result |
-| **Personal dashboard** | Server-rendered at `/dashboard/{user_id}` — progress bars, daily highlights, session history |
-| **Bilingual (EN / HE)** | Full English 🇬🇧 and Hebrew 🇮🇱 support in the bot and dashboard; RTL layout for Hebrew |
-| **OKR lifecycle** | Create, edit, hold, and archive Objectives & Key Results; AI can mutate them mid-session |
-| **Admin tools** | `/users`, `/report`, `/invite`, `/broadcast` — admin-only Telegram commands |
-| **Account lifecycle** | Users self-suspend (`/suspend`) and reactivate (`/resume`); coach can archive |
+| **AI coaching sessions** | Claude-powered weekly check-ins anchored to each participant's Objectives & Key Results |
+| **OKR management** | Create, track, and evolve Objectives & Key Results; AI can mutate them mid-session |
+| **Weekly planning** | `/plan` walks through activities, progress, insights, gaps, and corrective actions per KR |
+| **Daily highlights** | Quick daily win logging; visible in the personal dashboard |
+| **Progress alerts** | GREEN / YELLOW / RED signal per session based on KR averages and obstacle count |
+| **Personal dashboard** | Server-rendered at `/dashboard/{user_id}` — progress bars, highlights, session history |
+| **Meeting booking** | In-bot Google Calendar booking; intro (30 min) and coaching (60 min) meeting types |
+| **Admin dashboard** | Coach view of all participants: alerts, avg KR %, full per-user reports |
+| **Bilingual (EN / HE)** | Full English and Hebrew support; RTL layout for Hebrew |
+| **Multi-channel** | Telegram Bot, WhatsApp Bot, Web Chat, Google OAuth |
 
-### Language support
+---
 
-`autogpt/coaching/i18n.py` manages all user-facing strings:
-- **Auto-detects** Hebrew from incoming message text (Unicode block `\u0590–\u05FF`).
-- Language is stored per-user in `user_profiles.language` (`'en'` or `'he'`).
-- Users switch explicitly with `/lang en` or `/lang he`.
-- Hebrew dashboard renders with `dir="rtl"`, right-aligned text, and Noto Sans Hebrew font.
+## Access Channels
 
-### Quick start
+| Channel | How to use |
+|---|---|
+| **Telegram Bot** | Full session, weekly plan, daily highlight, booking, direct message to coach |
+| **WhatsApp Bot** | Session start/end, free-form coaching chat |
+| **Web Chat** | Authenticated session at `/chat` with markdown rendering |
+| **Personal Dashboard** | Progress overview at `/dashboard/{user_id}` |
+| **Google OAuth** | Account creation / login via `GET /auth/google/url` |
+
+---
+
+## Participant Journey
+
+1. Receive an invite email from the coach with a token-secured registration link
+2. Register (phone + name required) — account is created in PENDING status
+3. Coach approves from the admin dashboard — welcome email sent, account activated
+4. Start first session on Telegram / WhatsApp / Web — AI guides OKR setup
+5. **Weekly cycle:** open session → review OKRs → log progress → discuss obstacles → `/done`
+6. Use `/plan` to log weekly activities per Key Result; use `/highlight` for daily wins
+7. Book 1:1 meetings with the coach via `/book`; view and cancel via `/mybookings`
+
+---
+
+## Telegram Bot Commands
+
+```
+start         - Register or begin a new AI coaching session
+link          - Link your Telegram to a registered account by phone number
+plan          - Enter this week's activities and progress for each Key Result
+highlight     - Record today's key win or highlight
+myplan        - View your current week's plan summary
+book          - Book a 1-on-1 meeting with your coach
+mybookings    - View your upcoming bookings
+cancelmeeting - Cancel a scheduled booking
+message       - Send a message directly to your coach
+done          - End the current session and receive your summary
+suspend       - Pause your coaching until you are ready to resume
+resume        - Reactivate your coaching account
+lang          - Switch language: /lang en or /lang he
+cancel        - Cancel the current operation
+help          - Show all available commands
+```
+
+Admin-only (not visible to participants):
+
+```
+users         - List all programme members with progress metrics
+report        - Full progress report: /report <user_id>
+invite        - Create and send an invitation: /invite [name] [phone/email]
+broadcast     - Send a message to all active participants
+```
+
+---
+
+## Quick Start (Development)
+
+**Prerequisites:** Python 3.11+, a Supabase project, an Anthropic API key.
 
 ```bash
-# Fill in .env, run supabase_schema.sql once, then:
+# 1. Clone and install
+pip install -r requirements.txt
+
+# 2. Copy and fill in environment variables
+cp .env.example .env   # see Environment Variables section below
+
+# 3. Run the schema once against your Supabase project
+# Open autogpt/coaching/supabase_schema.sql in the Supabase SQL editor and run it.
+
+# 4. Start the API server
 uvicorn autogpt.coaching.api:app --reload --port 8000
+
+# 5. Run tests
+python -m pytest tests/ -v
 ```
 
-📖 [Full module documentation →](autogpt/coaching/README.md)
+---
+
+## Environment Variables
+
+### Required
+
+| Variable | Description |
+|---|---|
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase service-role key |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
+| `ADMIN_TELEGRAM_ID` | Telegram user ID of the coach / admin |
+
+### Coaching
+
+| Variable | Default | Description |
+|---|---|---|
+| `COACHING_COACH_NAME` | `Adi Ben Nesher` | Coach's display name in AI prompts |
+| `COACHING_API_KEY` | _(none)_ | API key required for admin HTTP endpoints |
+| `COACHING_LLM_MODEL` | `claude-haiku-4-5-20251001` | Claude model ID to use |
+| `COACHING_LLM_TEMPERATURE` | `0.7` | LLM temperature |
+| `COACHING_ALERT_RED_THRESHOLD` | `25` | KR % below which session alert is RED |
+| `COACHING_ALERT_YELLOW_THRESHOLD` | `40` | KR % below which session alert is YELLOW |
+| `COACHING_DEMO_KEY` | _(none)_ | Optional key for unauthenticated demo access |
+
+### Google OAuth
+
+| Variable | Description |
+|---|---|
+| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 client secret |
+| `GOOGLE_REDIRECT_URI` | OAuth callback URI (e.g. `https://yourdomain.com/auth/google/callback`) |
+
+### Meeting Scheduler
+
+| Variable | Default | Description |
+|---|---|---|
+| `SCHEDULER_URL` | `https://abn-sch.up.railway.app` | Base URL of the scheduler service |
+| `SCHEDULER_API_KEY` | _(none)_ | API key for the scheduler service |
+| `SCHEDULER_TIMEZONE` | `Asia/Jerusalem` | Timezone for slot display |
+
+### WhatsApp
+
+| Variable | Description |
+|---|---|
+| `WHATSAPP_ACCESS_TOKEN` | Meta WhatsApp Cloud API access token |
+| `WHATSAPP_APP_SECRET` | App secret for webhook signature verification |
+| `WHATSAPP_VERIFY_TOKEN` | Webhook verify token |
+
+### Email (EmailJS)
+
+| Variable | Default | Description |
+|---|---|---|
+| `EMAILJS_SERVICE_ID` | `service_a85ap2g` | EmailJS service ID |
+| `EMAILJS_TEMPLATE_INVITE` | `CNAPP_Invite` | Template ID for invite emails |
+| `EMAILJS_TEMPLATE_WELCOME` | `CNAPP_Welcome` | Template ID for welcome emails |
+| `EMAILJS_PUBLIC_KEY` | _(set in config)_ | EmailJS public key |
+| `EMAILJS_PRIVATE_KEY` | _(none)_ | EmailJS private key (server-side sending) |
+
+### Deployment
+
+| Variable | Description |
+|---|---|
+| `PUBLIC_URL` | Public base URL of the service (overridden automatically on Railway via `RAILWAY_PUBLIC_DOMAIN`) |
+| `ADMIN_PASSWORD` | Password for the admin dashboard |
+| `ADMIN_USER_ID` | Supabase user ID of the admin account |
 
 ---
 
-### **License Overview:**
+## Key API Endpoints
 
-🛡️ **Polyform Shield License:**
-All code and content within the `autogpt_platform` folder is licensed under the Polyform Shield License. This new project is our in-developlemt platform for building, deploying and managing agents.</br>_[Read more about this effort](https://agpt.co/blog/introducing-the-autogpt-platform)_
-
-🦉 **MIT License:**
-All other portions of the AutoGPT repository (i.e., everything outside the `autogpt_platform` folder) are licensed under the MIT License. This includes the original stand-alone AutoGPT Agent, along with projects such as [Forge](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge), [agbenchmark](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark) and the [AutoGPT Classic GUI](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/frontend).</br>We also publish additional work under the MIT Licence in other repositories, such as [GravitasML](https://github.com/Significant-Gravitas/gravitasml) which is developed for and used in the AutoGPT Platform. See also our MIT Licenced [Code Ability](https://github.com/Significant-Gravitas/AutoGPT-Code-Ability) project.
-
----
-### Mission
-Our mission is to provide the tools, so that you can focus on what matters:
-
-- 🏗️ **Building** - Lay the foundation for something amazing.
-- 🧪 **Testing** - Fine-tune your agent to perfection.
-- 🤝 **Delegating** - Let AI work for you, and have your ideas come to life.
-
-Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI innovation.
-
-**📖 [Documentation](https://docs.agpt.co)**
-&ensp;|&ensp;
-**🚀 [Contributing](CONTRIBUTING.md)**
-
----
-## 🤖 AutoGPT Classic
-> Below is information about the classic version of AutoGPT.
-
-**🛠️ [Build your own Agent - Quickstart](classic/FORGE-QUICKSTART.md)**
-
-### 🏗️ Forge
-
-**Forge your own agent!** &ndash; Forge is a ready-to-go toolkit to build your own agent application. It handles most of the boilerplate code, letting you channel all your creativity into the things that set *your* agent apart. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec). Components from [`forge`](/classic/forge/) can also be used individually to speed up development and reduce boilerplate in your agent project.
-
-🚀 [**Getting Started with Forge**](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/forge/tutorials/001_getting_started.md) &ndash;
-This guide will walk you through the process of creating your own agent and using the benchmark and user interface.
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge) about Forge
-
-### 🎯 Benchmark
-
-**Measure your agent's performance!** The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
-
-<!-- TODO: insert visual demonstrating the benchmark -->
-
-📦 [`agbenchmark`](https://pypi.org/project/agbenchmark/) on Pypi
-&ensp;|&ensp;
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark) about the Benchmark
-
-### 💻 UI
-
-**Makes agents easy to use!** The `frontend` gives you a user-friendly interface to control and monitor your agents. It connects to agents through the [agent protocol](#-agent-protocol), ensuring compatibility with many agents from both inside and outside of our ecosystem.
-
-<!-- TODO: insert screenshot of front end -->
-
-The frontend works out-of-the-box with all agents in the repo. Just use the [CLI] to run your agent of choice!
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/frontend) about the Frontend
-
-### ⌨️ CLI
-
-[CLI]: #-cli
-
-To make it as easy as possible to use all of the tools offered by the repository, a CLI is included at the root of the repo:
-
-```shell
-$ ./run
-Usage: cli.py [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  agent      Commands to create, start and stop agents
-  benchmark  Commands to start the benchmark and list tests and categories
-  setup      Installs dependencies needed for your system.
-```
-
-Just clone the repo, install dependencies with `./run setup`, and you should be good to go!
-
-## 🤔 Questions? Problems? Suggestions?
-
-### Get help - [Discord 💬](https://discord.gg/autogpt)
-
-[![Join us on Discord](https://invidget.switchblade.xyz/autogpt)](https://discord.gg/autogpt)
-
-To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn't created an issue for the same topic.
-
-## 🤝 Sister projects
-
-### 🔄 Agent Protocol
-
-To maintain a uniform standard and ensure seamless compatibility with many current and future applications, AutoGPT employs the [agent protocol](https://agentprotocol.ai/) standard by the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/` | Health check |
+| `POST` | `/auth/register` | Email + password registration |
+| `GET` | `/auth/google/url` | Start Google OAuth flow |
+| `GET` | `/dashboard/{user_id}` | Personal progress dashboard |
+| `GET` | `/chat` | Web coaching chat UI |
+| `POST` | `/user/session/start` | Start a web coaching session |
+| `POST` | `/user/session/{id}/message` | Send a message in a web session |
+| `POST` | `/user/session/{id}/end` | End a web session |
+| `GET` | `/admin` | Admin dashboard (requires `?api_key=`) |
+| `POST` | `/admin/invites` | Create a new invitation |
+| `POST` | `/telegram/webhook` | Telegram webhook receiver |
+| `POST` | `/whatsapp/webhook` | WhatsApp webhook receiver |
 
 ---
 
-## Stars stats
+## Architecture
 
-<p align="center">
-<a href="https://star-history.com/#Significant-Gravitas/AutoGPT">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Significant-Gravitas/AutoGPT&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Significant-Gravitas/AutoGPT&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Significant-Gravitas/AutoGPT&type=Date" />
-  </picture>
-</a>
-</p>
+| Component | Technology |
+|---|---|
+| API server | FastAPI (Python 3.11) |
+| AI | Anthropic Claude (`claude-sonnet-4-6`) |
+| Database | Supabase (PostgreSQL), Row Level Security |
+| Telegram | python-telegram-bot (async, webhook mode) |
+| WhatsApp | Meta WhatsApp Cloud API |
+| Auth | Email+password, Google OAuth 2.0, phone-only |
+| Email | EmailJS |
+| Scheduler | Node.js/Express + Google Apps Script + Google Calendar |
+| Hosting | Railway |
 
+---
 
-## ⚡ Contributors
+## Deployment (Railway)
 
-<a href="https://github.com/Significant-Gravitas/AutoGPT/graphs/contributors" alt="View Contributors">
-  <img src="https://contrib.rocks/image?repo=Significant-Gravitas/AutoGPT&max=1000&columns=10" alt="Contributors" />
-</a>
+1. Create a new Railway project and connect this repository
+2. Add all required environment variables in the Railway dashboard
+3. Railway auto-detects the `Procfile` or `uvicorn` start command
+4. Set the Telegram webhook: `POST https://api.telegram.org/bot{TOKEN}/setWebhook?url={PUBLIC_URL}/telegram/webhook`
+5. Set the WhatsApp webhook URL in Meta's developer console to `{PUBLIC_URL}/whatsapp/webhook`
+
+---
+
+## Documentation
+
+- Full command list (BotFather format): [`docs/telegram_commands.txt`](docs/telegram_commands.txt)
+- Project summary & marketing brief: [`docs/project_summary.md`](docs/project_summary.md)
+- Database schema: [`autogpt/coaching/supabase_schema.sql`](autogpt/coaching/supabase_schema.sql)
+
+---
+
+## License
+
+Proprietary — ABN Consulting. All rights reserved.

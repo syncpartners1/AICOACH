@@ -264,3 +264,23 @@ ALTER TABLE user_profiles
 ALTER TABLE user_profiles
   ADD CONSTRAINT user_profiles_account_status_check
   CHECK (account_status IN ('active','pending','suspended','archived'));
+
+-- M004: coaching_learnings — stores AI-generated insights extracted from session transcripts.
+--       Used to inject coaching patterns into new sessions for continuous UX improvement.
+CREATE TABLE IF NOT EXISTS coaching_learnings (
+    learning_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    generated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sessions_analyzed  INTEGER NOT NULL DEFAULT 0,
+    scope              TEXT NOT NULL DEFAULT 'global',  -- 'global' or a user_id for per-user insights
+    insights           JSONB NOT NULL DEFAULT '{}',
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_coaching_learnings_scope_generated
+    ON coaching_learnings (scope, generated_at DESC);
+
+ALTER TABLE coaching_learnings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "service_role_all_coaching_learnings"
+    ON coaching_learnings FOR ALL
+    USING (auth.role() = 'service_role');

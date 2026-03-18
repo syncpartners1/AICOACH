@@ -56,6 +56,33 @@ class CoachingSession:
                 "including greetings, questions, and summaries. "
                 "Keep OKR/KR acronyms in English but explain them in Hebrew."
             )
+        # Inject latest coaching insights to continuously improve session quality.
+        try:
+            from autogpt.coaching.storage import get_latest_global_learning
+            learning = get_latest_global_learning()
+            if learning and isinstance(learning, dict) and not learning.get("error"):
+                insights_block = "\n\n---\n**COACHING INSIGHTS FROM PAST SESSIONS**\n"
+                if learning.get("recurring_obstacles"):
+                    insights_block += (
+                        "Recurring obstacles participants face: "
+                        + "; ".join(str(x) for x in learning["recurring_obstacles"][:5])
+                        + ".\n"
+                    )
+                if learning.get("successful_patterns"):
+                    insights_block += (
+                        "Patterns that work well: "
+                        + "; ".join(str(x) for x in learning["successful_patterns"][:5])
+                        + ".\n"
+                    )
+                if learning.get("guidance_improvements"):
+                    insights_block += (
+                        "Suggested guidance improvements: "
+                        + "; ".join(str(x) for x in learning["guidance_improvements"][:5])
+                        + ".\n"
+                    )
+                base_prompt += insights_block
+        except Exception:
+            pass  # Non-fatal — never block session start
         self._system_prompt: str = base_prompt
 
     def open(self) -> str:
