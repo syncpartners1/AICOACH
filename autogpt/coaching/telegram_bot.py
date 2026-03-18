@@ -1006,11 +1006,12 @@ def _scheduler_ok() -> bool:
 
 
 def _slot_label(slot: dict) -> str:
-    """Return a human-readable HH:MM label for a slot dict."""
+    """Return a human-readable time label for a slot dict."""
+    if slot.get("label"):
+        return slot["label"]
     start = slot.get("startISO") or slot.get("start") or ""
     if "T" in start:
-        time_part = start.split("T")[1][:5]
-        return time_part
+        return start.split("T")[1][:5]
     return start
 
 

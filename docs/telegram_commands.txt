@@ -1,0 +1,15 @@
+start - Register or begin a new AI coaching session
+link - Link your Telegram to a registered account by phone number
+plan - Enter this week's activities and progress for each Key Result
+highlight - Record today's key win or highlight
+myplan - View your current week's plan summary
+book - Book a 1-on-1 meeting with your coach
+mybookings - View your upcoming bookings
+cancelmeeting - Cancel a scheduled booking
+message - Send a message directly to your coach
+done - End the current coaching session and receive your summary
+suspend - Pause your coaching until you are ready to resume
+resume - Reactivate your coaching account
+lang - Switch language: /lang en or /lang he
+cancel - Cancel the current operation
+help - Show all available commands

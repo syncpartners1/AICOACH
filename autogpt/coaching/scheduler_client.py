@@ -35,7 +35,9 @@ def get_slots(
             timeout=_TIMEOUT,
         )
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        # API responds with {"ok": true, "slots": [...]}; extract the list.
+        return data.get("slots", []) if isinstance(data, dict) else data
     except Exception as exc:
         logger.error("get_slots error: %s", exc)
         return []
