@@ -74,21 +74,54 @@ logger = logging.getLogger(__name__)
     CANCEL_SELECT,
 ) = range(19)
 
-# Active AI coaching sessions: telegram_user_id → CoachingSession
+# Active AI coaching sessions: telegram_user_id → CoachingSession (in-memory cache)
 _sessions: Dict[int, object] = {}
 
 # Reply forwarding map: forwarded_msg_id → original_telegram_user_id
 _forward_map: Dict[int, int] = {}
 
 
+def _get_or_restore_session(tg_id: int):
+    """Return the in-memory session if present, otherwise attempt to restore from DB."""
+    if tg_id in _sessions:
+        return _sessions[tg_id]
+    try:
+        from autogpt.coaching.session import CoachingSession
+        from autogpt.coaching.storage import load_telegram_session
+        row = load_telegram_session(tg_id)
+        if row:
+            session = CoachingSession.restore(row)
+            _sessions[tg_id] = session
+            logger.info("Restored telegram session for user %s from DB", tg_id)
+            return session
+    except Exception:
+        logger.exception("Failed to restore telegram session for user %s", tg_id)
+    return None
+
+
+def _persist_session(tg_id: int) -> None:
+    """Save the current in-memory session to DB (best-effort, non-blocking errors)."""
+    session = _sessions.get(tg_id)
+    if not session:
+        return
+    try:
+        from autogpt.coaching.storage import save_telegram_session
+        save_telegram_session(tg_id, session)
+    except Exception:
+        logger.exception("Failed to persist telegram session for user %s", tg_id)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _get_linked_user(telegram_user_id: int):
     """Return UserProfile if this Telegram user is linked, else None."""
+    from autogpt.coaching.storage import get_user_by_telegram
     try:
-        from autogpt.coaching.storage import get_user_by_telegram
         return get_user_by_telegram(telegram_user_id)
     except Exception:
+        # Log real errors (e.g. DB connection failure) instead of silently
+        # returning None, which would mask infrastructure problems.
+        logger.exception("Failed to look up telegram user %s", telegram_user_id)
         return None
 
 
@@ -156,7 +189,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
 
-    if tg_id in _sessions:
+    if _get_or_restore_session(tg_id) is not None:
         await update.message.reply_text(t(lang, "already_session"))
         return CHATTING
 
@@ -217,6 +250,7 @@ async def _start_coaching_session(
     )
     _sessions[tg_id] = session
     opening = session.open()
+    _persist_session(tg_id)  # save immediately so restart doesn't lose the new session
     await update.message.reply_text(opening)
     await update.message.reply_text(t(lang, "session_tip"), parse_mode="Markdown")
 
@@ -339,7 +373,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
-    session = _sessions.get(tg_id)
+    session = _get_or_restore_session(tg_id)
     if not session:
         await update.message.reply_text(t(lang, "no_active_session"))
         return ConversationHandler.END
@@ -347,6 +381,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
         reply = session.chat(update.message.text)
+        _persist_session(tg_id)  # keep DB in sync after each turn
         await update.message.reply_text(reply)
     except Exception:
         logger.exception("Chat error for telegram user %s", tg_id)
@@ -365,10 +400,11 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await update.message.reply_text(t(lang, "wrapping_up"))
     try:
-        from autogpt.coaching.storage import save_session
+        from autogpt.coaching.storage import delete_telegram_session, save_session
         summary = session.extract_summary()
         save_session(summary)
         del _sessions[tg_id]
+        delete_telegram_session(tg_id)  # clean up persisted session now it's finalised
         await update.message.reply_text(_format_summary(summary), parse_mode="Markdown")
     except Exception:
         logger.exception("End session error for telegram user %s", tg_id)
