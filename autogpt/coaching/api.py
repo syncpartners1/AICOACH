@@ -22,6 +22,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.email_service import send_invite_email
@@ -109,6 +112,11 @@ app = FastAPI(
     version="2.1.0",
     lifespan=lifespan,
 )
+
+# ── Rate limiting (slowapi) ───────────────────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 import os as _os
 _static_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "static")
@@ -1757,7 +1765,9 @@ class MessageResponse(BaseModel):
 
 @app.post("/coaching/session/start", response_model=StartSessionResponse,
           summary="Start a new coaching session")
+@limiter.limit("5/minute")
 def start_session(
+    request: Request,
     req: StartSessionRequest,
     _: str = Depends(verify_api_key),
 ) -> StartSessionResponse:
@@ -1805,7 +1815,9 @@ def start_session(
 
 @app.post("/coaching/session/{session_id}/message", response_model=MessageResponse,
           summary="Send a message in an active session")
+@limiter.limit("30/minute")
 def send_message(
+    request: Request,
     session_id: str,
     req: MessageRequest,
     _: str = Depends(verify_api_key),
@@ -2185,7 +2197,8 @@ class UserSessionStartRequest(BaseModel):
 
 
 @app.post("/user/session/start", response_model=dict, summary="Start a coaching session (user cookie auth)")
-def user_session_start(req: UserSessionStartRequest, request: Request) -> dict:
+@limiter.limit("5/minute")
+def user_session_start(request: Request, req: UserSessionStartRequest) -> dict:
     user_id = _get_user_id_from_cookie(request)
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
@@ -2211,7 +2224,8 @@ def user_session_start(req: UserSessionStartRequest, request: Request) -> dict:
 
 @app.post("/user/session/{session_id}/message", response_model=dict,
           summary="Send message in a user web session (cookie auth)")
-def user_session_message(session_id: str, req: MessageRequest, request: Request) -> dict:
+@limiter.limit("30/minute")
+def user_session_message(request: Request, session_id: str, req: MessageRequest) -> dict:
     if not _get_user_id_from_cookie(request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
     session = _active_sessions.get(session_id)
