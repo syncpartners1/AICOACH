@@ -18,7 +18,8 @@ RUN pip install --no-cache-dir \
     "httpx>=0.24.0" \
     "urllib3>=2.0.0" \
     "charset-normalizer>=3.0.0" \
-    "python-telegram-bot>=20.0"
+    "python-telegram-bot>=20.0" \
+    "slowapi>=0.1.5"
 
 # Copy only what the coaching API needs
 COPY autogpt/singleton.py ./autogpt/singleton.py
