@@ -232,3 +232,23 @@ class CoachingSession:
 
     def conversation_as_json(self) -> list:
         return self.full_message_history
+
+    @classmethod
+    def restore(cls, row: dict) -> "CoachingSession":
+        """Reconstruct a CoachingSession from a telegram_sessions DB row.
+
+        Skips __init__ entirely to avoid rebuilding the system prompt or calling
+        the LLM for coaching insights — all state is loaded directly from storage.
+        """
+        obj = object.__new__(cls)
+        obj.session_id = row["session_id"]
+        obj.client_id = row["client_id"]
+        obj.client_name = row["client_name"]
+        obj.user_id = row.get("user_id")
+        obj.lang = row.get("lang", "en")
+        obj.objectives = []
+        obj.timestamp = datetime.utcnow()
+        obj._system_prompt = row.get("system_prompt", "")
+        history = row.get("message_history") or []
+        obj.full_message_history = list(history)
+        return obj

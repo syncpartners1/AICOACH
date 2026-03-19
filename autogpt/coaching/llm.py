@@ -1,7 +1,21 @@
 """Claude (Anthropic) LLM wrapper for the ABN Co-Navigator coaching module."""
 from __future__ import annotations
 
+import logging
 from typing import List
+
+logger = logging.getLogger(__name__)
+
+# Singleton client — created once and reused across calls to avoid repeated HTTP setup.
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        import anthropic
+        _client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+    return _client
 
 
 def chat_completion(messages: List[dict], model: str, temperature: float) -> str:
@@ -15,7 +29,7 @@ def chat_completion(messages: List[dict], model: str, temperature: float) -> str
     """
     import anthropic
 
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+    client = _get_client()
 
     # Split system prompt from conversation turns
     system_prompt = ""
@@ -35,9 +49,17 @@ def chat_completion(messages: List[dict], model: str, temperature: float) -> str
         max_tokens=2048,
         temperature=temperature,
         messages=turns,
+        timeout=30.0,  # seconds — prevents hanging the async event loop indefinitely
     )
     if system_prompt:
         kwargs["system"] = system_prompt
 
-    response = client.messages.create(**kwargs)
-    return response.content[0].text
+    try:
+        response = client.messages.create(**kwargs)
+        return response.content[0].text
+    except anthropic.APITimeoutError:
+        logger.warning("Claude API timed out after 30s")
+        raise
+    except anthropic.APIError:
+        logger.exception("Claude API error")
+        raise

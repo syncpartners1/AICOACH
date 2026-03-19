@@ -284,3 +284,24 @@ ALTER TABLE coaching_learnings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS "service_role_all_coaching_learnings"
     ON coaching_learnings FOR ALL
     USING (auth.role() = 'service_role');
+
+-- M005: telegram_sessions — persists active AI coaching sessions across Railway restarts.
+--       Keyed by telegram_user_id so it survives pod recycling.
+CREATE TABLE IF NOT EXISTS telegram_sessions (
+    telegram_user_id   BIGINT PRIMARY KEY,
+    session_id         TEXT NOT NULL,
+    client_id          TEXT NOT NULL,
+    client_name        TEXT NOT NULL,
+    user_id            TEXT,
+    lang               TEXT NOT NULL DEFAULT 'en',
+    system_prompt      TEXT NOT NULL DEFAULT '',
+    message_history    JSONB NOT NULL DEFAULT '[]',
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE telegram_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "service_role_all_telegram_sessions"
+    ON telegram_sessions FOR ALL
+    USING (auth.role() = 'service_role');

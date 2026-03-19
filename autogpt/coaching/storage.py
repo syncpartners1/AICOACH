@@ -890,13 +890,20 @@ def use_invite(token: str, user_id: str) -> bool:
 
 # ── Admin: user progress overview ─────────────────────────────────────────────
 
-def get_all_users_progress() -> List[UserProgressSummary]:
-    """Return a lightweight progress snapshot for every registered user."""
+def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgressSummary]:
+    """Return a lightweight progress snapshot for registered users.
+
+    Args:
+        limit:  Maximum number of users to return (default 200, capped at 500).
+        offset: Number of users to skip for pagination.
+    """
+    limit = min(limit, 500)
     db = _get_client()
     users = (
         db.table("user_profiles")
         .select("user_id,name,email,phone_number,account_status,language,telegram_user_id")
         .order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
         .execute()
         .data or []
     )
@@ -956,6 +963,41 @@ def get_all_users_progress() -> List[UserProgressSummary]:
             telegram_user_id=u.get("telegram_user_id"),
         ))
     return summaries
+
+
+def save_telegram_session(telegram_user_id: int, session) -> None:
+    """Persist an active CoachingSession to Supabase so it survives restarts."""
+    db = _get_client()
+    db.table("telegram_sessions").upsert({
+        "telegram_user_id": telegram_user_id,
+        "session_id": session.session_id,
+        "client_id": session.client_id,
+        "client_name": session.client_name,
+        "user_id": session.user_id,
+        "lang": session.lang,
+        "system_prompt": session._system_prompt,
+        "message_history": session.full_message_history,
+        "updated_at": datetime.utcnow().isoformat(),
+    }, on_conflict="telegram_user_id").execute()
+
+
+def load_telegram_session(telegram_user_id: int):
+    """Load a persisted CoachingSession from Supabase, or return None if not found."""
+    db = _get_client()
+    result = db.table("telegram_sessions").select("*").eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
+    if not result.data:
+        return None
+    return result.data[0]
+
+
+def delete_telegram_session(telegram_user_id: int) -> None:
+    """Remove a persisted session when it is finished or cancelled."""
+    db = _get_client()
+    db.table("telegram_sessions").delete().eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
 
 
 def get_latest_session_per_client() -> List[SessionSummary]:

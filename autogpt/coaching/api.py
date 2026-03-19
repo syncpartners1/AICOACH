@@ -1170,9 +1170,13 @@ def admin_wa_verify(body: _WaVerifyRequest) -> JSONResponse:
 
 
 @app.get("/admin/users", response_model=List[UserProgressSummary],
-         summary="List all program users with progress snapshot (admin)")
-def admin_list_users(_: str = Depends(verify_api_key)) -> List[UserProgressSummary]:
-    return get_all_users_progress()
+         summary="List program users with progress snapshot (admin). Supports ?limit=&offset= for pagination.")
+def admin_list_users(
+    limit: int = Query(default=50, ge=1, le=500, description="Max users to return"),
+    offset: int = Query(default=0, ge=0, description="Number of users to skip"),
+    _: str = Depends(verify_api_key),
+) -> List[UserProgressSummary]:
+    return get_all_users_progress(limit=limit, offset=offset)
 
 
 @app.put("/admin/users/{user_id}/status", response_model=dict,
