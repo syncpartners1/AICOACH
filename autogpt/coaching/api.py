@@ -1871,10 +1871,11 @@ def health() -> dict:
 
 
 @app.post("/wix-qualify", summary="Wix lead qualification webhook")
-async def wix_qualify_lead(payload: WixFormPayload):
+async def wix_qualify_lead(payload: WixFormPayload, background_tasks: BackgroundTasks):
     verdict = compute_score(payload)
     clickup = create_clickup_task(payload, verdict)
-    send_qualify_notification(
+    background_tasks.add_task(
+        send_qualify_notification,
         lead_name=payload.q8_name,
         lead_contact=payload.q9_contact,
         lead_role=payload.q1_role,

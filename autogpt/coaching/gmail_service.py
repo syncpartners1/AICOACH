@@ -48,7 +48,7 @@ ClickUp:  {clickup_url or 'שגיאה - בדוק לוגים'}
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
             smtp.ehlo()
             smtp.starttls()
             smtp.ehlo()
