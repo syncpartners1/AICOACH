@@ -60,8 +60,6 @@ from autogpt.coaching.models import (
 )
 from autogpt.coaching.session import CoachingSession
 from autogpt.coaching.storage import (
-from autogpt.coaching.wix_qualify import WixFormPayload, compute_score, create_clickup_task
-from autogpt.coaching.gmail_service import send_qualify_notification
     create_invite,
     delete_invite,
     get_all_users_progress,
@@ -87,6 +85,8 @@ from autogpt.coaching.gmail_service import send_qualify_notification
     upsert_objective,
     use_invite,
 )
+from autogpt.coaching.wix_qualify import WixFormPayload, compute_score, create_clickup_task
+from autogpt.coaching.gmail_service import send_qualify_notification
 
 # ── Telegram bot lifespan ─────────────────────────────────────────────────────
 
