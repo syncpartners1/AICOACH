@@ -60,6 +60,8 @@ from autogpt.coaching.models import (
 )
 from autogpt.coaching.session import CoachingSession
 from autogpt.coaching.storage import (
+from autogpt.coaching.wix_qualify import WixFormPayload, compute_score, create_clickup_task
+from autogpt.coaching.gmail_service import send_qualify_notification
     create_invite,
     delete_invite,
     get_all_users_progress,
@@ -1865,6 +1867,25 @@ def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
 @app.get("/health", summary="Health check")
 def health() -> dict:
     return {"status": "ok", "service": "ABN Co-Navigator API", "version": "2.1.0", "features": ["demo", "telegram"]}
+
+
+
+@app.post("/wix-qualify", summary="Wix lead qualification webhook")
+async def wix_qualify_lead(payload: WixFormPayload):
+    verdict = compute_score(payload)
+    clickup = create_clickup_task(payload, verdict)
+    send_qualify_notification(
+        lead_name=payload.q8_name,
+        lead_contact=payload.q9_contact,
+        lead_role=payload.q1_role,
+        readiness=payload.q6_readiness,
+        challenge=payload.q3_challenge,
+        timing=payload.q7_start_timing,
+        verdict=verdict,
+        clickup_url=clickup or "",
+        booking_url=os.getenv("SCHEDULER_URL", "https://abn-sch.up.railway.app"),
+    )
+    return {"status": "ok", "verdict": verdict, "clickup": clickup}
 
 
 # ── Demo endpoints (no API key — rate limited by IP) ─────────────────────────
