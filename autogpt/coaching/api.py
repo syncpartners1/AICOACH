@@ -85,7 +85,7 @@ from autogpt.coaching.storage import (
     upsert_objective,
     use_invite,
 )
-from autogpt.coaching.wix_qualify import WixFormPayload, compute_score, create_clickup_task
+from autogpt.coaching.wix_qualify import WixFormPayload, compute_score, create_clickup_task, SCHEDULER_URL
 from autogpt.coaching.gmail_service import send_qualify_notification
 
 # ── Telegram bot lifespan ─────────────────────────────────────────────────────
@@ -1883,7 +1883,7 @@ async def wix_qualify_lead(payload: WixFormPayload):
         timing=payload.q7_start_timing,
         verdict=verdict,
         clickup_url=clickup or "",
-        booking_url=os.getenv("SCHEDULER_URL", "https://abn-sch.up.railway.app"),
+        booking_url=SCHEDULER_URL,
     )
     return {"status": "ok", "verdict": verdict, "clickup": clickup}
 
