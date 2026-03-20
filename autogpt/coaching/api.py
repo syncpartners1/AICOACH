@@ -16,7 +16,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlencode
 
 import requests as http_requests
-from fastapi import Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, Security, status
+from fastapi import BackgroundTasks, Depends, FastAPI, Form, Header, HTTPException, Query, Request, Response, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
