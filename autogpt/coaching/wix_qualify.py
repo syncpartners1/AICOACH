@@ -1,7 +1,7 @@
 # autogpt/coaching/wix_qualify.py
 import os, requests, logging
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from autogpt.coaching.gmail_service import send_qualify_notification
 
@@ -23,23 +23,32 @@ class WixFormPayload(BaseModel):
     q3_challenge:    str
     q4_duration:     str
     q5_tried_before: str
-    q6_readiness:    int            # 1-5
+    q6_readiness:    str            # submitted as "1", "2 - ...", "3 - ...", etc.
     q7_start_timing: str
     q8_name:         str
     q9_contact:      str
     q10_source:      Optional[str] = ""
 
+    def readiness_int(self) -> int:
+        """Parse first character of q6_readiness to int (handles '4', '4 - ...' etc.)"""
+        try:
+            return int(str(self.q6_readiness).strip()[0])
+        except (ValueError, IndexError):
+            return 0
+
 
 def compute_score(p: WixFormPayload) -> str:
-    senior = ["מנהל/ת בכיר/ה", "יזם/ת / מייסד/ת", 'מנכ"ל / C-Level']
-    soon   = ["מייד (תוך שבועיים)", "אפריל 2026"]
-    mid    = ["מאי-יוני 2026"]
+    senior = ["\u05de\u05e0\u05d4\u05dc/\u05ea \u05d1\u05db\u05d9\u05e8/\u05d4", "\u05d9\u05d6\u05dd/\u05ea / \u05de\u05d9\u05d9\u05e1\u05d3/\u05ea", '\u05de\u05e0\u05db"\u05dc / C-Level']
+    soon   = ["\u05de\u05d9\u05d9\u05d3 (\u05ea\u05d5\u05da \u05e9\u05d1\u05d5\u05e2\u05d9\u05d9\u05dd)", "\u05d0\u05e4\u05e8\u05d9\u05dc 2026"]
+    mid    = ["\u05de\u05d0\u05d9-\u05d9\u05d5\u05e0\u05d9 2026"]
+
+    readiness = p.readiness_int()
 
     if (any(r in p.q1_role for r in senior)
-            and p.q6_readiness >= 4
+            and readiness >= 4
             and any(t in p.q7_start_timing for t in soon)):
         return "PASS"
-    if p.q6_readiness == 3 or any(t in p.q7_start_timing for t in mid):
+    if readiness == 3 or any(t in p.q7_start_timing for t in mid):
         return "BORDERLINE"
     return "FAIL"
 
@@ -53,12 +62,12 @@ def create_clickup_task(p: WixFormPayload, verdict: str) -> Optional[str]:
     body = {
         "name": f"{p.q8_name} - {verdict} - {datetime.now().strftime('%Y-%m-%d')}",
         "description": (
-            f"לד חדש מהשאלון - {verdict}\n\n"
-            f"שם: {p.q8_name}\nקשר: {p.q9_contact}\nתפקיד: {p.q1_role}\n"
-            f"גודל ארגון: {p.q2_org_size}\nאתגר: {p.q3_challenge}\n"
-            f"משך האתגר: {p.q4_duration}\nניסיון קודם: {p.q5_tried_before}\n"
-            f"מוכנות (1-5): {p.q6_readiness}\nתזמון: {p.q7_start_timing}\n"
-            f"מקור: {p.q10_source}"
+            f"Lead from qualifying form - {verdict}\n\n"
+            f"Name: {p.q8_name}\nContact: {p.q9_contact}\nRole: {p.q1_role}\n"
+            f"Org size: {p.q2_org_size}\nChallenge: {p.q3_challenge}\n"
+            f"Duration: {p.q4_duration}\nPrev attempts: {p.q5_tried_before}\n"
+            f"Readiness (1-5): {p.q6_readiness}\nTiming: {p.q7_start_timing}\n"
+            f"Source: {p.q10_source}"
         ),
         "priority": 2 if verdict == "PASS" else 3,
     }
