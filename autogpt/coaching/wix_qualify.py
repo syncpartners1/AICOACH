@@ -1,9 +1,13 @@
-# autogpt/coaching/wix_qualify.py
+﻿# autogpt/coaching/wix_qualify.py
+# UPDATED: 2026-03-22 v2
+# Revised to Yes/No + free-text qualification model (replaces old 10-question scale model)
+# Added: send_lead_response() — email to lead after qualification
+# Added: detailed ClickUp error logging
 import os, requests, logging
 from datetime import datetime
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from typing import Optional
-from autogpt.coaching.gmail_service import send_qualify_notification
+from autogpt.coaching.gmail_service import send_qualify_notification, send_lead_response
 
 logger = logging.getLogger(__name__)
 
@@ -17,68 +21,114 @@ CLICKUP_LISTS = {
 }
 
 
-class WixFormPayload(BaseModel):
-    q1_role:         str
-    q2_org_size:     str
-    q3_challenge:    str
-    q4_duration:     str
-    q5_tried_before: str
-    q6_readiness:    str            # submitted as "1", "2 - ...", "3 - ...", etc.
-    q7_start_timing: str
+class CoachingQualPayload(BaseModel):
+    """
+    Coaching qualification form payload.
+    2 free-text questions (context only) + 5 Yes/No qualifying questions + contact.
+    """
+    # Free text (context — not scored)
+    q1_challenge:    str   # What challenge do you want to work on?
+    q2_outcome:      str   # What outcome would make this a success?
+
+    # Yes/No qualifying questions (scored — determine verdict)
+    q3_priority:     str   # "yes" / "no" — Is this a genuine priority right now?
+    q4_commit_time:  str   # "yes" / "no" — Ready to commit to 3-6 month structured process?
+    q5_commit_tasks: str   # "yes" / "no" — Can you complete weekly tasks fully and on time?
+    q6_coaching:     str   # "yes" / "no" — Looking for coaching, not just advice/guidance?
+    q7_capability:   str   # "yes" / "no" — Building new capability, not a quick fix?
+
+    # Contact
     q8_name:         str
-    q9_contact:      str
+    q9_email:        str
     q10_source:      Optional[str] = ""
 
-    def readiness_int(self) -> int:
-        """Parse first character of q6_readiness to int (handles '4', '4 - ...' etc.)"""
-        try:
-            return int(str(self.q6_readiness).strip()[0])
-        except (ValueError, IndexError):
-            return 0
 
+def compute_score(p: CoachingQualPayload) -> str:
+    """
+    Count Yes answers across the 5 qualifying questions.
+    PASS: 5 yes  |  BORDERLINE: 3-4 yes  |  FAIL: 0-2 yes
+    """
+    yes_fields = [p.q3_priority, p.q4_commit_time, p.q5_commit_tasks, p.q6_coaching, p.q7_capability]
+    yes_count  = sum(1 for v in yes_fields if str(v).strip().lower() in ("yes", "כן", "true", "1"))
 
-def compute_score(p: WixFormPayload) -> str:
-    senior = ["\u05de\u05e0\u05d4\u05dc/\u05ea \u05d1\u05db\u05d9\u05e8/\u05d4", "\u05d1\u05e2\u05dc/\u05ea \u05e2\u05e1\u05e7 / \u05d9\u05d6\u05dd/\u05ea", "\u05d9\u05d6\u05dd/\u05ea / \u05de\u05d9\u05d9\u05e1\u05d3/\u05ea", '\u05de\u05e0\u05db"\u05dc / C-Level']
-    soon   = ["\u05de\u05d9\u05d9\u05d3\u05d9 (\u05ea\u05d5\u05da \u05e9\u05d1\u05d5\u05e2\u05d9\u05d9\u05dd)", "\u05d0\u05e4\u05e8\u05d9\u05dc 2026"]
-    mid    = ["\u05de\u05d0\u05d9 2026", "\u05d9\u05d5\u05e0\u05d9 2026"]
-
-    readiness = p.readiness_int()
-
-    if (any(r in p.q1_role for r in senior)
-            and readiness >= 4
-            and any(t in p.q7_start_timing for t in soon)):
+    if yes_count == 5:
         return "PASS"
-    if readiness == 3 or any(t in p.q7_start_timing for t in mid):
+    if yes_count >= 3:
         return "BORDERLINE"
     return "FAIL"
 
 
-def create_clickup_task(p: WixFormPayload, verdict: str) -> Optional[str]:
+def create_clickup_task(p: CoachingQualPayload, verdict: str) -> Optional[str]:
+    """Create task in the correct Co-Navigator CRM list. Returns task URL or None."""
     if not CLICKUP_API_KEY:
-        logger.warning("CLICKUP_API_KEY not set — skipping ClickUp task creation")
+        logger.error("CLICKUP_API_KEY not set — task creation skipped")
         return None
 
+    list_id = CLICKUP_LISTS[verdict]
     headers = {"Authorization": CLICKUP_API_KEY, "Content-Type": "application/json"}
-    body = {
-        "name": f"{p.q8_name} - {verdict} - {datetime.now().strftime('%Y-%m-%d')}",
+    yes_no  = lambda v: "✅ Yes" if str(v).strip().lower() in ("yes", "כן", "true", "1") else "❌ No"
+
+    task_body = {
+        "name": f"{p.q8_name} | Coaching {verdict} | {datetime.now().strftime('%Y-%m-%d')}",
         "description": (
-            f"Lead from qualifying form - {verdict}\n\n"
-            f"Name: {p.q8_name}\nContact: {p.q9_contact}\nRole: {p.q1_role}\n"
-            f"Org size: {p.q2_org_size}\nChallenge: {p.q3_challenge}\n"
-            f"Duration: {p.q4_duration}\nPrev attempts: {p.q5_tried_before}\n"
-            f"Readiness (1-5): {p.q6_readiness}\nTiming: {p.q7_start_timing}\n"
-            f"Source: {p.q10_source}"
+            f"Coaching Lead — {verdict}\n\n"
+            f"Name:    {p.q8_name}\n"
+            f"Email:   {p.q9_email}\n"
+            f"Source:  {p.q10_source}\n\n"
+            f"── Qualifying Answers ──────────────────\n"
+            f"Priority right now?         {yes_no(p.q3_priority)}\n"
+            f"Ready to commit 3-6 months? {yes_no(p.q4_commit_time)}\n"
+            f"Can complete weekly tasks?  {yes_no(p.q5_commit_tasks)}\n"
+            f"Wants coaching (not advice)?{yes_no(p.q6_coaching)}\n"
+            f"Building capability (not quick fix)? {yes_no(p.q7_capability)}\n\n"
+            f"── Context ─────────────────────────────\n"
+            f"Challenge: {p.q1_challenge}\n"
+            f"Desired outcome: {p.q2_outcome}\n\n"
+            f"Submitted: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         ),
         "priority": 2 if verdict == "PASS" else 3,
     }
     try:
-        r = requests.post(
-            f"https://api.clickup.com/api/v2/list/{CLICKUP_LISTS[verdict]}/task",
-            json=body, headers=headers, timeout=10
+        resp = requests.post(
+            f"https://api.clickup.com/api/v2/list/{list_id}/task",
+            json=task_body, headers=headers, timeout=10
         )
-        r.raise_for_status()
-        task_id = r.json().get("id")
+        if not resp.ok:
+            logger.error(f"ClickUp {resp.status_code}: {resp.text[:400]}")
+            return None
+        task_id = resp.json().get("id")
+        logger.info(f"ClickUp task created: {task_id}")
         return f"https://app.clickup.com/t/{task_id}"
     except Exception as e:
-        logger.error(f"ClickUp task creation failed: {e}")
+        logger.error(f"ClickUp request exception: {e}")
         return None
+
+
+async def handle_coaching_qualify(payload: CoachingQualPayload) -> dict:
+    """
+    Main handler — called from both the /coaching-qualify Wix webhook
+    and the bot conversational qualification flow.
+    """
+    verdict = compute_score(payload)
+    clickup = create_clickup_task(payload, verdict)
+
+    send_qualify_notification(
+        lead_name    = payload.q8_name,
+        lead_email   = payload.q9_email,
+        challenge    = payload.q1_challenge,
+        outcome      = payload.q2_outcome,
+        yes_count    = sum(1 for v in [payload.q3_priority, payload.q4_commit_time,
+                           payload.q5_commit_tasks, payload.q6_coaching, payload.q7_capability]
+                           if str(v).strip().lower() in ("yes", "כן", "true", "1")),
+        verdict      = verdict,
+        clickup_url  = clickup or "",
+        booking_url  = SCHEDULER_URL,
+    )
+
+    send_lead_response(
+        lead_name  = payload.q8_name,
+        lead_email = payload.q9_email,
+        verdict    = verdict,
+    )
+
+    return {"status": "ok", "verdict": verdict, "clickup": clickup}

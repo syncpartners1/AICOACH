@@ -85,8 +85,15 @@ from autogpt.coaching.storage import (
     upsert_objective,
     use_invite,
 )
-from autogpt.coaching.wix_qualify import WixFormPayload, compute_score, create_clickup_task, SCHEDULER_URL
-from autogpt.coaching.gmail_service import send_qualify_notification, send_consult_notification
+from autogpt.coaching.wix_qualify      import CoachingQualPayload, handle_coaching_qualify
+from autogpt.coaching.wix_consult_form import WixConsultFormPayload, handle_wix_consult_form
+from autogpt.coaching.bot_qualification import (
+    is_in_qualification,
+    start_qualification,
+    update_qualification,
+    should_start_qualification,
+)
+from autogpt.coaching.gmail_service import send_qualify_notification, send_consult_notification, send_lead_response, send_consult_lead_response
 from autogpt.coaching.wix_consult import ConsultPayload, create_consult_clickup_task
 
 # â”€â”€ Telegram bot lifespan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1871,23 +1878,62 @@ def health() -> dict:
 
 
 
-@app.post("/wix-qualify", summary="Wix lead qualification webhook")
-async def wix_qualify_lead(payload: WixFormPayload, background_tasks: BackgroundTasks):
-    verdict = compute_score(payload)
-    clickup = create_clickup_task(payload, verdict)
-    background_tasks.add_task(
-        send_qualify_notification,
-        lead_name=payload.q8_name,
-        lead_contact=payload.q9_contact,
-        lead_role=payload.q1_role,
-        readiness=payload.q6_readiness,
-        challenge=payload.q3_challenge,
-        timing=payload.q7_start_timing,
-        verdict=verdict,
-        clickup_url=clickup or "",
-        booking_url=SCHEDULER_URL,
-    )
-    return {"status": "ok", "verdict": verdict, "clickup": clickup}
+@app.post("/coaching-qualify")
+async def coaching_qualify_lead(payload: CoachingQualPayload):
+    """
+    Coaching qualification webhook — Yes/No model.
+    Called by Wix Automation on /coaching-qualify form submit, and internally by the bot.
+    """
+    return await handle_coaching_qualify(payload)
+
+
+@app.post("/wix-consult-form")
+async def wix_consult_form_lead(payload: WixConsultFormPayload):
+    """
+    Consulting & Workshops lead form handler.
+    Called by Wix Automation on /consulting-inquiry and /workshop-inquiry.
+    """
+    return await handle_wix_consult_form(payload)
+
+
+@app.get("/debug-clickup")
+async def debug_clickup():
+    import os, requests
+    key = os.getenv("CLICKUP_API_KEY", "NOT_SET")
+    if key == "NOT_SET":
+        return {"error": "CLICKUP_API_KEY is not set"}
+    key_preview = key[:8] + "..."
+    test_list   = "901816800057"
+    try:
+        r = requests.get(
+            f"https://api.clickup.com/api/v2/list/{test_list}",
+            headers={"Authorization": key}, timeout=10
+        )
+        list_check = {"status": r.status_code, "body": r.text[:300]}
+    except Exception as e:
+        list_check = {"error": str(e)}
+    try:
+        r2 = requests.post(
+            f"https://api.clickup.com/api/v2/list/{test_list}/task",
+            json={"name": "DEBUG TEST — DELETE ME"},
+            headers={"Authorization": key, "Content-Type": "application/json"},
+            timeout=10
+        )
+        create_check = {"status": r2.status_code, "body": r2.text[:400]}
+    except Exception as e:
+        create_check = {"error": str(e)}
+    return {
+        "key_preview":  key_preview,
+        "key_length":   len(key),
+        "list_check":   list_check,
+        "create_check": create_check,
+    }
+
+
+@app.post("/wix-qualify", summary="Wix lead qualification webhook (legacy)")
+async def wix_qualify_lead(payload: CoachingQualPayload, background_tasks: BackgroundTasks):
+    verdict = await handle_coaching_qualify(payload)
+    return verdict
 
 
 @app.post("/wix-consult", summary="CM Readiness Diagnostic webhook")
