@@ -1,4 +1,4 @@
-"""FastAPI application for the ABN Consulting AI Co-Navigator."""
+﻿"""FastAPI application for the ABN Consulting AI Co-Navigator."""
 from __future__ import annotations
 
 import asyncio
@@ -86,9 +86,10 @@ from autogpt.coaching.storage import (
     use_invite,
 )
 from autogpt.coaching.wix_qualify import WixFormPayload, compute_score, create_clickup_task, SCHEDULER_URL
-from autogpt.coaching.gmail_service import send_qualify_notification
+from autogpt.coaching.gmail_service import send_qualify_notification, send_consult_notification
+from autogpt.coaching.wix_consult import ConsultPayload, create_consult_clickup_task
 
-# ── Telegram bot lifespan ─────────────────────────────────────────────────────
+# â”€â”€ Telegram bot lifespan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -115,7 +116,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── Rate limiting (slowapi) ───────────────────────────────────────────────────
+# â”€â”€ Rate limiting (slowapi) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -145,7 +146,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── API-key guard (Wix → API server auth) ────────────────────────────────────
+# â”€â”€ API-key guard (Wix â†’ API server auth) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -172,7 +173,7 @@ def verify_admin_or_api_key(request: Request) -> None:
                         detail="Admin authentication required.")
 
 
-# ── User session cookie ───────────────────────────────────────────────────────
+# â”€â”€ User session cookie â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _USER_COOKIE = "user_session"
 
@@ -205,15 +206,15 @@ def _set_user_cookie(response: Response, user_id: str) -> None:
     )
 
 
-# ── In-memory active session store ───────────────────────────────────────────
+# â”€â”€ In-memory active session store â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Sessions are stored with a last-accessed timestamp so stale sessions can be
-# pruned. NOTE: sessions are in-memory only — a Railway redeploy clears them.
+# pruned. NOTE: sessions are in-memory only â€” a Railway redeploy clears them.
 # The web chat handles this gracefully by detecting the 404 and prompting restart.
 
-_SESSION_TTL_SECS = 3 * 60 * 60   # 3 hours of inactivity → expire
+_SESSION_TTL_SECS = 3 * 60 * 60   # 3 hours of inactivity â†’ expire
 
 _active_sessions: Dict[str, CoachingSession] = {}
-_session_last_access: Dict[str, float] = {}   # session_id → epoch time
+_session_last_access: Dict[str, float] = {}   # session_id â†’ epoch time
 
 
 def _touch_session(session_id: str) -> None:
@@ -229,7 +230,7 @@ def _prune_stale_sessions() -> None:
         _session_last_access.pop(sid, None)
 
 
-# ── Auth endpoints ────────────────────────────────────────────────────────────
+# â”€â”€ Auth endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/auth/register", response_model=AuthResponse,
           summary="Register a new user with email, password and phone number")
@@ -267,7 +268,7 @@ def auth_login(req: LoginRequest, _: str = Depends(verify_api_key)) -> AuthRespo
 
 
 @app.post("/auth/google", response_model=AuthResponse,
-          summary="Register or login via Google OAuth — phone_number is required")
+          summary="Register or login via Google OAuth â€” phone_number is required")
 def auth_google(req: GoogleAuthRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
     try:
         user = google_auth(google_id=req.google_id, name=req.name,
@@ -320,7 +321,7 @@ def google_oauth_start(
 
 @app.get(
     "/auth/google/callback",
-    summary="Google OAuth callback — exchanges code, creates/finds user, redirects to Wix",
+    summary="Google OAuth callback â€” exchanges code, creates/finds user, redirects to Wix",
     response_class=RedirectResponse,
 )
 def google_oauth_callback(
@@ -390,7 +391,7 @@ def google_oauth_callback(
         ).execute().data
 
     if existing and existing[0].get("phone_number"):
-        # Phone already on file — complete sign-in without extra step
+        # Phone already on file â€” complete sign-in without extra step
         row = existing[0]
         try:
             user = google_auth(google_id=google_id, name=name, email=email,
@@ -409,7 +410,7 @@ def google_oauth_callback(
         params = urlencode({"user_id": user.user_id, "name": user.name, "email": user.email or ""})
         return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
 
-    # No phone yet — redirect to phone-setup page
+    # No phone yet â€” redirect to phone-setup page
     gid_token = base64.urlsafe_b64encode(
         f"{google_id}|{name}|{email}".encode()
     ).decode()
@@ -433,7 +434,7 @@ def phone_setup_page(
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Complete Your Registration – ABN Consulting</title>
+<title>Complete Your Registration â€“ ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -475,7 +476,7 @@ input:focus{{border-color:#1a2b4a}}
 document.getElementById('phoneForm').addEventListener('submit', async function(e) {{
   e.preventDefault();
   const msg = document.getElementById('msg');
-  msg.textContent = 'Saving…';
+  msg.textContent = 'Savingâ€¦';
   const phone = document.getElementById('phone').value.trim();
   const res = await fetch('/public/complete-google-signup', {{
     method: 'POST',
@@ -485,7 +486,7 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
   if (res.ok) {{
     const data = await res.json();
     msg.style.color = '#16a34a';
-    msg.textContent = 'All set! Redirecting…';
+    msg.textContent = 'All set! Redirectingâ€¦';
     setTimeout(() => {{
       if (data.account_status === 'pending') {{
         window.location = '/pending';
@@ -534,16 +535,16 @@ def complete_google_signup(body: _GooglePhoneBody) -> AuthResponse:
 @app.get("/auth/google/config", summary="Show the redirect URI to register in Google Cloud Console")
 def google_oauth_config(_: str = Depends(verify_api_key)) -> dict:
     return {
-        "google_redirect_uri": coaching_config.google_redirect_uri or "(not configured — set GOOGLE_REDIRECT_URI env var)",
+        "google_redirect_uri": coaching_config.google_redirect_uri or "(not configured â€” set GOOGLE_REDIRECT_URI env var)",
         "instructions": (
             "Copy the value of 'google_redirect_uri' and paste it into "
-            "Google Cloud Console → APIs & Services → Credentials → "
-            "your OAuth 2.0 Client ID → Authorized redirect URIs."
+            "Google Cloud Console â†’ APIs & Services â†’ Credentials â†’ "
+            "your OAuth 2.0 Client ID â†’ Authorized redirect URIs."
         ),
     }
 
 
-# ── User profile ──────────────────────────────────────────────────────────────
+# â”€â”€ User profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/users/{user_id}/profile", response_model=UserProfile, summary="Get user profile")
 def get_profile(user_id: str, _: str = Depends(verify_api_key)) -> UserProfile:
@@ -586,7 +587,7 @@ def self_reactivate(
     return {"user_id": user_id, "account_status": "active"}
 
 
-# ── Objectives ────────────────────────────────────────────────────────────────
+# â”€â”€ Objectives â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/users/{user_id}/objectives", response_model=List[Objective],
          summary="Get user's active objectives with key results")
@@ -620,7 +621,7 @@ def update_objective_status(
     return {"objective_id": objective_id, "status": req.status.value}
 
 
-# ── Key Results ───────────────────────────────────────────────────────────────
+# â”€â”€ Key Results â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/users/{user_id}/key-results", response_model=dict,
           summary="Create or update a key result")
@@ -651,7 +652,7 @@ def update_kr_status(
     return {"kr_id": kr_id, "status": req.status.value}
 
 
-# ── Weekly Plan ───────────────────────────────────────────────────────────────
+# â”€â”€ Weekly Plan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get(
     "/users/{user_id}/weekly-plan",
@@ -726,7 +727,7 @@ def upsert_user_daily_highlight(
     }
 
 
-# ── History ───────────────────────────────────────────────────────────────────
+# â”€â”€ History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/users/{user_id}/history", response_model=List[PastSession],
          summary="Get past session highlights for a user")
@@ -734,7 +735,7 @@ def user_history(user_id: str, _: str = Depends(verify_api_key)) -> List[PastSes
     return get_past_sessions(user_id=user_id, limit=10)
 
 
-# ── User personal dashboard ───────────────────────────────────────────────────
+# â”€â”€ User personal dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
 def dashboard_root(request: Request) -> Response:
@@ -792,11 +793,11 @@ def user_dashboard(
     return HTMLResponse(content=html)
 
 
-# ── Admin dashboard ────────────────────────────────────────────────────────────
+# â”€â”€ Admin dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _ADMIN_COOKIE = "admin_session"
 
-# In-memory OTP store: phone → (otp, expires_at)
+# In-memory OTP store: phone â†’ (otp, expires_at)
 _otp_store: Dict[str, tuple] = {}
 
 
@@ -876,7 +877,7 @@ def _login_page(error: str = "", active_tab: str = "password") -> str:
     return f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin Login – ABN Consulting</title>
+<title>Admin Login â€“ ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1022,7 +1023,7 @@ function verifyOtp() {{
 
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLResponse:
-    """Admin overview dashboard — requires login. ?lang=en|he switches UI language."""
+    """Admin overview dashboard â€” requires login. ?lang=en|he switches UI language."""
     if lang not in ("en", "he"):
         lang = "en"
     if not _is_admin_authenticated(request):
@@ -1091,7 +1092,7 @@ def admin_logout() -> Response:
     return resp
 
 
-# ── Admin social auth ──────────────────────────────────────────────────────────
+# â”€â”€ Admin social auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _FbTokenRequest(BaseModel):
     access_token: str
@@ -1206,7 +1207,7 @@ def admin_set_user_status(
 
 @app.post("/admin/invites", response_model=Invite, summary="Create a program invite link (admin)")
 def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(verify_admin_or_api_key)) -> Invite:
-    # invited_by is a UUID FK — only set it when a valid user_id is configured
+    # invited_by is a UUID FK â€” only set it when a valid user_id is configured
     admin_uid = coaching_config.admin_user_id if coaching_config.admin_user_id else None
     lang = req.language if req.language in ("en", "he") else "en"
     invite = create_invite(
@@ -1223,7 +1224,7 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
     register_url = invite.register_url or ""
     if req.send_email and req.email and not register_url.startswith("http"):
         logger.warning(
-            "Invite email NOT sent to %s — register_url is relative (%s). "
+            "Invite email NOT sent to %s â€” register_url is relative (%s). "
             "Set PUBLIC_URL or RAILWAY_PUBLIC_DOMAIN env var.",
             req.email,
             register_url,
@@ -1419,7 +1420,7 @@ def admin_learning_insights(
 @app.post(
     "/public/register/phone",
     response_model=AuthResponse,
-    summary="Open phone registration — invite token optional; without it user is pending approval",
+    summary="Open phone registration â€” invite token optional; without it user is pending approval",
 )
 def public_register_phone(
     req: PhoneRegisterRequest,
@@ -1477,7 +1478,7 @@ def _detect_lang_from_header(accept_language: str) -> str:
     include_in_schema=False,
 )
 def register_page(request: Request, token: Optional[str] = Query(default=None)) -> HTMLResponse:
-    """Landing page for invited users — pre-fills name/phone from the invite token."""
+    """Landing page for invited users â€” pre-fills name/phone from the invite token."""
     from autogpt.coaching.i18n import t as _t, get_coach_name as _coach_name
     invite = get_invite(token) if token else None
     name_val = invite.name or "" if invite else ""
@@ -1509,7 +1510,7 @@ def register_page(request: Request, token: Optional[str] = Query(default=None)) 
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="{lang}" {dir_attr}><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} – ABN Consulting</title>
+<title>{title} â€“ ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 {'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700&display=swap" rel="stylesheet">' if is_rtl else ''}
 <style>
@@ -1564,10 +1565,10 @@ input:focus{{border-color:#1a2b4a}}
     <label>{label_lang}</label>
     <div style="display:flex;gap:20px;margin-bottom:14px;">
       <label style="font-weight:normal;font-size:14px;">
-        <input type="radio" name="language" value="en" {en_checked}> 🇬🇧 English
+        <input type="radio" name="language" value="en" {en_checked}> ðŸ‡¬ðŸ‡§ English
       </label>
       <label style="font-weight:normal;font-size:14px;">
-        <input type="radio" name="language" value="he" {he_checked}> 🇮🇱 עברית
+        <input type="radio" name="language" value="he" {he_checked}> ðŸ‡®ðŸ‡± ×¢×‘×¨×™×ª
       </label>
     </div>
     <button type="submit" class="btn">{btn_submit}</button>
@@ -1621,7 +1622,7 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
 
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
-    """User-facing login page — sign in with Google (when configured)."""
+    """User-facing login page â€” sign in with Google (when configured)."""
     dest = next or "/dashboard"
     google_url = f"/auth/google/url?redirect_to={dest}"
 
@@ -1644,7 +1645,7 @@ def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
     else:
         sign_in_block = (
             '<div class="notice">'
-            '⚙️ Web sign-in is not yet configured on this server.<br>'
+            'âš™ï¸ Web sign-in is not yet configured on this server.<br>'
             'Please use the <strong>Telegram</strong> bot or contact your coach to access your account.'
             '</div>'
         )
@@ -1652,7 +1653,7 @@ def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign In – ABN Consulting</title>
+<title>Sign In â€“ ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1692,7 +1693,7 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
   {sign_in_block}
   <div class="divider">New to the program?</div>
   <div class="register-link"><a href="/register">Register here</a></div>
-  <a href="/" class="back-link">← Back to home</a>
+  <a href="/" class="back-link">â† Back to home</a>
 </div>
 </body></html>""")
 
@@ -1711,7 +1712,7 @@ def pending_page(request: Request) -> HTMLResponse:
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Registration Pending – ABN Consulting</title>
+<title>Registration Pending â€“ ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1727,7 +1728,7 @@ p{{color:#6b7280;font-size:14px;line-height:1.6}}
 </style></head>
 <body>
 <div class="card">
-  <div class="icon">⏳</div>
+  <div class="icon">â³</div>
   <h1>{"Welcome, " + name + "!" if name else "Registration Received!"}</h1>
   <p>Your registration is pending review by the coach.<br>
   You'll receive a confirmation once your account is activated.</p>
@@ -1743,7 +1744,7 @@ def user_logout() -> Response:
     return resp
 
 
-# ── Coaching sessions ─────────────────────────────────────────────────────────
+# â”€â”€ Coaching sessions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class StartSessionRequest(BaseModel):
     client_id: str
@@ -1833,7 +1834,7 @@ def send_message(
 
 
 @app.post("/coaching/session/{session_id}/end", response_model=SessionSummary,
-          summary="End session — extract summary + OKR changes, save to Supabase")
+          summary="End session â€” extract summary + OKR changes, save to Supabase")
 def end_session(
     session_id: str,
     _: str = Depends(verify_api_key),
@@ -1859,7 +1860,7 @@ def get_session(session_id: str, _: str = Depends(verify_api_key)) -> SessionSum
 
 
 @app.get("/coaching/dashboard", response_model=CoachDashboard,
-         summary="Coach dashboard — latest status for all clients")
+         summary="Coach dashboard â€” latest status for all clients")
 def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
     return build_dashboard()
 
@@ -1889,7 +1890,24 @@ async def wix_qualify_lead(payload: WixFormPayload, background_tasks: Background
     return {"status": "ok", "verdict": verdict, "clickup": clickup}
 
 
-# ── Demo endpoints (no API key — rate limited by IP) ─────────────────────────
+@app.post("/wix-consult", summary="CM Readiness Diagnostic webhook")
+async def wix_consult_lead(payload: ConsultPayload, background_tasks: BackgroundTasks):
+    clickup = create_consult_clickup_task(payload)
+    background_tasks.add_task(
+        send_consult_notification,
+        name=payload.respondentName,
+        email=payload.respondentEmail,
+        org=payload.organizationName,
+        role=payload.respondentRole,
+        total_score=payload.totalScore,
+        readiness_level=payload.readinessLevel,
+        category_scores={k: v.dict() for k, v in payload.categoryScores.items()},
+        clickup_url=clickup or "",
+    )
+    return {"status": "ok", "readiness": payload.readinessLevel, "clickup": clickup}
+
+
+# â”€â”€ Demo endpoints (no API key â€” rate limited by IP) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Simple in-memory rate limit: max 20 demo sessions per IP per day
 _demo_counts: Dict[str, int] = defaultdict(int)
@@ -1903,7 +1921,7 @@ _demo_sessions: Dict[str, CoachingSession] = {}
 def _check_demo_key(x_demo_key: str = Header(default="")) -> None:
     """Validate the demo key (injected into the demo page by the server)."""
     if not coaching_config.demo_key:
-        return  # demo key not configured — open access (acceptable for demos)
+        return  # demo key not configured â€” open access (acceptable for demos)
     if x_demo_key != coaching_config.demo_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Invalid demo key.")
@@ -1922,7 +1940,7 @@ def _check_demo_rate(request: Request) -> None:
                             detail="Demo limit reached. Please book a real session!")
 
 
-# ── User web chat (cookie-authenticated) ────────────────────────────────────
+# â”€â”€ User web chat (cookie-authenticated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _require_user_cookie(request: Request) -> str:
     """Return user_id from cookie or raise 401 redirect."""
@@ -1954,7 +1972,7 @@ def chat_page(request: Request) -> Response:
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Coaching Session – ABN Consulting</title>
+<title>AI Coaching Session â€“ ABN Consulting</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
 <link rel="shortcut icon" href="/static/android-chrome-192x192.png">
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
@@ -2021,7 +2039,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     <div class="hdr-sub">Welcome, {user.name}</div>
   </div>
   <div class="hdr-right">
-    <button class="lang-btn" id="langBtn" onclick="toggleLang()">עב</button>
+    <button class="lang-btn" id="langBtn" onclick="toggleLang()">×¢×‘</button>
     <a href="/dashboard/{user.user_id}" id="dashLink">Dashboard</a>
     <a href="/user/logout" id="logoutLink">Sign out</a>
   </div>
@@ -2036,7 +2054,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 <div id="chat-area">
   <div id="messages"></div>
   <div id="input-row">
-    <textarea id="msg-input" rows="1" placeholder="Type your message…"
+    <textarea id="msg-input" rows="1" placeholder="Type your messageâ€¦"
               onkeydown="handleKey(event)"></textarea>
     <button class="btn-send" id="sendBtn" onclick="sendMsg()">Send</button>
     <button class="btn-end" id="endBtn" onclick="endSession()">End</button>
@@ -2053,27 +2071,27 @@ const UI = {{
     startTitle:  'Ready for your coaching session?',
     startDesc:   'Your AI coach will review your OKRs, log weekly progress, and help you stay on track.',
     startBtn:    'Start Session',
-    placeholder: 'Type your message…',
+    placeholder: 'Type your messageâ€¦',
     sendBtn:     'Send',
     endBtn:      'End',
     dashLink:    'Dashboard',
     logoutLink:  'Sign out',
-    langBtn:     'עב',
-    expired:     '⏱️ Your session expired.',
+    langBtn:     '×¢×‘',
+    expired:     'â±ï¸ Your session expired.',
     newSession:  'Start new session',
   }},
   he: {{
-    startTitle:  'מוכן לפגישת הקואצ׳ינג שלך?',
-    startDesc:   'המאמן הדיגיטלי שלך יסקור את ה-OKR, ירשום התקדמות שבועית ויעזור לך להישאר בכיוון.',
-    startBtn:    'התחל פגישה',
-    placeholder: 'הקלד את הודעתך…',
-    sendBtn:     'שלח',
-    endBtn:      'סיים',
-    dashLink:    'לוח בקרה',
-    logoutLink:  'התנתק',
+    startTitle:  '×ž×•×›×Ÿ ×œ×¤×’×™×©×ª ×”×§×•××¦×³×™× ×’ ×©×œ×š?',
+    startDesc:   '×”×ž××ž×Ÿ ×”×“×™×’×™×˜×œ×™ ×©×œ×š ×™×¡×§×•×¨ ××ª ×”-OKR, ×™×¨×©×•× ×”×ª×§×“×ž×•×ª ×©×‘×•×¢×™×ª ×•×™×¢×–×•×¨ ×œ×š ×œ×”×™×©××¨ ×‘×›×™×•×•×Ÿ.',
+    startBtn:    '×”×ª×—×œ ×¤×’×™×©×”',
+    placeholder: '×”×§×œ×“ ××ª ×”×•×“×¢×ª×šâ€¦',
+    sendBtn:     '×©×œ×—',
+    endBtn:      '×¡×™×™×',
+    dashLink:    '×œ×•×— ×‘×§×¨×”',
+    logoutLink:  '×”×ª× ×ª×§',
     langBtn:     'EN',
-    expired:     '⏱️ הפגישה פגה. ',
-    newSession:  'התחל פגישה חדשה',
+    expired:     'â±ï¸ ×”×¤×’×™×©×” ×¤×’×”. ',
+    newSession:  '×”×ª×—×œ ×¤×’×™×©×” ×—×“×©×”',
   }},
 }};
 
@@ -2179,18 +2197,18 @@ async function sendMsg() {{
 async function endSession() {{
   if (!sid) return;
   if (!confirm('End this session and save your summary?')) return;
-  addMsg('Wrapping up your session…', 'sys');
+  addMsg('Wrapping up your sessionâ€¦', 'sys');
   try {{
     const d = await api('/user/session/' + sid + '/end', {{}});
     sid = null;
     const lines = [];
     if (d.mood_indicator) lines.push('Mood: ' + d.mood_indicator);
     if (d.focus_goal) lines.push('Focus: ' + d.focus_goal);
-    if (d.summary_for_coach) lines.push(d.summary_for_coach.slice(0, 300) + '…');
-    addMsg('✅ Session saved! ' + lines.join(' · '), 'sys');
+    if (d.summary_for_coach) lines.push(d.summary_for_coach.slice(0, 300) + 'â€¦');
+    addMsg('âœ… Session saved! ' + lines.join(' Â· '), 'sys');
     {"if ('" + scheduler_url + "') {" if scheduler_url else "if (false) {"}
       setTimeout(() => {{
-        addMsg('📅 Book your next session: {scheduler_url}', 'bot');
+        addMsg('ðŸ“… Book your next session: {scheduler_url}', 'bot');
       }}, 1500);
     }}
   }} catch(e) {{
@@ -2285,7 +2303,7 @@ class DemoStartRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def root() -> HTMLResponse:
-    """Production landing page — main entry point for coaching program participants."""
+    """Production landing page â€” main entry point for coaching program participants."""
     from autogpt.coaching.production_ui import PRODUCTION_HTML
 
     telegram_button = ""
