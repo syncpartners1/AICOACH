@@ -1,4 +1,4 @@
-﻿"""FastAPI application for the ABN Consulting AI Co-Navigator."""
+"""FastAPI application for the ABN Consulting AI Co-Navigator."""
 from __future__ import annotations
 
 import asyncio
@@ -96,7 +96,7 @@ from autogpt.coaching.bot_qualification import (
 from autogpt.coaching.gmail_service import send_qualify_notification, send_consult_notification, send_lead_response, send_consult_lead_response
 from autogpt.coaching.wix_consult import ConsultPayload, create_consult_clickup_task
 
-# â”€â”€ Telegram bot lifespan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Telegram bot lifespan ─────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,7 +123,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# â”€â”€ Rate limiting (slowapi) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Rate limiting (slowapi) ───────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -153,7 +153,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# â”€â”€ API-key guard (Wix â†’ API server auth) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── API-key guard (Wix → API server auth) ────────────────────────────────────
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -180,7 +180,7 @@ def verify_admin_or_api_key(request: Request) -> None:
                         detail="Admin authentication required.")
 
 
-# â”€â”€ User session cookie â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── User session cookie ───────────────────────────────────────────────────────
 
 _USER_COOKIE = "user_session"
 
@@ -213,15 +213,15 @@ def _set_user_cookie(response: Response, user_id: str) -> None:
     )
 
 
-# â”€â”€ In-memory active session store â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── In-memory active session store ───────────────────────────────────────────
 # Sessions are stored with a last-accessed timestamp so stale sessions can be
-# pruned. NOTE: sessions are in-memory only â€” a Railway redeploy clears them.
+# pruned. NOTE: sessions are in-memory only — a Railway redeploy clears them.
 # The web chat handles this gracefully by detecting the 404 and prompting restart.
 
-_SESSION_TTL_SECS = 3 * 60 * 60   # 3 hours of inactivity â†’ expire
+_SESSION_TTL_SECS = 3 * 60 * 60   # 3 hours of inactivity → expire
 
 _active_sessions: Dict[str, CoachingSession] = {}
-_session_last_access: Dict[str, float] = {}   # session_id â†’ epoch time
+_session_last_access: Dict[str, float] = {}   # session_id → epoch time
 
 
 def _touch_session(session_id: str) -> None:
@@ -237,7 +237,7 @@ def _prune_stale_sessions() -> None:
         _session_last_access.pop(sid, None)
 
 
-# â”€â”€ Auth endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Auth endpoints ────────────────────────────────────────────────────────────
 
 @app.post("/auth/register", response_model=AuthResponse,
           summary="Register a new user with email, password and phone number")
@@ -275,7 +275,7 @@ def auth_login(req: LoginRequest, _: str = Depends(verify_api_key)) -> AuthRespo
 
 
 @app.post("/auth/google", response_model=AuthResponse,
-          summary="Register or login via Google OAuth â€” phone_number is required")
+          summary="Register or login via Google OAuth — phone_number is required")
 def auth_google(req: GoogleAuthRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
     try:
         user = google_auth(google_id=req.google_id, name=req.name,
@@ -328,7 +328,7 @@ def google_oauth_start(
 
 @app.get(
     "/auth/google/callback",
-    summary="Google OAuth callback â€” exchanges code, creates/finds user, redirects to Wix",
+    summary="Google OAuth callback — exchanges code, creates/finds user, redirects to Wix",
     response_class=RedirectResponse,
 )
 def google_oauth_callback(
@@ -398,7 +398,7 @@ def google_oauth_callback(
         ).execute().data
 
     if existing and existing[0].get("phone_number"):
-        # Phone already on file â€” complete sign-in without extra step
+        # Phone already on file — complete sign-in without extra step
         row = existing[0]
         try:
             user = google_auth(google_id=google_id, name=name, email=email,
@@ -417,7 +417,7 @@ def google_oauth_callback(
         params = urlencode({"user_id": user.user_id, "name": user.name, "email": user.email or ""})
         return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
 
-    # No phone yet â€” redirect to phone-setup page
+    # No phone yet — redirect to phone-setup page
     gid_token = base64.urlsafe_b64encode(
         f"{google_id}|{name}|{email}".encode()
     ).decode()
@@ -441,7 +441,7 @@ def phone_setup_page(
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Complete Your Registration â€“ ABN Consulting</title>
+<title>Complete Your Registration – ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -483,7 +483,7 @@ input:focus{{border-color:#1a2b4a}}
 document.getElementById('phoneForm').addEventListener('submit', async function(e) {{
   e.preventDefault();
   const msg = document.getElementById('msg');
-  msg.textContent = 'Savingâ€¦';
+  msg.textContent = 'Saving…';
   const phone = document.getElementById('phone').value.trim();
   const res = await fetch('/public/complete-google-signup', {{
     method: 'POST',
@@ -493,7 +493,7 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
   if (res.ok) {{
     const data = await res.json();
     msg.style.color = '#16a34a';
-    msg.textContent = 'All set! Redirectingâ€¦';
+    msg.textContent = 'All set! Redirecting…';
     setTimeout(() => {{
       if (data.account_status === 'pending') {{
         window.location = '/pending';
@@ -542,16 +542,16 @@ def complete_google_signup(body: _GooglePhoneBody) -> AuthResponse:
 @app.get("/auth/google/config", summary="Show the redirect URI to register in Google Cloud Console")
 def google_oauth_config(_: str = Depends(verify_api_key)) -> dict:
     return {
-        "google_redirect_uri": coaching_config.google_redirect_uri or "(not configured â€” set GOOGLE_REDIRECT_URI env var)",
+        "google_redirect_uri": coaching_config.google_redirect_uri or "(not configured — set GOOGLE_REDIRECT_URI env var)",
         "instructions": (
             "Copy the value of 'google_redirect_uri' and paste it into "
-            "Google Cloud Console â†’ APIs & Services â†’ Credentials â†’ "
-            "your OAuth 2.0 Client ID â†’ Authorized redirect URIs."
+            "Google Cloud Console → APIs & Services → Credentials → "
+            "your OAuth 2.0 Client ID → Authorized redirect URIs."
         ),
     }
 
 
-# â”€â”€ User profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── User profile ──────────────────────────────────────────────────────────────
 
 @app.get("/users/{user_id}/profile", response_model=UserProfile, summary="Get user profile")
 def get_profile(user_id: str, _: str = Depends(verify_api_key)) -> UserProfile:
@@ -594,7 +594,7 @@ def self_reactivate(
     return {"user_id": user_id, "account_status": "active"}
 
 
-# â”€â”€ Objectives â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Objectives ────────────────────────────────────────────────────────────────
 
 @app.get("/users/{user_id}/objectives", response_model=List[Objective],
          summary="Get user's active objectives with key results")
@@ -628,7 +628,7 @@ def update_objective_status(
     return {"objective_id": objective_id, "status": req.status.value}
 
 
-# â”€â”€ Key Results â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Key Results ───────────────────────────────────────────────────────────────
 
 @app.post("/users/{user_id}/key-results", response_model=dict,
           summary="Create or update a key result")
@@ -659,7 +659,7 @@ def update_kr_status(
     return {"kr_id": kr_id, "status": req.status.value}
 
 
-# â”€â”€ Weekly Plan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Weekly Plan ───────────────────────────────────────────────────────────────
 
 @app.get(
     "/users/{user_id}/weekly-plan",
@@ -734,7 +734,7 @@ def upsert_user_daily_highlight(
     }
 
 
-# â”€â”€ History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── History ───────────────────────────────────────────────────────────────────
 
 @app.get("/users/{user_id}/history", response_model=List[PastSession],
          summary="Get past session highlights for a user")
@@ -742,7 +742,7 @@ def user_history(user_id: str, _: str = Depends(verify_api_key)) -> List[PastSes
     return get_past_sessions(user_id=user_id, limit=10)
 
 
-# â”€â”€ User personal dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── User personal dashboard ───────────────────────────────────────────────────
 
 @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
 def dashboard_root(request: Request) -> Response:
@@ -800,11 +800,11 @@ def user_dashboard(
     return HTMLResponse(content=html)
 
 
-# â”€â”€ Admin dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Admin dashboard ────────────────────────────────────────────────────────────
 
 _ADMIN_COOKIE = "admin_session"
 
-# In-memory OTP store: phone â†’ (otp, expires_at)
+# In-memory OTP store: phone → (otp, expires_at)
 _otp_store: Dict[str, tuple] = {}
 
 
@@ -884,7 +884,7 @@ def _login_page(error: str = "", active_tab: str = "password") -> str:
     return f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin Login â€“ ABN Consulting</title>
+<title>Admin Login – ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1030,7 +1030,7 @@ function verifyOtp() {{
 
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLResponse:
-    """Admin overview dashboard â€” requires login. ?lang=en|he switches UI language."""
+    """Admin overview dashboard — requires login. ?lang=en|he switches UI language."""
     if lang not in ("en", "he"):
         lang = "en"
     if not _is_admin_authenticated(request):
@@ -1099,7 +1099,7 @@ def admin_logout() -> Response:
     return resp
 
 
-# â”€â”€ Admin social auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Admin social auth ──────────────────────────────────────────────────────────
 
 class _FbTokenRequest(BaseModel):
     access_token: str
@@ -1214,7 +1214,7 @@ def admin_set_user_status(
 
 @app.post("/admin/invites", response_model=Invite, summary="Create a program invite link (admin)")
 def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(verify_admin_or_api_key)) -> Invite:
-    # invited_by is a UUID FK â€” only set it when a valid user_id is configured
+    # invited_by is a UUID FK — only set it when a valid user_id is configured
     admin_uid = coaching_config.admin_user_id if coaching_config.admin_user_id else None
     lang = req.language if req.language in ("en", "he") else "en"
     invite = create_invite(
@@ -1231,7 +1231,7 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
     register_url = invite.register_url or ""
     if req.send_email and req.email and not register_url.startswith("http"):
         logger.warning(
-            "Invite email NOT sent to %s â€” register_url is relative (%s). "
+            "Invite email NOT sent to %s — register_url is relative (%s). "
             "Set PUBLIC_URL or RAILWAY_PUBLIC_DOMAIN env var.",
             req.email,
             register_url,
@@ -1427,7 +1427,7 @@ def admin_learning_insights(
 @app.post(
     "/public/register/phone",
     response_model=AuthResponse,
-    summary="Open phone registration â€” invite token optional; without it user is pending approval",
+    summary="Open phone registration — invite token optional; without it user is pending approval",
 )
 def public_register_phone(
     req: PhoneRegisterRequest,
@@ -1485,7 +1485,7 @@ def _detect_lang_from_header(accept_language: str) -> str:
     include_in_schema=False,
 )
 def register_page(request: Request, token: Optional[str] = Query(default=None)) -> HTMLResponse:
-    """Landing page for invited users â€” pre-fills name/phone from the invite token."""
+    """Landing page for invited users — pre-fills name/phone from the invite token."""
     from autogpt.coaching.i18n import t as _t, get_coach_name as _coach_name
     invite = get_invite(token) if token else None
     name_val = invite.name or "" if invite else ""
@@ -1517,7 +1517,7 @@ def register_page(request: Request, token: Optional[str] = Query(default=None)) 
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="{lang}" {dir_attr}><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} â€“ ABN Consulting</title>
+<title>{title} – ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 {'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700&display=swap" rel="stylesheet">' if is_rtl else ''}
 <style>
@@ -1572,10 +1572,10 @@ input:focus{{border-color:#1a2b4a}}
     <label>{label_lang}</label>
     <div style="display:flex;gap:20px;margin-bottom:14px;">
       <label style="font-weight:normal;font-size:14px;">
-        <input type="radio" name="language" value="en" {en_checked}> ðŸ‡¬ðŸ‡§ English
+        <input type="radio" name="language" value="en" {en_checked}> 🇬🇧 English
       </label>
       <label style="font-weight:normal;font-size:14px;">
-        <input type="radio" name="language" value="he" {he_checked}> ðŸ‡®ðŸ‡± ×¢×‘×¨×™×ª
+        <input type="radio" name="language" value="he" {he_checked}> 🇮🇱 עברית
       </label>
     </div>
     <button type="submit" class="btn">{btn_submit}</button>
@@ -1629,7 +1629,7 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
 
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
-    """User-facing login page â€” sign in with Google (when configured)."""
+    """User-facing login page — sign in with Google (when configured)."""
     dest = next or "/dashboard"
     google_url = f"/auth/google/url?redirect_to={dest}"
 
@@ -1652,7 +1652,7 @@ def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
     else:
         sign_in_block = (
             '<div class="notice">'
-            'âš™ï¸ Web sign-in is not yet configured on this server.<br>'
+            '⚙️ Web sign-in is not yet configured on this server.<br>'
             'Please use the <strong>Telegram</strong> bot or contact your coach to access your account.'
             '</div>'
         )
@@ -1660,7 +1660,7 @@ def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign In â€“ ABN Consulting</title>
+<title>Sign In – ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1700,7 +1700,7 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
   {sign_in_block}
   <div class="divider">New to the program?</div>
   <div class="register-link"><a href="/register">Register here</a></div>
-  <a href="/" class="back-link">â† Back to home</a>
+  <a href="/" class="back-link">← Back to home</a>
 </div>
 </body></html>""")
 
@@ -1719,7 +1719,7 @@ def pending_page(request: Request) -> HTMLResponse:
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Registration Pending â€“ ABN Consulting</title>
+<title>Registration Pending – ABN Consulting</title>
 <link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1735,7 +1735,7 @@ p{{color:#6b7280;font-size:14px;line-height:1.6}}
 </style></head>
 <body>
 <div class="card">
-  <div class="icon">â³</div>
+  <div class="icon">⏳</div>
   <h1>{"Welcome, " + name + "!" if name else "Registration Received!"}</h1>
   <p>Your registration is pending review by the coach.<br>
   You'll receive a confirmation once your account is activated.</p>
@@ -1751,7 +1751,7 @@ def user_logout() -> Response:
     return resp
 
 
-# â”€â”€ Coaching sessions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Coaching sessions ─────────────────────────────────────────────────────────
 
 class StartSessionRequest(BaseModel):
     client_id: str
@@ -1841,7 +1841,7 @@ def send_message(
 
 
 @app.post("/coaching/session/{session_id}/end", response_model=SessionSummary,
-          summary="End session â€” extract summary + OKR changes, save to Supabase")
+          summary="End session — extract summary + OKR changes, save to Supabase")
 def end_session(
     session_id: str,
     _: str = Depends(verify_api_key),
@@ -1867,7 +1867,7 @@ def get_session(session_id: str, _: str = Depends(verify_api_key)) -> SessionSum
 
 
 @app.get("/coaching/dashboard", response_model=CoachDashboard,
-         summary="Coach dashboard â€” latest status for all clients")
+         summary="Coach dashboard — latest status for all clients")
 def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
     return build_dashboard()
 
@@ -1881,7 +1881,7 @@ def health() -> dict:
 @app.post("/coaching-qualify")
 async def coaching_qualify_lead(payload: CoachingQualPayload):
     """
-    Coaching qualification webhook — Yes/No model.
+    Coaching qualification webhook � Yes/No model.
     Called by Wix Automation on /coaching-qualify form submit, and internally by the bot.
     """
     return await handle_coaching_qualify(payload)
@@ -1915,7 +1915,7 @@ async def debug_clickup():
     try:
         r2 = requests.post(
             f"https://api.clickup.com/api/v2/list/{test_list}/task",
-            json={"name": "DEBUG TEST — DELETE ME"},
+            json={"name": "DEBUG TEST � DELETE ME"},
             headers={"Authorization": key, "Content-Type": "application/json"},
             timeout=10
         )
@@ -1941,19 +1941,20 @@ async def wix_consult_lead(payload: ConsultPayload, background_tasks: Background
     clickup = create_consult_clickup_task(payload)
     background_tasks.add_task(
         send_consult_notification,
-        name=payload.respondentName,
-        email=payload.respondentEmail,
-        org=payload.organizationName,
-        role=payload.respondentRole,
-        total_score=payload.totalScore,
+        lead_name=payload.respondentName,
+        lead_org=payload.organizationName or "",
+        lead_email=payload.respondentEmail,
+        lead_role=payload.respondentRole or "",
+        form_type="consulting",
         readiness_level=payload.readinessLevel,
-        category_scores={k: v.dict() for k, v in payload.categoryScores.items()},
+        total_score=payload.totalScore,
         clickup_url=clickup or "",
+    )
     )
     return {"status": "ok", "readiness": payload.readinessLevel, "clickup": clickup}
 
 
-# â”€â”€ Demo endpoints (no API key â€” rate limited by IP) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Demo endpoints (no API key — rate limited by IP) ─────────────────────────
 
 # Simple in-memory rate limit: max 20 demo sessions per IP per day
 _demo_counts: Dict[str, int] = defaultdict(int)
@@ -1967,7 +1968,7 @@ _demo_sessions: Dict[str, CoachingSession] = {}
 def _check_demo_key(x_demo_key: str = Header(default="")) -> None:
     """Validate the demo key (injected into the demo page by the server)."""
     if not coaching_config.demo_key:
-        return  # demo key not configured â€” open access (acceptable for demos)
+        return  # demo key not configured — open access (acceptable for demos)
     if x_demo_key != coaching_config.demo_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Invalid demo key.")
@@ -1986,7 +1987,7 @@ def _check_demo_rate(request: Request) -> None:
                             detail="Demo limit reached. Please book a real session!")
 
 
-# â”€â”€ User web chat (cookie-authenticated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── User web chat (cookie-authenticated) ────────────────────────────────────
 
 def _require_user_cookie(request: Request) -> str:
     """Return user_id from cookie or raise 401 redirect."""
@@ -2018,7 +2019,7 @@ def chat_page(request: Request) -> Response:
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Coaching Session â€“ ABN Consulting</title>
+<title>AI Coaching Session – ABN Consulting</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
 <link rel="shortcut icon" href="/static/android-chrome-192x192.png">
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
@@ -2085,7 +2086,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     <div class="hdr-sub">Welcome, {user.name}</div>
   </div>
   <div class="hdr-right">
-    <button class="lang-btn" id="langBtn" onclick="toggleLang()">×¢×‘</button>
+    <button class="lang-btn" id="langBtn" onclick="toggleLang()">עב</button>
     <a href="/dashboard/{user.user_id}" id="dashLink">Dashboard</a>
     <a href="/user/logout" id="logoutLink">Sign out</a>
   </div>
@@ -2100,7 +2101,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 <div id="chat-area">
   <div id="messages"></div>
   <div id="input-row">
-    <textarea id="msg-input" rows="1" placeholder="Type your messageâ€¦"
+    <textarea id="msg-input" rows="1" placeholder="Type your message…"
               onkeydown="handleKey(event)"></textarea>
     <button class="btn-send" id="sendBtn" onclick="sendMsg()">Send</button>
     <button class="btn-end" id="endBtn" onclick="endSession()">End</button>
@@ -2117,27 +2118,27 @@ const UI = {{
     startTitle:  'Ready for your coaching session?',
     startDesc:   'Your AI coach will review your OKRs, log weekly progress, and help you stay on track.',
     startBtn:    'Start Session',
-    placeholder: 'Type your messageâ€¦',
+    placeholder: 'Type your message…',
     sendBtn:     'Send',
     endBtn:      'End',
     dashLink:    'Dashboard',
     logoutLink:  'Sign out',
-    langBtn:     '×¢×‘',
-    expired:     'â±ï¸ Your session expired.',
+    langBtn:     'עב',
+    expired:     '⏱️ Your session expired.',
     newSession:  'Start new session',
   }},
   he: {{
-    startTitle:  '×ž×•×›×Ÿ ×œ×¤×’×™×©×ª ×”×§×•××¦×³×™× ×’ ×©×œ×š?',
-    startDesc:   '×”×ž××ž×Ÿ ×”×“×™×’×™×˜×œ×™ ×©×œ×š ×™×¡×§×•×¨ ××ª ×”-OKR, ×™×¨×©×•× ×”×ª×§×“×ž×•×ª ×©×‘×•×¢×™×ª ×•×™×¢×–×•×¨ ×œ×š ×œ×”×™×©××¨ ×‘×›×™×•×•×Ÿ.',
-    startBtn:    '×”×ª×—×œ ×¤×’×™×©×”',
-    placeholder: '×”×§×œ×“ ××ª ×”×•×“×¢×ª×šâ€¦',
-    sendBtn:     '×©×œ×—',
-    endBtn:      '×¡×™×™×',
-    dashLink:    '×œ×•×— ×‘×§×¨×”',
-    logoutLink:  '×”×ª× ×ª×§',
+    startTitle:  'מוכן לפגישת הקואצ׳ינג שלך?',
+    startDesc:   'המאמן הדיגיטלי שלך יסקור את ה-OKR, ירשום התקדמות שבועית ויעזור לך להישאר בכיוון.',
+    startBtn:    'התחל פגישה',
+    placeholder: 'הקלד את הודעתך…',
+    sendBtn:     'שלח',
+    endBtn:      'סיים',
+    dashLink:    'לוח בקרה',
+    logoutLink:  'התנתק',
     langBtn:     'EN',
-    expired:     'â±ï¸ ×”×¤×’×™×©×” ×¤×’×”. ',
-    newSession:  '×”×ª×—×œ ×¤×’×™×©×” ×—×“×©×”',
+    expired:     '⏱️ הפגישה פגה. ',
+    newSession:  'התחל פגישה חדשה',
   }},
 }};
 
@@ -2243,18 +2244,18 @@ async function sendMsg() {{
 async function endSession() {{
   if (!sid) return;
   if (!confirm('End this session and save your summary?')) return;
-  addMsg('Wrapping up your sessionâ€¦', 'sys');
+  addMsg('Wrapping up your session…', 'sys');
   try {{
     const d = await api('/user/session/' + sid + '/end', {{}});
     sid = null;
     const lines = [];
     if (d.mood_indicator) lines.push('Mood: ' + d.mood_indicator);
     if (d.focus_goal) lines.push('Focus: ' + d.focus_goal);
-    if (d.summary_for_coach) lines.push(d.summary_for_coach.slice(0, 300) + 'â€¦');
-    addMsg('âœ… Session saved! ' + lines.join(' Â· '), 'sys');
+    if (d.summary_for_coach) lines.push(d.summary_for_coach.slice(0, 300) + '…');
+    addMsg('✅ Session saved! ' + lines.join(' · '), 'sys');
     {"if ('" + scheduler_url + "') {" if scheduler_url else "if (false) {"}
       setTimeout(() => {{
-        addMsg('ðŸ“… Book your next session: {scheduler_url}', 'bot');
+        addMsg('📅 Book your next session: {scheduler_url}', 'bot');
       }}, 1500);
     }}
   }} catch(e) {{
@@ -2349,7 +2350,7 @@ class DemoStartRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def root() -> HTMLResponse:
-    """Production landing page â€” main entry point for coaching program participants."""
+    """Production landing page — main entry point for coaching program participants."""
     from autogpt.coaching.production_ui import PRODUCTION_HTML
 
     telegram_button = ""
@@ -2448,3 +2449,313 @@ def demo_end(
         logger.warning("Could not persist demo session %s to Supabase", session_id)
     del _demo_sessions[session_id]
     return summary
+
+
+# ── HTML Form Pages (iFrame-embeddable on Wix) ────────────────────────────────
+
+@app.get("/qualify-form", response_class=HTMLResponse, include_in_schema=False)
+def coaching_qualify_form() -> HTMLResponse:
+    """Self-contained coaching qualification form — embed as iFrame on Wix."""
+    html = r"""<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>שאלון מוכנות — Co-Navigator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#f8fafc;color:#1e293b;padding:24px 16px;font-size:15px;direction:rtl}
+h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px}
+.section{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
+  text-transform:uppercase;letter-spacing:.5px}
+label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+input[type=text],input[type=email],textarea{width:100%;padding:10px 12px;
+  border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
+  font-family:inherit;transition:border-color .2s}
+input:focus,textarea:focus{border-color:#1a2b4a}
+textarea{resize:vertical;min-height:70px}
+.field{margin-bottom:16px}
+.yn-wrap{display:flex;flex-direction:column;margin-bottom:12px}
+.yn-label{font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+.yn-opts{display:flex;gap:8px}
+.yn-btn{flex:1;padding:9px 4px;border:1.5px solid #cbd5e1;border-radius:8px;
+  font-size:14px;font-weight:600;cursor:pointer;background:#fff;color:#475569;
+  transition:all .15s;text-align:center}
+.yn-btn.active-yes{background:#dcfce7;border-color:#16a34a;color:#15803d}
+.yn-btn.active-no{background:#fee2e2;border-color:#dc2626;color:#b91c1c}
+.btn-submit{width:100%;padding:13px;background:#1a2b4a;color:#fff;border:none;
+  border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn-submit:hover{background:#243d6b}
+.btn-submit:disabled{background:#94a3b8;cursor:not-allowed}
+.thanks{display:none;text-align:center;padding:40px 20px;background:#fff;
+  border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.thanks h2{color:#16a34a;margin-bottom:12px}
+.thanks p{color:#475569;font-size:14px;line-height:1.6}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
+  padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+</style></head>
+<body>
+<h2>שאלון מוכנות — Co-Navigator</h2>
+<p class="sub">4 דקות. 7 שאלות. כדי שנוכל להכיר אותך לפני שיחת הגילוי.</p>
+<div id="form-wrap">
+  <div class="section">
+    <h3>הקשר</h3>
+    <div class="field">
+      <label>מה האתגר שאתה/את רוצה לעבוד עליו? *</label>
+      <textarea id="q1" placeholder="תאר/י בקצרה את האתגר המרכזי..."></textarea>
+    </div>
+    <div class="field">
+      <label>מה יגרום לתהליך הזה להיות הצלחה עבורך? *</label>
+      <textarea id="q2" placeholder="איזה תוצאה תגרום לך לומר שהשקעה הייתה שווה?"></textarea>
+    </div>
+  </div>
+  <div class="section">
+    <h3>שאלות מוכנות</h3>
+    <div class="yn-wrap">
+      <span class="yn-label">האתגר הזה הוא עדיפות אמיתית עבורך עכשיו?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q3',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q3',this,'no')">✗ לא</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">אתה/את מוכן/ה להתחייב לתהליך מובנה של 3-6 חודשים?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q4',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q4',this,'no')">✗ לא</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">תוכל/י להשלים משימות שבועיות באופן עקבי ובזמן?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q5',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q5',this,'no')">✗ לא</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">אתה/את מחפש/ת אימון אמיתי — לא רק ייעוץ וטיפים?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q6',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q6',this,'no')">✗ לא</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">המטרה שלך היא לבנות יכולת חדשה — לא רק פתרון מהיר?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q7',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q7',this,'no')">✗ לא</div>
+      </div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>פרטי קשר</h3>
+    <div class="field"><label>שם מלא *</label><input type="text" id="q8" placeholder="שם פרטי ושם משפחה"></div>
+    <div class="field"><label>כתובת אימייל *</label><input type="email" id="q9" placeholder="your@email.com"></div>
+    <div class="field"><label>איך הגעת אלינו?</label><input type="text" id="q10" placeholder="LinkedIn, המלצה, גוגל..."></div>
+  </div>
+  <button class="btn-submit" id="submitBtn" onclick="submitForm()">שליחת השאלון ←</button>
+  <div class="err" id="errMsg"></div>
+</div>
+<div class="thanks" id="thanksMsg">
+  <h2>תודה! ✓</h2>
+  <p>השאלון התקבל.<br>עדי יחזור אליך תוך 24 שעות עם השלב הבא.</p>
+</div>
+<script>
+var answers={q3:'',q4:'',q5:'',q6:'',q7:''};
+function setYN(f,el,v){
+  answers[f]=v;
+  var o=el.parentElement.children;
+  o[0].className='yn-btn'+(v==='yes'?' active-yes':'');
+  o[1].className='yn-btn'+(v==='no'?' active-no':'');
+}
+function submitForm(){
+  var err=document.getElementById('errMsg');err.style.display='none';
+  var q1=document.getElementById('q1').value.trim();
+  var q2=document.getElementById('q2').value.trim();
+  var q8=document.getElementById('q8').value.trim();
+  var q9=document.getElementById('q9').value.trim();
+  if(!q1||!q2||!q8||!q9){err.textContent='יש למלא את כל השדות המסומנים ב-*';err.style.display='block';return;}
+  if(!q9.includes('@')){err.textContent='כתובת האימייל אינה תקינה';err.style.display='block';return;}
+  var u=Object.keys(answers).filter(function(k){return answers[k]==='';});
+  if(u.length>0){err.textContent='יש לענות על כל שאלות הכן/לא';err.style.display='block';return;}
+  var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='שולח...';
+  var payload={q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
+    q5_commit_tasks:answers.q5,q6_coaching:answers.q6,q7_capability:answers.q7,
+    q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
+  fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+  .then(function(r){
+    if(r.ok){document.getElementById('form-wrap').style.display='none';document.getElementById('thanksMsg').style.display='block';}
+    else{r.text().then(function(t){err.textContent='שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
+  }).catch(function(){err.textContent='בעיית תקשורת. נסה/י שוב.';err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});
+}
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)
+
+
+@app.get("/consult-form", response_class=HTMLResponse, include_in_schema=False)
+def consulting_inquiry_form() -> HTMLResponse:
+    """Self-contained consulting/workshop inquiry form — embed as iFrame on Wix."""
+    html = r"""<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>שאלון מוכנות ארגונית — CM Evaluate</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#f8fafc;color:#1e293b;padding:24px 16px;font-size:15px;direction:rtl}
+h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px}
+.section{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
+  text-transform:uppercase;letter-spacing:.5px}
+label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:4px}
+input[type=text],input[type=email],select,textarea{width:100%;padding:10px 12px;
+  border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
+  font-family:inherit;transition:border-color .2s;background:#fff}
+input:focus,select:focus,textarea:focus{border-color:#1a2b4a}
+textarea{resize:vertical;min-height:60px}
+.field{margin-bottom:14px}
+.scale-wrap{margin-bottom:14px}
+.scale-label{font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+.scale-hint{display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:4px}
+.scale-btns{display:flex;gap:4px}
+.sc-btn{flex:1;padding:8px 2px;border:1.5px solid #cbd5e1;border-radius:6px;
+  font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#64748b;text-align:center;transition:all .15s}
+.sc-btn.sel{background:#1a2b4a;border-color:#1a2b4a;color:#fff}
+.btn-submit{width:100%;padding:13px;background:#1a2b4a;color:#fff;border:none;
+  border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn-submit:hover{background:#243d6b}
+.btn-submit:disabled{background:#94a3b8;cursor:not-allowed}
+.thanks{display:none;text-align:center;padding:40px 20px;background:#fff;
+  border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.thanks h2{color:#16a34a;margin-bottom:12px}
+.thanks p{color:#475569;font-size:14px;line-height:1.6}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
+  padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+</style></head>
+<body>
+<h2>שאלון מוכנות ארגונית — CM Evaluate</h2>
+<p class="sub">עוזר לנו להבין את נקודת הפתיחה ולהתאים את הגישה הנכונה.</p>
+<div id="form-wrap">
+  <div class="section">
+    <h3>פרטים ראשוניים</h3>
+    <div class="field"><label>שם מלא *</label><input type="text" id="c1" placeholder="שם פרטי ושם משפחה"></div>
+    <div class="field"><label>אימייל *</label><input type="email" id="c2" placeholder="your@company.com"></div>
+    <div class="field"><label>שם הארגון *</label><input type="text" id="c3" placeholder="שם החברה"></div>
+    <div class="field"><label>תפקיד *</label><input type="text" id="c4" placeholder="כותרת תפקידך"></div>
+    <div class="field">
+      <label>סוג הפנייה *</label>
+      <select id="c12">
+        <option value="">בחר...</option>
+        <option value="consulting">ייעוץ ארגוני</option>
+        <option value="workshop">סדנה</option>
+      </select>
+    </div>
+  </div>
+  <div class="section">
+    <h3>א׳ — מוכנות ניהולית</h3>
+    <div class="scale-wrap"><div class="scale-label">תמיכת הנהלה בכירה בתהליך השינוי</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_a1"><div class="sc-btn" onclick="sc('a1',this,1)">1</div><div class="sc-btn" onclick="sc('a1',this,2)">2</div><div class="sc-btn" onclick="sc('a1',this,3)">3</div><div class="sc-btn" onclick="sc('a1',this,4)">4</div><div class="sc-btn" onclick="sc('a1',this,5)">5</div><div class="sc-btn" onclick="sc('a1',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">בהירות חזון השינוי</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_a2"><div class="sc-btn" onclick="sc('a2',this,1)">1</div><div class="sc-btn" onclick="sc('a2',this,2)">2</div><div class="sc-btn" onclick="sc('a2',this,3)">3</div><div class="sc-btn" onclick="sc('a2',this,4)">4</div><div class="sc-btn" onclick="sc('a2',this,5)">5</div><div class="sc-btn" onclick="sc('a2',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">נכונות להקצות משאבים (זמן, תקציב, אנשים)</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_a3"><div class="sc-btn" onclick="sc('a3',this,1)">1</div><div class="sc-btn" onclick="sc('a3',this,2)">2</div><div class="sc-btn" onclick="sc('a3',this,3)">3</div><div class="sc-btn" onclick="sc('a3',this,4)">4</div><div class="sc-btn" onclick="sc('a3',this,5)">5</div><div class="sc-btn" onclick="sc('a3',this,6)">6</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>ב׳ — קיבולת שינוי</h3>
+    <div class="scale-wrap"><div class="scale-label">מוכנות רגשית של הצוות לשינוי</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_b1"><div class="sc-btn" onclick="sc('b1',this,1)">1</div><div class="sc-btn" onclick="sc('b1',this,2)">2</div><div class="sc-btn" onclick="sc('b1',this,3)">3</div><div class="sc-btn" onclick="sc('b1',this,4)">4</div><div class="sc-btn" onclick="sc('b1',this,5)">5</div><div class="sc-btn" onclick="sc('b1',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">ניסיון קודם בתהליכי שינוי מוצלחים</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_b2"><div class="sc-btn" onclick="sc('b2',this,1)">1</div><div class="sc-btn" onclick="sc('b2',this,2)">2</div><div class="sc-btn" onclick="sc('b2',this,3)">3</div><div class="sc-btn" onclick="sc('b2',this,4)">4</div><div class="sc-btn" onclick="sc('b2',this,5)">5</div><div class="sc-btn" onclick="sc('b2',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">כמה זמן יש לך לבצע את השינוי</div>
+      <div class="scale-hint"><span>לחץ גבוה</span><span>זמן סביר</span></div>
+      <div class="scale-btns" id="s_b3"><div class="sc-btn" onclick="sc('b3',this,1)">1</div><div class="sc-btn" onclick="sc('b3',this,2)">2</div><div class="sc-btn" onclick="sc('b3',this,3)">3</div><div class="sc-btn" onclick="sc('b3',this,4)">4</div><div class="sc-btn" onclick="sc('b3',this,5)">5</div><div class="sc-btn" onclick="sc('b3',this,6)">6</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>ג׳ — מורכבות השינוי</h3>
+    <div class="scale-wrap"><div class="scale-label">מספר יחידות מושפעות</div>
+      <div class="scale-hint"><span>רבות</span><span>מעטות</span></div>
+      <div class="scale-btns" id="s_c1"><div class="sc-btn" onclick="sc('c1',this,1)">1</div><div class="sc-btn" onclick="sc('c1',this,2)">2</div><div class="sc-btn" onclick="sc('c1',this,3)">3</div><div class="sc-btn" onclick="sc('c1',this,4)">4</div><div class="sc-btn" onclick="sc('c1',this,5)">5</div><div class="sc-btn" onclick="sc('c1',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">מידת השינוי בתהליכים וכלים קיימים</div>
+      <div class="scale-hint"><span>שינוי מהותי</span><span>שינוי קטן</span></div>
+      <div class="scale-btns" id="s_c2"><div class="sc-btn" onclick="sc('c2',this,1)">1</div><div class="sc-btn" onclick="sc('c2',this,2)">2</div><div class="sc-btn" onclick="sc('c2',this,3)">3</div><div class="sc-btn" onclick="sc('c2',this,4)">4</div><div class="sc-btn" onclick="sc('c2',this,5)">5</div><div class="sc-btn" onclick="sc('c2',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">בהירות מה שצריך להשתנות</div>
+      <div class="scale-hint"><span>לא ברור</span><span>ברור מאוד</span></div>
+      <div class="scale-btns" id="s_c3"><div class="sc-btn" onclick="sc('c3',this,1)">1</div><div class="sc-btn" onclick="sc('c3',this,2)">2</div><div class="sc-btn" onclick="sc('c3',this,3)">3</div><div class="sc-btn" onclick="sc('c3',this,4)">4</div><div class="sc-btn" onclick="sc('c3',this,5)">5</div><div class="sc-btn" onclick="sc('c3',this,6)">6</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>ד׳ — מינוף ותוצאות</h3>
+    <div class="scale-wrap"><div class="scale-label">דחיפות עסקית לבצע את השינוי עכשיו</div>
+      <div class="scale-hint"><span>לא דחוף</span><span>קריטי</span></div>
+      <div class="scale-btns" id="s_d1"><div class="sc-btn" onclick="sc('d1',this,1)">1</div><div class="sc-btn" onclick="sc('d1',this,2)">2</div><div class="sc-btn" onclick="sc('d1',this,3)">3</div><div class="sc-btn" onclick="sc('d1',this,4)">4</div><div class="sc-btn" onclick="sc('d1',this,5)">5</div><div class="sc-btn" onclick="sc('d1',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">פוטנציאל התוצאות העסקיות אם השינוי יצליח</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_d2"><div class="sc-btn" onclick="sc('d2',this,1)">1</div><div class="sc-btn" onclick="sc('d2',this,2)">2</div><div class="sc-btn" onclick="sc('d2',this,3)">3</div><div class="sc-btn" onclick="sc('d2',this,4)">4</div><div class="sc-btn" onclick="sc('d2',this,5)">5</div><div class="sc-btn" onclick="sc('d2',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">נכונות למדוד תוצאות התהליך</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_d3"><div class="sc-btn" onclick="sc('d3',this,1)">1</div><div class="sc-btn" onclick="sc('d3',this,2)">2</div><div class="sc-btn" onclick="sc('d3',this,3)">3</div><div class="sc-btn" onclick="sc('d3',this,4)">4</div><div class="sc-btn" onclick="sc('d3',this,5)">5</div><div class="sc-btn" onclick="sc('d3',this,6)">6</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>מידע נוסף</h3>
+    <div class="field"><label>תאר/י את אתגר השינוי המרכזי</label><textarea id="c9" placeholder="מה עומד על הפרק?"></textarea></div>
+    <div class="field"><label>איך הגעת אלינו?</label><input type="text" id="c13" placeholder="LinkedIn, המלצה, גוגל..."></div>
+  </div>
+  <button class="btn-submit" id="submitBtn" onclick="submitConsult()">שליחת השאלון ←</button>
+  <div class="err" id="errMsg"></div>
+</div>
+<div class="thanks" id="thanksMsg">
+  <h2>תודה! ✓</h2><p>השאלון התקבל.<br>עדי יחזור אליך תוך 24 שעות.</p>
+</div>
+<script>
+var S={a1:0,a2:0,a3:0,b1:0,b2:0,b3:0,c1:0,c2:0,c3:0,d1:0,d2:0,d3:0};
+function sc(k,el,v){S[k]=v;var b=el.parentElement.children;for(var i=0;i<b.length;i++)b[i].className='sc-btn'+(i+1<=v?' sel':'');}
+function submitConsult(){
+  var err=document.getElementById('errMsg');err.style.display='none';
+  var n=document.getElementById('c1').value.trim(),e=document.getElementById('c2').value.trim(),
+      o=document.getElementById('c3').value.trim(),r=document.getElementById('c4').value.trim(),
+      ft=document.getElementById('c12').value;
+  if(!n||!e||!o||!r||!ft){err.textContent='יש למלא את כל השדות המסומנים ב-*';err.style.display='block';return;}
+  if(!e.includes('@')){err.textContent='אימייל לא תקין';err.style.display='block';return;}
+  var u=Object.keys(S).filter(function(k){return S[k]===0;});
+  if(u.length>0){err.textContent='יש לדרג את כל השאלות ('+u.length+' ללא דירוג)';err.style.display='block';return;}
+  var total=Object.values(S).reduce(function(a,b){return a+b;},0);
+  var level=total>=52?'HIGH':total>=36?'MEDIUM':'LOW';
+  var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='שולח...';
+  var payload={c1_name:n,c2_email:e,c3_org:o,c4_role:r,
+    c5_decision_maker:'yes',c6_budget:'yes',
+    c7_urgency:S.d1>=4?'urgent':'medium',c8_org_size:'50',
+    c9_challenge:document.getElementById('c9').value.trim(),
+    c10_outcome:'',c11_prev_attempts:'',c12_form_type:ft,
+    c13_source:document.getElementById('c13').value.trim()};
+  fetch('/wix-consult-form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+  .then(function(r){
+    if(r.ok){document.getElementById('form-wrap').style.display='none';document.getElementById('thanksMsg').style.display='block';}
+    else{r.text().then(function(t){err.textContent='שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
+  }).catch(function(){err.textContent='בעיית תקשורת. נסה/י שוב.';err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});
+}
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)
