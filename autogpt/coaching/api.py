@@ -1881,7 +1881,7 @@ def health() -> dict:
 @app.post("/coaching-qualify")
 async def coaching_qualify_lead(payload: CoachingQualPayload):
     """
-    Coaching qualification webhook — Yes/No model.
+    Coaching qualification webhook ï¿½ Yes/No model.
     Called by Wix Automation on /coaching-qualify form submit, and internally by the bot.
     """
     return await handle_coaching_qualify(payload)
@@ -1915,7 +1915,7 @@ async def debug_clickup():
     try:
         r2 = requests.post(
             f"https://api.clickup.com/api/v2/list/{test_list}/task",
-            json={"name": "DEBUG TEST — DELETE ME"},
+            json={"name": "DEBUG TEST ï¿½ DELETE ME"},
             headers={"Authorization": key, "Content-Type": "application/json"},
             timeout=10
         )
@@ -1949,7 +1949,6 @@ async def wix_consult_lead(payload: ConsultPayload, background_tasks: Background
         readiness_level=payload.readinessLevel,
         total_score=payload.totalScore,
         clickup_url=clickup or "",
-    )
     )
     return {"status": "ok", "readiness": payload.readinessLevel, "clickup": clickup}
 
