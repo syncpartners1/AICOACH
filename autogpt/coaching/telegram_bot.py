@@ -80,6 +80,9 @@ _sessions: Dict[int, object] = {}
 # Reply forwarding map: forwarded_msg_id → original_telegram_user_id
 _forward_map: Dict[int, int] = {}
 
+# Inactivity timer tasks: telegram_user_id → asyncio.Task
+_inactivity_tasks: Dict[int, asyncio.Task] = {}
+
 
 def _get_or_restore_session(tg_id: int):
     """Return the in-memory session if present, otherwise attempt to restore from DB."""
@@ -109,6 +112,37 @@ def _persist_session(tg_id: int) -> None:
         save_telegram_session(tg_id, session)
     except Exception:
         logger.exception("Failed to persist telegram session for user %s", tg_id)
+
+
+# ── Inactivity timer ──────────────────────────────────────────────────────────
+
+async def _inactivity_check(bot, chat_id: int, tg_id: int, lang: str) -> None:
+    """Send a reminder after 3 min and a soft close after 5 min of no response."""
+    try:
+        await asyncio.sleep(180)  # 3 minutes
+        if tg_id in _sessions:
+            await bot.send_message(chat_id=chat_id, text=t(lang, "inactivity_reminder"))
+        await asyncio.sleep(120)  # 2 more minutes (5 total)
+        if tg_id in _sessions:
+            await bot.send_message(chat_id=chat_id, text=t(lang, "inactivity_timeout"))
+    except asyncio.CancelledError:
+        pass  # User responded — timer was cancelled cleanly
+
+
+def _start_inactivity_timer(bot, chat_id: int, tg_id: int, lang: str) -> None:
+    """Start (or restart) the inactivity timer for a CHATTING session."""
+    _cancel_inactivity_timer(tg_id)
+    loop = asyncio.get_event_loop()
+    _inactivity_tasks[tg_id] = loop.create_task(
+        _inactivity_check(bot, chat_id, tg_id, lang)
+    )
+
+
+def _cancel_inactivity_timer(tg_id: int) -> None:
+    """Cancel any pending inactivity timer for this user."""
+    task = _inactivity_tasks.pop(tg_id, None)
+    if task and not task.done():
+        task.cancel()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -371,6 +405,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
+    _cancel_inactivity_timer(tg_id)  # user responded — cancel any pending reminder
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
     session = _get_or_restore_session(tg_id)
@@ -383,6 +418,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         reply = session.chat(update.message.text)
         _persist_session(tg_id)  # keep DB in sync after each turn
         await update.message.reply_text(reply)
+        _start_inactivity_timer(context.bot, update.effective_chat.id, tg_id, lang)
     except Exception:
         logger.exception("Chat error for telegram user %s", tg_id)
         await update.message.reply_text(t(lang, "chat_error"))
@@ -403,6 +439,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         from autogpt.coaching.storage import delete_telegram_session, save_session
         summary = session.extract_summary()
         save_session(summary)
+        _cancel_inactivity_timer(tg_id)
         del _sessions[tg_id]
         delete_telegram_session(tg_id)  # clean up persisted session now it's finalised
         await update.message.reply_text(_format_summary(summary), parse_mode="Markdown")
@@ -966,6 +1003,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
+    _cancel_inactivity_timer(tg_id)
     _sessions.pop(tg_id, None)
     context.user_data.clear()
     await update.message.reply_text(t(lang, "cancelled"))

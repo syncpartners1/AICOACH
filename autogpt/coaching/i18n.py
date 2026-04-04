@@ -77,6 +77,8 @@ _S: dict[str, dict[str, str]] = {
         "no_session_to_end": "No active session to end.",
         "wrapping_up": "Wrapping up your session… ⏳",
         "session_cleared": "Sorry, I couldn't generate your summary. Your session has been cleared.",
+        "inactivity_reminder": "Still there? 🙂 Take your time — I'm here.",
+        "inactivity_timeout": "Looks like you stepped away. Whenever you're ready, just write to me and we'll pick up where we left off.",
         # ── Bot: account status ───────────────────────────────────────────────
         "suspended_msg": (
             "⏸ Your coaching is currently *paused*. "
@@ -436,6 +438,8 @@ _S: dict[str, dict[str, str]] = {
         "no_session_to_end": "אין פגישה פעילה לסיים.",
         "wrapping_up": "מסכם את הפגישה… ⏳",
         "session_cleared": "מצטער, לא הצלחתי ליצור סיכום. הפגישה נמחקה.",
+        "inactivity_reminder": "עוד כאן? 🙂 קח את הזמן שלך — אני ממתין.",
+        "inactivity_timeout": "נראה שהרחקת לכת. כשתרצה להמשיך — פשוט כתוב לי ואמשיך מאיפה שעצרנו.",
         # ── Bot: account status ───────────────────────────────────────────────
         "suspended_msg": (
             "⏸ האימון שלך כרגע *מושהה*. "
