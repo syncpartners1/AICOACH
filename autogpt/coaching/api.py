@@ -2561,6 +2561,149 @@ function submitForm(){
     return HTMLResponse(content=html)
 
 
+@app.get("/qualify-form-en", response_class=HTMLResponse, include_in_schema=False)
+def coaching_qualify_form_en() -> HTMLResponse:
+    """English version of the coaching qualification form — embed as iFrame on Wix."""
+    html = r"""<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coaching Program Readiness Evaluation</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#f8fafc;color:#1e293b;padding:24px 16px;font-size:15px}
+h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px}
+.section{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
+  text-transform:uppercase;letter-spacing:.5px}
+label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+input[type=text],input[type=email],textarea{width:100%;padding:10px 12px;
+  border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
+  font-family:inherit;transition:border-color .2s}
+input:focus,textarea:focus{border-color:#1a2b4a}
+textarea{resize:vertical;min-height:70px}
+.field{margin-bottom:16px}
+.yn-wrap{display:flex;flex-direction:column;margin-bottom:12px}
+.yn-label{font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+.yn-opts{display:flex;gap:8px}
+.yn-btn{flex:1;padding:9px 4px;border:1.5px solid #cbd5e1;border-radius:8px;
+  font-size:14px;font-weight:600;cursor:pointer;background:#fff;color:#475569;
+  transition:all .15s;text-align:center}
+.yn-btn.active-yes{background:#dcfce7;border-color:#16a34a;color:#15803d}
+.yn-btn.active-no{background:#fee2e2;border-color:#dc2626;color:#b91c1c}
+.btn-submit{width:100%;padding:13px;background:#1a2b4a;color:#fff;border:none;
+  border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn-submit:hover{background:#243d6b}
+.btn-submit:disabled{background:#94a3b8;cursor:not-allowed}
+.thanks{display:none;text-align:center;padding:40px 20px;background:#fff;
+  border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.thanks h2{color:#16a34a;margin-bottom:12px}
+.thanks p{color:#475569;font-size:14px;line-height:1.6}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
+  padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+</style></head>
+<body>
+<h2>Coaching Program Readiness Evaluation</h2>
+<p class="sub">4 minutes. 7 questions. So we can get to know you before the discovery call.</p>
+<div id="form-wrap">
+  <div class="section">
+    <h3>Context</h3>
+    <div class="field">
+      <label>What challenge do you want to work on? *</label>
+      <textarea id="q1" placeholder="Briefly describe your main challenge..."></textarea>
+    </div>
+    <div class="field">
+      <label>What would make this process a success for you? *</label>
+      <textarea id="q2" placeholder="What result would make the investment worth it?"></textarea>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Readiness Questions</h3>
+    <div class="yn-wrap">
+      <span class="yn-label">Is this challenge a real priority for you right now?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q3',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q3',this,'no')">No</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">Are you committed to a structured 3&ndash;6 month process?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q4',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q4',this,'no')">No</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">Can you consistently complete weekly tasks on time?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q5',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q5',this,'no')">No</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">Are you looking for real coaching &mdash; not just advice and tips?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q6',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q6',this,'no')">No</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">Is your goal to build a new capability &mdash; not just a quick fix?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q7',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q7',this,'no')">No</div>
+      </div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Contact Details</h3>
+    <div class="field"><label>Full Name *</label><input type="text" id="q8" placeholder="First and last name"></div>
+    <div class="field"><label>Email Address *</label><input type="email" id="q9" placeholder="your@email.com"></div>
+    <div class="field"><label>How did you find us?</label><input type="text" id="q10" placeholder="LinkedIn, referral, Google..."></div>
+  </div>
+  <button class="btn-submit" id="submitBtn" onclick="submitForm()">Submit Questionnaire &rarr;</button>
+  <div class="err" id="errMsg"></div>
+</div>
+<div class="thanks" id="thanksMsg">
+  <h2>Thank you! &#10003;</h2>
+  <p>Your questionnaire has been received.<br>Adi will be in touch within 24 hours with the next step.</p>
+</div>
+<script>
+var answers={q3:'',q4:'',q5:'',q6:'',q7:''};
+function setYN(f,el,v){
+  answers[f]=v;
+  var o=el.parentElement.children;
+  o[0].className='yn-btn'+(v==='yes'?' active-yes':'');
+  o[1].className='yn-btn'+(v==='no'?' active-no':'');
+}
+function submitForm(){
+  var err=document.getElementById('errMsg');err.style.display='none';
+  var q1=document.getElementById('q1').value.trim();
+  var q2=document.getElementById('q2').value.trim();
+  var q8=document.getElementById('q8').value.trim();
+  var q9=document.getElementById('q9').value.trim();
+  if(!q1||!q2||!q8||!q9){err.textContent='Please fill in all required fields (*)';err.style.display='block';return;}
+  if(!q9.includes('@')){err.textContent='Please enter a valid email address';err.style.display='block';return;}
+  var u=Object.keys(answers).filter(function(k){return answers[k]==='';});
+  if(u.length>0){err.textContent='Please answer all Yes/No questions';err.style.display='block';return;}
+  var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='Submitting...';
+  var payload={q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
+    q5_commit_tasks:answers.q5,q6_coaching:answers.q6,q7_capability:answers.q7,
+    q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
+  fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+  .then(function(r){
+    if(r.ok){document.getElementById('form-wrap').style.display='none';document.getElementById('thanksMsg').style.display='block';}
+    else{r.text().then(function(t){err.textContent='Error: '+t;err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});}
+  }).catch(function(){err.textContent='Connection error. Please try again.';err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});
+}
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)
+
+
 @app.get("/consult-form", response_class=HTMLResponse, include_in_schema=False)
 def consulting_inquiry_form() -> HTMLResponse:
     """Self-contained consulting/workshop inquiry form — embed as iFrame on Wix."""
