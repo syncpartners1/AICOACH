@@ -1896,40 +1896,6 @@ async def wix_consult_form_lead(payload: WixConsultFormPayload):
     return await handle_wix_consult_form(payload)
 
 
-@app.get("/debug-clickup")
-async def debug_clickup():
-    import os, requests
-    key = os.getenv("CLICKUP_API_KEY", "NOT_SET")
-    if key == "NOT_SET":
-        return {"error": "CLICKUP_API_KEY is not set"}
-    key_preview = key[:8] + "..."
-    test_list   = "901816800057"
-    try:
-        r = requests.get(
-            f"https://api.clickup.com/api/v2/list/{test_list}",
-            headers={"Authorization": key}, timeout=10
-        )
-        list_check = {"status": r.status_code, "body": r.text[:300]}
-    except Exception as e:
-        list_check = {"error": str(e)}
-    try:
-        r2 = requests.post(
-            f"https://api.clickup.com/api/v2/list/{test_list}/task",
-            json={"name": "DEBUG TEST � DELETE ME"},
-            headers={"Authorization": key, "Content-Type": "application/json"},
-            timeout=10
-        )
-        create_check = {"status": r2.status_code, "body": r2.text[:400]}
-    except Exception as e:
-        create_check = {"error": str(e)}
-    return {
-        "key_preview":  key_preview,
-        "key_length":   len(key),
-        "list_check":   list_check,
-        "create_check": create_check,
-    }
-
-
 @app.post("/wix-qualify", summary="Wix lead qualification webhook (legacy)")
 async def wix_qualify_lead(payload: CoachingQualPayload, background_tasks: BackgroundTasks):
     verdict = await handle_coaching_qualify(payload)
