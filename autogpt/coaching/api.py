@@ -1038,7 +1038,11 @@ def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLRe
 
     from autogpt.coaching.admin_ui import render_admin
 
-    all_users = get_all_users_progress()
+    try:
+        all_users = get_all_users_progress()
+    except Exception as exc:
+        logger.error("Admin dashboard: get_all_users_progress failed: %s", exc)
+        all_users = []
     pending_users = [u for u in all_users if u.account_status == AccountStatus.PENDING]
     users = [u for u in all_users if u.account_status != AccountStatus.PENDING]
     try:
