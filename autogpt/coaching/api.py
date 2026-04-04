@@ -551,6 +551,34 @@ def google_oauth_config(_: str = Depends(verify_api_key)) -> dict:
     }
 
 
+@app.get("/auth/google/debug", include_in_schema=False)
+def google_oauth_debug(key: Optional[str] = Query(default=None)) -> dict:
+    """Diagnostic: returns exact OAuth params sent to Google. Pass API key as ?key=YOUR_KEY"""
+    configured = coaching_config.api_key
+    if not configured or key != configured:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid key.")
+    client_id = coaching_config.google_client_id
+    redirect_uri = coaching_config.google_redirect_uri
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "state": "DEBUG",
+        "prompt": "select_account",
+    }
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+    return {
+        "client_id": client_id or "(not set)",
+        "client_id_length": len(client_id),
+        "redirect_uri": redirect_uri or "(not set)",
+        "redirect_uri_length": len(redirect_uri),
+        "client_secret_set": bool(coaching_config.google_client_secret),
+        "full_auth_url": auth_url,
+    }
+
+
 # ── User profile ──────────────────────────────────────────────────────────────
 
 @app.get("/users/{user_id}/profile", response_model=UserProfile, summary="Get user profile")
