@@ -551,9 +551,12 @@ def google_oauth_config(_: str = Depends(verify_api_key)) -> dict:
     }
 
 
-@app.get("/auth/google/debug", summary="Show exact OAuth params being sent to Google", include_in_schema=False)
-def google_oauth_debug(_: str = Depends(verify_api_key)) -> dict:
-    """Returns the exact client_id, redirect_uri and full auth URL — for diagnosing 403 errors."""
+@app.get("/auth/google/debug", include_in_schema=False)
+def google_oauth_debug(key: Optional[str] = Query(default=None)) -> dict:
+    """Diagnostic: returns exact OAuth params sent to Google. Pass API key as ?key=YOUR_KEY"""
+    configured = coaching_config.api_key
+    if not configured or key != configured:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid key.")
     client_id = coaching_config.google_client_id
     redirect_uri = coaching_config.google_redirect_uri
     params = {
