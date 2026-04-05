@@ -1949,7 +1949,19 @@ def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
 
 @app.get("/health", summary="Health check")
 def health() -> dict:
-    return {"status": "ok", "service": "ABN Co-Navigator API", "version": "2.1.0", "features": ["demo", "telegram"]}
+    try:
+        from autogpt.coaching.storage import _get_client as _supa
+        _supa().table("user_profiles").select("user_id").limit(1).execute()
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {
+        "status": "ok",
+        "service": "ABN Co-Navigator API",
+        "version": "2.1.0",
+        "features": ["demo", "telegram"],
+        "db": "ok" if db_ok else "unavailable",
+    }
 
 
 
