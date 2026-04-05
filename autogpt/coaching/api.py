@@ -404,17 +404,21 @@ def google_oauth_callback(
         return _oauth_error_redirect(redirect_to, "incomplete_profile")
 
     # Check whether this Google identity already has a phone number on file
-    from autogpt.coaching.storage import _get_client as _supa
-    db = _supa()
     is_web_flow = redirect_to.startswith("/")  # local path = web login, http = Wix
-    existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
-        "google_id", google_id
-    ).execute().data
-    if not existing:
-        # Also try by email
+    try:
+        from autogpt.coaching.storage import _get_client as _supa
+        db = _supa()
         existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
-            "email", email
+            "google_id", google_id
         ).execute().data
+        if not existing:
+            # Also try by email
+            existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
+                "email", email
+            ).execute().data
+    except Exception as db_exc:
+        logger.error("OAuth callback: DB lookup failed for google_id=%s: %s", google_id, db_exc)
+        return _oauth_error_redirect(redirect_to, "server_error")
 
     if existing and existing[0].get("phone_number"):
         # Phone already on file — complete sign-in without extra step
@@ -427,6 +431,9 @@ def google_oauth_callback(
             user = _UP(user_id=row["user_id"], name=row["name"],
                        phone_number=row["phone_number"],
                        account_status=AccountStatus(row.get("account_status", "active")))
+        except Exception as auth_exc:
+            logger.error("OAuth callback: google_auth failed: %s", auth_exc)
+            return _oauth_error_redirect(redirect_to, "server_error")
         if is_web_flow:
             acct = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
             dest = "/pending" if acct == "pending" else f"/dashboard/{user.user_id}"
@@ -1716,6 +1723,7 @@ def login_page(
         "token_exchange_failed": "Authentication failed — please try again. If this persists, contact support.",
         "userinfo_failed": "Could not retrieve your account info from Google. Please try again.",
         "incomplete_profile": "Google did not return a valid account. Try a different Google account.",
+        "server_error": "A temporary server error occurred. Please try again in a moment.",
     }
     error_html = ""
     if error:
@@ -1941,7 +1949,19 @@ def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
 
 @app.get("/health", summary="Health check")
 def health() -> dict:
-    return {"status": "ok", "service": "ABN Co-Navigator API", "version": "2.1.0", "features": ["demo", "telegram"]}
+    try:
+        from autogpt.coaching.storage import _get_client as _supa
+        _supa().table("user_profiles").select("user_id").limit(1).execute()
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {
+        "status": "ok",
+        "service": "ABN Co-Navigator API",
+        "version": "2.1.0",
+        "features": ["demo", "telegram"],
+        "db": "ok" if db_ok else "unavailable",
+    }
 
 
 
