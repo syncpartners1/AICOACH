@@ -138,22 +138,21 @@ async def handle_wix_consult_form(payload: WixConsultFormPayload) -> dict:
     clickup  = create_consult_clickup_task(payload, verdict)
 
     send_consult_notification(
-        lead_name    = payload.c1_name,
-        lead_contact = payload.c2_email or payload.c3_phone or "—",
-        lead_role    = payload.c5_role,
-        org_name     = payload.c4_org_name,
-        form_type    = payload.c12_form_type,
-        verdict      = verdict,
-        challenge    = payload.c8_challenge,
-        timeline     = payload.c9_timeline,
-        clickup_url  = clickup or "",
+        lead_name      = payload.c1_name,
+        lead_org       = payload.c4_org_name,
+        lead_email     = payload.c2_email,
+        lead_role      = payload.c5_role,
+        form_type      = payload.c12_form_type,
+        readiness_level= verdict,
+        total_score    = 0,
+        clickup_url    = clickup or "",
     )
 
     send_consult_lead_response(
-        lead_name  = payload.c1_name,
-        lead_email = payload.c2_email,
-        form_type  = payload.c12_form_type,
-        verdict    = verdict,
+        lead_name      = payload.c1_name,
+        lead_email     = payload.c2_email,
+        form_type      = payload.c12_form_type,
+        readiness_level= verdict,
     )
 
     return {"status": "ok", "verdict": verdict, "clickup": clickup}
