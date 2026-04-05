@@ -326,6 +326,13 @@ def google_oauth_start(
     return RedirectResponse(url=google_auth_url, status_code=302)
 
 
+def _oauth_error_redirect(redirect_to: str, code: str) -> RedirectResponse:
+    """For web-flow (local path), redirect errors to /login?error=code; for Wix append to redirect_to."""
+    if redirect_to.startswith("/"):
+        return RedirectResponse(url=f"/login?error={code}", status_code=302)
+    return RedirectResponse(url=f"{redirect_to}?error={code}", status_code=302)
+
+
 @app.get(
     "/auth/google/callback",
     summary="Google OAuth callback — exchanges code, creates/finds user, redirects to Wix",
@@ -348,7 +355,8 @@ def google_oauth_callback(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state parameter.")
 
     if error:
-        return RedirectResponse(url=f"{redirect_to}?error={error}", status_code=302)
+        logger.warning("Google OAuth returned error=%s (redirect_to=%s)", error, redirect_to)
+        return _oauth_error_redirect(redirect_to, error)
 
     # Exchange authorization code for tokens
     token_resp = http_requests.post(
@@ -363,7 +371,12 @@ def google_oauth_callback(
         timeout=10,
     )
     if token_resp.status_code != 200:
-        return RedirectResponse(url=f"{redirect_to}?error=token_exchange_failed", status_code=302)
+        logger.error(
+            "Google token exchange failed: HTTP %s — %s",
+            token_resp.status_code,
+            token_resp.text[:400],
+        )
+        return _oauth_error_redirect(redirect_to, "token_exchange_failed")
 
     access_token = token_resp.json().get("access_token")
 
@@ -374,7 +387,12 @@ def google_oauth_callback(
         timeout=10,
     )
     if userinfo_resp.status_code != 200:
-        return RedirectResponse(url=f"{redirect_to}?error=userinfo_failed", status_code=302)
+        logger.error(
+            "Google userinfo fetch failed: HTTP %s — %s",
+            userinfo_resp.status_code,
+            userinfo_resp.text[:200],
+        )
+        return _oauth_error_redirect(redirect_to, "userinfo_failed")
 
     userinfo = userinfo_resp.json()
     google_id = userinfo.get("sub")
@@ -382,7 +400,8 @@ def google_oauth_callback(
     email = userinfo.get("email", "")
 
     if not google_id or not email:
-        return RedirectResponse(url=f"{redirect_to}?error=incomplete_profile", status_code=302)
+        logger.error("Google userinfo missing sub/email: %s", userinfo)
+        return _oauth_error_redirect(redirect_to, "incomplete_profile")
 
     # Check whether this Google identity already has a phone number on file
     from autogpt.coaching.storage import _get_client as _supa
@@ -1660,7 +1679,10 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
 
 
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
-def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
+def login_page(
+    next: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+) -> HTMLResponse:
     """User-facing login page — sign in with Google (when configured)."""
     dest = next or "/dashboard"
     google_url = f"/auth/google/url?redirect_to={dest}"
@@ -1689,6 +1711,17 @@ def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
             '</div>'
         )
 
+    _ERROR_MESSAGES = {
+        "access_denied": "Sign-in was cancelled or access was denied by Google.",
+        "token_exchange_failed": "Authentication failed — please try again. If this persists, contact support.",
+        "userinfo_failed": "Could not retrieve your account info from Google. Please try again.",
+        "incomplete_profile": "Google did not return a valid account. Try a different Google account.",
+    }
+    error_html = ""
+    if error:
+        msg = _ERROR_MESSAGES.get(error, f"Sign-in failed ({error}). Please try again.")
+        error_html = f'<div class="error-banner">{msg}</div>'
+
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1711,6 +1744,8 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
 .google-btn:hover{{background:#f9fafb;border-color:#9ca3af}}
 .notice{{background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;
          padding:16px;font-size:13px;color:#92400e;line-height:1.6;text-align:center}}
+.error-banner{{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
+              padding:12px 16px;border-radius:10px;margin-bottom:20px;text-align:center}}
 .divider{{text-align:center;color:#9ca3af;font-size:12px;margin:20px 0;
           display:flex;align-items:center;gap:8px}}
 .divider::before,.divider::after{{content:'';flex:1;height:1px;background:#e5e7eb}}
@@ -1729,7 +1764,7 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
   </div>
   <h1>Welcome back</h1>
   <p>Sign in to access your coaching dashboard and track your progress.</p>
-  {sign_in_block}
+  {error_html}{sign_in_block}
   <div class="divider">New to the program?</div>
   <div class="register-link"><a href="/register">Register here</a></div>
   <a href="/" class="back-link">← Back to home</a>
