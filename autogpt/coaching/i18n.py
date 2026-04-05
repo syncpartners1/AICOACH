@@ -161,7 +161,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         "book_choose_type": "📅 What kind of meeting would you like to book?",
         "book_type_intro": "🆓 Free Introduction & Evaluation (30 min)",
-        "book_type_coaching": "💼 Coaching Session (60 min)",
+        "book_type_coaching": "💳 Coaching / Advisory Session (60 min)",
         "book_choose_date": "📅 Choose a date for your *{type}*:",
         "book_no_slots": (
             "😕 No available slots on *{date}*.\n"
@@ -523,7 +523,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         "book_choose_type": "📅 איזה סוג פגישה תרצה להזמין?",
         "book_type_intro": "🆓 היכרות והערכה חינם (30 דק׳)",
-        "book_type_coaching": "💼 פגישת אימון (60 דק׳)",
+        "book_type_coaching": "💳 פגישת אימון / ייעוץ (60 דק׳)",
         "book_choose_date": "📅 בחר תאריך ל*{type}*:",
         "book_no_slots": (
             "😕 אין תורים פנויים ב-*{date}*.\n"

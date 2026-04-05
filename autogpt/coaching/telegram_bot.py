@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import date, timedelta
 from typing import Dict, Optional
 
@@ -50,6 +51,60 @@ from autogpt.coaching.config import coaching_config
 from autogpt.coaching.i18n import LANG_PROMPT, detect_lang, get_coach_name, t
 
 logger = logging.getLogger(__name__)
+
+_JSON_BLOCK_RE = re.compile(
+    r'\[(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\].*?\[/(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\]',
+    re.DOTALL,
+)
+
+
+def _strip_json_blocks(text: str) -> str:
+    """Remove internal JSON output blocks before sending a reply to the user."""
+    return _JSON_BLOCK_RE.sub("", text).strip()
+
+
+def _save_session_from_reply(tg_id: int, session, reply: str) -> None:
+    """Parse JSON blocks already in a chat reply and save to DB — no extra LLM call."""
+    try:
+        from autogpt.coaching.models import SessionSummary
+        from autogpt.coaching.storage import save_session
+        weekly_log, summary_text = session._parse_summary_json(reply)
+        okr_changes = session._parse_okr_changes(reply)
+        alert = session._compute_alerts(weekly_log)
+        summary = SessionSummary(
+            session_id=session.session_id,
+            client_id=session.client_id,
+            client_name=session.client_name,
+            user_id=session.user_id,
+            timestamp=session.timestamp,
+            weekly_log=weekly_log,
+            alerts=alert,
+            summary_for_coach=summary_text,
+            okr_changes=okr_changes,
+            raw_conversation=list(session.full_message_history),
+        )
+        save_session(summary)
+        logger.info("Auto-saved session from in-chat JSON block for tg_id=%s", tg_id)
+    except Exception:
+        logger.exception("Auto-save from JSON block failed for tg_id=%s", tg_id)
+
+
+async def _auto_finalize_session(bot, chat_id: int, tg_id: int, lang: str) -> None:
+    """Extract summary via LLM, save session to DB, and clean up. Used on timeout."""
+    session = _sessions.get(tg_id)
+    if not session:
+        return
+    try:
+        from autogpt.coaching.storage import delete_telegram_session, save_session
+        summary = session.extract_summary()
+        save_session(summary)
+        _sessions.pop(tg_id, None)
+        delete_telegram_session(tg_id)
+        logger.info("Auto-finalized session for tg_id=%s after inactivity", tg_id)
+    except Exception:
+        logger.exception("Auto-finalize failed for tg_id=%s", tg_id)
+        _sessions.pop(tg_id, None)
+
 
 # ── Conversation states ────────────────────────────────────────────────────────
 (
@@ -117,7 +172,7 @@ def _persist_session(tg_id: int) -> None:
 # ── Inactivity timer ──────────────────────────────────────────────────────────
 
 async def _inactivity_check(bot, chat_id: int, tg_id: int, lang: str) -> None:
-    """Send a reminder after 3 min and a soft close after 5 min of no response."""
+    """Send a reminder after 3 min, then auto-save + close after 5 min of no response."""
     try:
         await asyncio.sleep(180)  # 3 minutes
         if tg_id in _sessions:
@@ -125,6 +180,7 @@ async def _inactivity_check(bot, chat_id: int, tg_id: int, lang: str) -> None:
         await asyncio.sleep(120)  # 2 more minutes (5 total)
         if tg_id in _sessions:
             await bot.send_message(chat_id=chat_id, text=t(lang, "inactivity_timeout"))
+            await _auto_finalize_session(bot, chat_id, tg_id, lang)
     except asyncio.CancelledError:
         pass  # User responded — timer was cancelled cleanly
 
@@ -417,7 +473,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         reply = session.chat(update.message.text)
         _persist_session(tg_id)  # keep DB in sync after each turn
-        await update.message.reply_text(reply)
+        # When the LLM produces a session summary, auto-save to DB immediately
+        # (no extra LLM call — reuse the JSON already in the reply)
+        if "[SESSION_SUMMARY_JSON]" in reply:
+            _save_session_from_reply(tg_id, session, reply)
+        reply_clean = _strip_json_blocks(reply)
+        if reply_clean:
+            await update.message.reply_text(reply_clean)
         _start_inactivity_timer(context.bot, update.effective_chat.id, tg_id, lang)
     except Exception:
         logger.exception("Chat error for telegram user %s", tg_id)
@@ -1070,8 +1132,8 @@ def _format_summary(summary) -> str:
 # ── Scheduling helpers ─────────────────────────────────────────────────────────
 
 _MEETING_TYPES = {
-    "intro":    {"label_key": "book_type_intro",    "subject": "Free 30-min Introduction & Evaluation", "duration": 30},
-    "coaching": {"label_key": "book_type_coaching", "subject": "Coaching Session",                      "duration": 60},
+    "intro":    {"label_key": "book_type_intro",    "subject": "Free 30-min Introduction & Evaluation",  "duration": 30},
+    "coaching": {"label_key": "book_type_coaching", "subject": "Coaching / Advisory Session (60 min)",   "duration": 60},
 }
 
 
@@ -1106,10 +1168,16 @@ async def book_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
 
     context.user_data["book_lang"] = lang
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "book_type_intro"),    callback_data="book_type:intro")],
-        [InlineKeyboardButton(t(lang, "book_type_coaching"), callback_data="book_type:coaching")],
-    ])
+    if user:
+        # Registered users → paid 60-min session only
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "book_type_coaching"), callback_data="book_type:coaching")],
+        ])
+    else:
+        # Unregistered users → free intro only
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "book_type_intro"), callback_data="book_type:intro")],
+        ])
     await update.message.reply_text(t(lang, "book_choose_type"), reply_markup=keyboard, parse_mode="Markdown")
     return BOOK_TYPE
 
