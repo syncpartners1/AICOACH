@@ -45,7 +45,7 @@ class CoachingSession:
         self.full_message_history: List[Message] = []
         base_prompt = build_navigator_system_prompt(
             coach_name=coaching_config.coach_name,
-            calendly_url=coaching_config.coach_calendly_url,
+            scheduler_url=coaching_config.scheduler_url,
             objectives=objectives,
             past_sessions=past_sessions,
         )

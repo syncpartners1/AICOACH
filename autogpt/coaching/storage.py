@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from autogpt.coaching.auth import hash_password, verify_password
 from autogpt.coaching.config import coaching_config
@@ -374,8 +377,7 @@ def apply_okr_changes(user_id: str, changes: List[Dict[str, Any]]) -> None:
             elif action == "reactivate_kr":
                 set_kr_status(change["kr_id"], OKRStatus.ACTIVE)
         except Exception:
-            # Skip invalid changes rather than failing the whole session
-            pass
+            logger.exception("apply_okr_changes: failed action=%s change=%s for user=%s", action, change, user_id)
 
 
 # ── History ───────────────────────────────────────────────────────────────────
