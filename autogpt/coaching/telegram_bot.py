@@ -129,6 +129,9 @@ async def _auto_finalize_session(bot, chat_id: int, tg_id: int, lang: str) -> No
     CANCEL_SELECT,
 ) = range(19)
 
+# Sales funnel states (non-registered users)
+FUNNEL_Q1, FUNNEL_Q2, FUNNEL_Q3 = range(19, 22)
+
 # Active AI coaching sessions: telegram_user_id → CoachingSession (in-memory cache)
 _sessions: Dict[int, object] = {}
 
@@ -295,12 +298,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
         return CHATTING
 
+    # Non-registered users → sales funnel (nautical micro-assessment)
+    try:
+        from autogpt.coaching.storage import upsert_funnel_lead
+        upsert_funnel_lead(tg_id, update.effective_user.username or "")
+    except Exception:
+        logger.exception("Failed to upsert funnel lead for tg_id=%s", tg_id)
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🇬🇧 English", callback_data="lang:en"),
-        InlineKeyboardButton("🇮🇱 עברית",   callback_data="lang:he"),
+        InlineKeyboardButton("⚓ Start Quick Voyage Check", callback_data="funnel_start"),
     ]])
-    await update.message.reply_text(LANG_PROMPT, reply_markup=keyboard, parse_mode="Markdown")
-    return WAITING_LANG
+    await update.message.reply_text(
+        "⚓ *Welcome, Captain!*\n\n"
+        "I'm Adi Ben Nesher — 25+ years navigating leaders through the storms of change and digital transformation.\n\n"
+        "Before we plot your course, let's do a *Quick Voyage Check* — 3 strategic questions to map your current position at sea.\n\n"
+        "_Ready to take stock of where your ship stands?_",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+    return FUNNEL_Q1
 
 
 async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -315,6 +330,177 @@ async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     )
     return WAITING_NAME
 
+
+# ── Sales funnel (non-registered users) ───────────────────────────────────────
+
+_FUNNEL_WEBSITE_URL = "https://www.ben-nesher.com/?source=tg_bot"
+_FUNNEL_WEBSITE_URL_REMINDER = "https://www.ben-nesher.com/?source=tg_bot_reminder"
+
+
+async def funnel_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """User clicked 'Start Quick Voyage Check' — ask Q1."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "🧭 *Question 1 of 3*\n\n"
+        "*How synchronized is your crew (team) with your current digital vision?*\n\n"
+        "_Is everyone rowing in the same direction — or are some oars pulling you off course?_",
+        parse_mode="Markdown",
+    )
+    return FUNNEL_Q1
+
+
+async def funnel_receive_q1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Collect Q1 answer, save, ask Q2."""
+    tg_id = update.effective_user.id
+    answer = update.message.text.strip()
+    context.user_data["funnel_q1"] = answer
+    try:
+        from autogpt.coaching.storage import update_funnel_answer
+        update_funnel_answer(tg_id, 1, answer)
+    except Exception:
+        logger.exception("Funnel: failed to save Q1 for tg_id=%s", tg_id)
+    await update.message.reply_text(
+        "⚓ *Noted, Captain.*\n\n"
+        "🧭 *Question 2 of 3*\n\n"
+        "*Is your ship built for the current market storm, or are you leaking resources?*\n\n"
+        "_Are your operations, processes and costs aligned with where the market is heading — "
+        "or are you taking on water?_",
+        parse_mode="Markdown",
+    )
+    return FUNNEL_Q2
+
+
+async def funnel_receive_q2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Collect Q2 answer, save, ask Q3."""
+    tg_id = update.effective_user.id
+    answer = update.message.text.strip()
+    context.user_data["funnel_q2"] = answer
+    try:
+        from autogpt.coaching.storage import update_funnel_answer
+        update_funnel_answer(tg_id, 2, answer)
+    except Exception:
+        logger.exception("Funnel: failed to save Q2 for tg_id=%s", tg_id)
+    await update.message.reply_text(
+        "⚓ *Understood.*\n\n"
+        "🧭 *Question 3 of 3*\n\n"
+        "*What is the biggest wave threatening your stability right now?*\n\n"
+        "_What is the one challenge — internal or external — that if left unaddressed, "
+        "could put your leadership or organisation off course?_",
+        parse_mode="Markdown",
+    )
+    return FUNNEL_Q3
+
+
+async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Collect Q3 answer, notify admin, send bridge message with website button."""
+    tg_id = update.effective_user.id
+    answer = update.message.text.strip()
+    context.user_data["funnel_q3"] = answer
+    q1 = context.user_data.get("funnel_q1", "—")
+    q2 = context.user_data.get("funnel_q2", "—")
+    username = update.effective_user.username or str(tg_id)
+
+    try:
+        from autogpt.coaching.storage import update_funnel_answer
+        update_funnel_answer(tg_id, 3, answer)
+    except Exception:
+        logger.exception("Funnel: failed to save Q3 for tg_id=%s", tg_id)
+
+    # Notify admin
+    if coaching_config.admin_telegram_id:
+        try:
+            await update.get_bot().send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=(
+                    f"🎯 *New Voyage Check completed*\n\n"
+                    f"*Captain:* @{username} (ID: {tg_id})\n\n"
+                    f"*Q1 — Team sync:* {q1}\n\n"
+                    f"*Q2 — Operations:* {q2}\n\n"
+                    f"*Q3 — Biggest wave:* {answer}"
+                ),
+                parse_mode="Markdown",
+            )
+        except Exception:
+            logger.exception("Funnel: failed to notify admin after Q3 for tg_id=%s", tg_id)
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🌊 Complete Full Assessment →", callback_data=f"funnel_link:{tg_id}"),
+    ]])
+    await update.message.reply_text(
+        "⚓ *Captain, you've charted your position.*\n\n"
+        "Based on your answers, there are *real opportunities* to strengthen your ship "
+        "and accelerate your course.\n\n"
+        "The full assessment (5 min) will generate your personalised *Navigation Report* — "
+        "and completing it unlocks a *free 30-minute strategy call* with Adi.\n\n"
+        "🧭 _The sea doesn't wait. Neither should you._",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+    return ConversationHandler.END
+
+
+async def funnel_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """User clicked the website link button — record click and notify admin."""
+    query = update.callback_query
+    await query.answer("Opening the full assessment…")
+    try:
+        tg_id = int(query.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        tg_id = update.effective_user.id
+    username = update.effective_user.username or str(tg_id)
+
+    try:
+        from autogpt.coaching.storage import mark_funnel_clicked
+        mark_funnel_clicked(tg_id)
+    except Exception:
+        logger.exception("Funnel: failed to mark click for tg_id=%s", tg_id)
+
+    if coaching_config.admin_telegram_id:
+        try:
+            await context.bot.send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=f"🔗 *Website link clicked*\n\n@{username} (ID: {tg_id}) is heading to the full assessment.",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            logger.exception("Funnel: failed to notify admin of click for tg_id=%s", tg_id)
+
+    # Remove the button, send the actual link
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        f"🌊 *Excellent, Captain!* Here's your link:\n\n"
+        f"{_FUNNEL_WEBSITE_URL}\n\n"
+        "Complete the assessment and Adi will be in touch within 24 hours with your Navigation Report.",
+        parse_mode="Markdown",
+    )
+
+
+async def _send_funnel_reminders(app) -> None:
+    """Job: send 24-hour follow-up reminders to leads who haven't clicked."""
+    try:
+        from autogpt.coaching.storage import get_unreminded_leads, mark_funnel_reminded
+        leads = get_unreminded_leads(cutoff_hours=24)
+        for lead in leads:
+            try:
+                await app.bot.send_message(
+                    chat_id=lead["telegram_user_id"],
+                    text=(
+                        "⚓ *Captain, the sea doesn't wait.*\n\n"
+                        "You started your Voyage Check but haven't completed the full assessment yet.\n\n"
+                        "Your personalised Navigation Report — and that free strategy call — are still waiting for you.\n\n"
+                        f"🌊 [Complete the assessment now]({_FUNNEL_WEBSITE_URL_REMINDER})"
+                    ),
+                    parse_mode="Markdown",
+                )
+                mark_funnel_reminded(lead["telegram_user_id"])
+            except Exception:
+                logger.exception("Funnel reminder: failed to send to %s", lead.get("telegram_user_id"))
+    except Exception:
+        logger.exception("Funnel reminder job failed")
 
 
 async def _start_coaching_session(
@@ -1541,6 +1727,17 @@ def _build_app(token: str) -> Application:
             CommandHandler("cancelmeeting", cancelmeeting_start),
         ],
         states={
+            # ── Sales funnel states ─────────────────────────────────────────
+            FUNNEL_Q1: [
+                CallbackQueryHandler(funnel_start_cb, pattern=r"^funnel_start$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, funnel_receive_q1),
+            ],
+            FUNNEL_Q2: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, funnel_receive_q2),
+            ],
+            FUNNEL_Q3: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, funnel_receive_q3),
+            ],
             WAITING_LANG: [
                 CallbackQueryHandler(receive_lang, pattern=r"^lang:"),
             ],
@@ -1623,6 +1820,9 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("refresh", refresh_command))
 
+    # Funnel: website link click (outside conversation — fires after END)
+    app.add_handler(CallbackQueryHandler(funnel_link_handler, pattern=r"^funnel_link:"))
+
     # Admin commands
     app.add_handler(CommandHandler("users", admin_users))
     app.add_handler(CommandHandler("report", admin_report))
@@ -1640,14 +1840,27 @@ def _build_app(token: str) -> Application:
 
 async def run_polling(token: str) -> None:
     """Start the bot in polling mode with automatic restart on errors."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
     retry_delay = 5
     while True:
         application = _build_app(token)
+        scheduler = AsyncIOScheduler()
         try:
             await application.initialize()
             await application.start()
             await application.updater.start_polling(drop_pending_updates=True)
-            logger.info("Telegram bot polling started")
+            # Schedule 24-hour funnel follow-up reminders (checked hourly)
+            scheduler.add_job(
+                _send_funnel_reminders,
+                "interval",
+                hours=1,
+                args=[application],
+                id="funnel_reminders",
+                replace_existing=True,
+            )
+            scheduler.start()
+            logger.info("Telegram bot polling started (APScheduler running)")
             retry_delay = 5  # reset on successful start
             while True:
                 await asyncio.sleep(3600)
@@ -1659,6 +1872,11 @@ async def run_polling(token: str) -> None:
             await asyncio.sleep(retry_delay)
             retry_delay = min(retry_delay * 2, 120)
         finally:
+            try:
+                if scheduler.running:
+                    scheduler.shutdown(wait=False)
+            except Exception:
+                pass
             try:
                 await application.updater.stop()
                 await application.stop()

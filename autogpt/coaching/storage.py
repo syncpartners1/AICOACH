@@ -387,7 +387,7 @@ def get_past_sessions(user_id: str, limit: int = 5) -> List[PastSession]:
     db = _get_client()
     rows = (
         db.table("coaching_sessions")
-        .select("session_id,timestamp,alert_level,summary_for_coach")
+        .select("session_id,timestamp,alert_level,summary_for_coach,coach_notes,is_manual")
         .eq("user_id", user_id)
         .order("timestamp", desc=True)
         .limit(limit)
@@ -399,10 +399,46 @@ def get_past_sessions(user_id: str, limit: int = 5) -> List[PastSession]:
             session_id=r["session_id"],
             timestamp=r["timestamp"],
             alert_level=r["alert_level"],
-            summary_for_coach=r["summary_for_coach"],
+            summary_for_coach=r.get("summary_for_coach") or "",
+            coach_notes=r.get("coach_notes") or "",
+            is_manual=r.get("is_manual") or False,
         )
         for r in rows
     ]
+
+
+def update_session_notes(session_id: str, coach_notes: str) -> None:
+    """Update or add coach notes to an existing session record."""
+    db = _get_client()
+    db.table("coaching_sessions").update({"coach_notes": coach_notes}).eq("session_id", session_id).execute()
+
+
+def create_manual_session(
+    user_id: str,
+    session_date: str,
+    coach_notes: str = "",
+    summary_for_coach: str = "",
+) -> str:
+    """Create a manual coaching session record (in-person / video call) without a bot conversation."""
+    db = _get_client()
+    session_id = str(uuid.uuid4())
+    client_id = f"admin_manual_{user_id}"
+    _ensure_client_exists(db, client_id, "Admin Manual")
+    db.table("coaching_sessions").insert({
+        "session_id": session_id,
+        "user_id": user_id,
+        "client_id": client_id,
+        "timestamp": f"{session_date}T12:00:00",
+        "is_manual": True,
+        "coach_notes": coach_notes,
+        "summary_for_coach": summary_for_coach,
+        "alert_level": "green",
+        "alert_reason": "",
+        "focus_goal": "",
+        "mood_indicator": "",
+        "environmental_changes": "",
+    }).execute()
+    return session_id
 
 
 # ── Session save / load ───────────────────────────────────────────────────────
@@ -1095,3 +1131,57 @@ def get_latest_global_learning() -> Optional[dict]:
     if rows:
         return rows[0].get("insights")
     return None
+
+
+# ── Sales funnel leads ────────────────────────────────────────────────────────
+
+def upsert_funnel_lead(telegram_user_id: int, username: str = "") -> None:
+    """Create or refresh a funnel lead row (idempotent on re-entry)."""
+    db = _get_client()
+    db.table("funnel_leads").upsert(
+        {
+            "telegram_user_id": telegram_user_id,
+            "username": username,
+            "created_at": datetime.utcnow().isoformat(),
+        },
+        on_conflict="telegram_user_id",
+    ).execute()
+
+
+def update_funnel_answer(telegram_user_id: int, question: int, answer: str) -> None:
+    """Save a micro-assessment answer (question=1, 2, or 3)."""
+    db = _get_client()
+    db.table("funnel_leads").update({f"q{question}_answer": answer}).eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
+
+
+def mark_funnel_clicked(telegram_user_id: int) -> None:
+    """Record that this lead clicked the website link."""
+    db = _get_client()
+    db.table("funnel_leads").update({"link_clicked": True}).eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
+
+
+def get_unreminded_leads(cutoff_hours: int = 24) -> list:
+    """Return leads older than cutoff_hours who haven't clicked and haven't been reminded."""
+    db = _get_client()
+    cutoff = (datetime.utcnow() - timedelta(hours=cutoff_hours)).isoformat()
+    return (
+        db.table("funnel_leads")
+        .select("telegram_user_id,username")
+        .eq("link_clicked", False)
+        .eq("reminder_sent", False)
+        .lt("created_at", cutoff)
+        .execute()
+        .data or []
+    )
+
+
+def mark_funnel_reminded(telegram_user_id: int) -> None:
+    """Mark that the 24-hour follow-up reminder has been sent."""
+    db = _get_client()
+    db.table("funnel_leads").update({"reminder_sent": True}).eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
