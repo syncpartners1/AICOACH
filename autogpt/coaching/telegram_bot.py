@@ -318,6 +318,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return FUNNEL_Q1
 
 
+async def funnel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle /funnel — lets non-registered users (re-)enter the sales funnel."""
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    if user:
+        lang = _lang(user, "")
+        await update.message.reply_text(
+            t(lang, "welcome_back", name=user.name),
+            parse_mode="Markdown",
+        )
+        return ConversationHandler.END
+
+    try:
+        from autogpt.coaching.storage import upsert_funnel_lead
+        upsert_funnel_lead(tg_id, update.effective_user.username or "")
+    except Exception:
+        logger.exception("Failed to upsert funnel lead for tg_id=%s", tg_id)
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("⚓ Start Quick Voyage Check", callback_data="funnel_start"),
+    ]])
+    await update.message.reply_text(
+        "⚓ *Welcome, Captain!*\n\n"
+        "I'm Adi Ben Nesher — 25+ years navigating leaders through the storms of change and digital transformation.\n\n"
+        "Before we plot your course, let's do a *Quick Voyage Check* — 3 strategic questions to map your current position at sea.\n\n"
+        "_Ready to take stock of where your ship stands?_",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+    return FUNNEL_Q1
+
+
 async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle the language selection inline keyboard button."""
     query = update.callback_query
@@ -1719,6 +1751,7 @@ def _build_app(token: str) -> Application:
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
+            CommandHandler("funnel", funnel_command),
             CommandHandler("link", link_start),
             CommandHandler("plan", plan_start),
             CommandHandler("highlight", highlight_start),
