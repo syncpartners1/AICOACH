@@ -815,19 +815,23 @@ def user_dashboard(
     api_key: Optional[str] = Query(default=None, alias="api_key"),
 ) -> HTMLResponse:
     """Personal progress dashboard for a coaching program user."""
-    # Accept: user session cookie, API key in query param, or API key in header
-    cookie_uid = _get_user_id_from_cookie(request)
-    if cookie_uid:
-        # Cookie auth: user can only view their own dashboard
-        if cookie_uid != user_id:
-            return RedirectResponse(url=f"/dashboard/{cookie_uid}", status_code=302)
-    elif api_key:
-        if coaching_config.api_key and api_key != coaching_config.api_key:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
+    # Accept: admin session cookie, user session cookie, API key in query param, or API key in header
+    is_admin_view = False
+    if _is_admin_authenticated(request):
+        is_admin_view = True  # admin can view any user's dashboard
     else:
-        header_key = request.headers.get("X-API-Key", "")
-        if not coaching_config.api_key or header_key != coaching_config.api_key:
-            return RedirectResponse(url=f"/login?next=/dashboard/{user_id}", status_code=302)
+        cookie_uid = _get_user_id_from_cookie(request)
+        if cookie_uid:
+            # Cookie auth: user can only view their own dashboard
+            if cookie_uid != user_id:
+                return RedirectResponse(url=f"/dashboard/{cookie_uid}", status_code=302)
+        elif api_key:
+            if coaching_config.api_key and api_key != coaching_config.api_key:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
+        else:
+            header_key = request.headers.get("X-API-Key", "")
+            if not coaching_config.api_key or header_key != coaching_config.api_key:
+                return RedirectResponse(url=f"/login?next=/dashboard/{user_id}", status_code=302)
 
     from datetime import date as _date
     from autogpt.coaching.dashboard_ui import render_dashboard
@@ -850,6 +854,7 @@ def user_dashboard(
         week_start=parsed_week,
         week_end=_week_end(parsed_week),
         language=user.language,
+        is_admin_view=is_admin_view,
     )
     return HTMLResponse(content=html)
 
@@ -1437,6 +1442,45 @@ def admin_approve_user(user_id: str, request: Request,
             logger.warning("Could not send Telegram welcome to user %s", user_id)
 
     return {"user_id": user_id, "account_status": "active"}
+
+
+# ── Admin: session notes & manual session records ────────────────────────────
+
+class _SessionNotesBody(BaseModel):
+    coach_notes: str
+
+
+class _ManualSessionBody(BaseModel):
+    session_date: str  # ISO date string e.g. "2026-04-05"
+    coach_notes: str = ""
+    summary_for_coach: str = ""
+
+
+@app.put("/admin/sessions/{session_id}/notes", summary="Admin: add/update coach notes on a session")
+def admin_update_session_notes(
+    session_id: str,
+    body: _SessionNotesBody,
+    _: None = Depends(verify_admin_or_api_key),
+) -> dict:
+    from autogpt.coaching.storage import update_session_notes
+    update_session_notes(session_id, body.coach_notes)
+    return {"ok": True, "session_id": session_id}
+
+
+@app.post("/admin/users/{user_id}/sessions", summary="Admin: create manual coaching session record")
+def admin_create_manual_session(
+    user_id: str,
+    body: _ManualSessionBody,
+    _: None = Depends(verify_admin_or_api_key),
+) -> dict:
+    from autogpt.coaching.storage import create_manual_session
+    session_id = create_manual_session(
+        user_id=user_id,
+        session_date=body.session_date,
+        coach_notes=body.coach_notes,
+        summary_for_coach=body.summary_for_coach,
+    )
+    return {"ok": True, "session_id": session_id}
 
 
 @app.post("/admin/analyze-transcripts", summary="Admin: analyse recent session transcripts and save coaching insights")

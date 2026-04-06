@@ -229,6 +229,8 @@ class PastSession(BaseModel):
     timestamp: str
     alert_level: str
     summary_for_coach: str
+    coach_notes: str = ""
+    is_manual: bool = False
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────

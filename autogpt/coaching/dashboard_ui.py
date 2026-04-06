@@ -69,6 +69,7 @@ def render_dashboard(
     week_start: date,
     week_end: date,
     language: str = "en",
+    is_admin_view: bool = False,
 ) -> str:
     lang = language
     is_rtl = lang == "he"
@@ -150,25 +151,85 @@ def render_dashboard(
         dot_color = {"green": "#16a34a", "yellow": "#d97706", "red": "#dc2626"}.get(
             s.alert_level, "#6b7280"
         )
+        session_type_badge = (
+            '<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;'
+            'border-radius:6px;margin-left:6px">1:1</span>'
+        ) if s.is_manual else ""
         excerpt = (s.summary_for_coach[:160] + "…") if len(s.summary_for_coach) > 160 else s.summary_for_coach
+        # Coach notes — shown read-only on user view, editable on admin view
+        notes_html = ""
+        if s.coach_notes and not is_admin_view:
+            notes_html = (
+                f'<div style="margin-top:6px;font-size:12px;color:#1a2b4a;background:#e0e7ff22;'
+                f'border-left:2px solid #6366f1;padding:4px 8px;border-radius:0 4px 4px 0">'
+                f'📝 {s.coach_notes}</div>'
+            )
+        if is_admin_view:
+            # Editable notes textarea + save button
+            escaped_notes = s.coach_notes.replace('"', '&quot;').replace('\n', '&#10;')
+            notes_html = f"""
+<div style="margin-top:8px">
+  <textarea id="notes_{s.session_id}"
+    style="width:100%;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
+           resize:vertical;min-height:56px;color:#374151"
+    placeholder="Add coach notes…">{s.coach_notes}</textarea>
+  <button onclick="saveNotes('{s.session_id}')"
+    style="margin-top:4px;font-size:11px;background:#1a2b4a;color:#fff;border:none;
+           padding:4px 12px;border-radius:6px;cursor:pointer">💾 Save Notes</button>
+</div>"""
         sess_html += f"""
 <div style="border-{('right' if is_rtl else 'left')}:3px solid {dot_color};padding:8px 14px;
             margin-bottom:10px;background:#f9fafb;border-radius:0 8px 8px 0">
   <div style="font-size:12px;font-weight:600;color:#374151">{s.timestamp[:10]}
     <span style="margin-left:8px;padding:1px 7px;border-radius:10px;font-size:11px;
                  background:{dot_color}22;color:{dot_color}">{s.alert_level.upper()}</span>
+    {session_type_badge}
   </div>
   <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.5">{excerpt}</div>
+  {notes_html}
 </div>"""
     if not sess_html:
         sess_html = f'<p style="color:#9ca3af;font-size:13px">{t(lang, "db_no_sessions")}</p>'
+
+    # ── Admin: add manual session form ────────────────────────────────────────
+    add_session_form = ""
+    if is_admin_view:
+        add_session_form = f"""
+<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;
+            margin-top:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+  <div style="font-size:14px;font-weight:700;color:#1a2b4a;margin-bottom:12px">
+    ➕ Add 1:1 Coaching Session Record
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <div>
+      <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">Session Date</label>
+      <input type="date" id="new_sess_date"
+        style="font-size:13px;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px"
+        value="{date.today().isoformat()}">
+    </div>
+  </div>
+  <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">Summary</label>
+  <input type="text" id="new_sess_summary" placeholder="Brief session summary…"
+    style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;
+           padding:6px 8px;margin-bottom:8px">
+  <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">Key Outcomes / Coach Notes</label>
+  <textarea id="new_sess_notes" placeholder="Key outcomes, actions agreed, observations…"
+    style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
+           resize:vertical;min-height:72px;margin-bottom:10px"></textarea>
+  <button onclick="addSession('{user.user_id}')"
+    style="background:#16a34a;color:#fff;border:none;padding:7px 18px;border-radius:8px;
+           font-size:13px;font-weight:600;cursor:pointer">✅ Save Session</button>
+  <span id="add_sess_msg" style="margin-left:10px;font-size:12px;color:#16a34a"></span>
+</div>"""
 
     week_label = f"{week_start.strftime('%d %b')} – {week_end.strftime('%d %b %Y')}"
     status_val = user.account_status.value if hasattr(user.account_status, "value") else "active"
     status_badge = _status_badge(user.account_status, lang)
 
-    # Suspend / reactivate button
-    if status_val == "active":
+    # Suspend / reactivate button — hidden in admin view (admin uses /admin panel)
+    if is_admin_view:
+        status_action = ""
+    elif status_val == "active":
         status_action = (
             f'<button onclick="setStatus(\'suspend\')" '
             f'style="font-size:12px;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;'
@@ -185,6 +246,17 @@ def render_dashboard(
     else:
         status_action = ""
 
+    # Admin view top banner
+    admin_banner = (
+        f'<div style="background:#1a2b4a;color:#fff;padding:10px 24px;font-size:13px;'
+        f'display:flex;align-items:center;justify-content:space-between;gap:12px">'
+        f'<span>👁 <strong>Admin View</strong> — {user.name}\'s Dashboard</span>'
+        f'<a href="/admin" style="color:#93c5fd;font-size:12px;text-decoration:none;'
+        f'border:1px solid rgba(147,197,253,.4);padding:3px 10px;border-radius:6px">'
+        f'← Back to Admin Console</a>'
+        f'</div>'
+    ) if is_admin_view else ""
+
     suspended_banner = (
         f'<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:10px;'
         f'padding:12px 16px;margin-bottom:20px;font-size:14px;color:#92400e">'
@@ -196,6 +268,20 @@ def render_dashboard(
         f'padding:12px 16px;margin-bottom:20px;font-size:14px;color:#991b1b">'
         f'{t(lang, "db_archived_banner")}</div>'
     ) if status_val == "archived" else ""
+
+    # Header right-side actions — hide start/logout for admin view
+    if is_admin_view:
+        hdr_actions = ""
+    else:
+        hdr_actions = (
+            f'<div style="margin-left:auto;display:flex;gap:8px;align-items:center">'
+            f'<a href="/chat" style="color:#fff;font-size:12px;font-weight:600;text-decoration:none;'
+            f'background:#16a34a;padding:6px 14px;border-radius:8px;">▶ Start Session</a>'
+            f'<a href="/user/logout" style="color:rgba(255,255,255,.65);font-size:12px;'
+            f'text-decoration:none;border:1px solid rgba(255,255,255,.25);padding:5px 12px;'
+            f'border-radius:8px;">Sign out</a>'
+            f'</div>'
+        )
 
     return f"""<!DOCTYPE html>
 <html lang="{lang}"{dir_attr}>
@@ -220,6 +306,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
 </style>
 </head>
 <body>
+{admin_banner}
 <div class="hdr">
   <img src="/static/android-chrome-192x192.png" width="36" height="36"
        style="border-radius:8px" alt="logo">
@@ -227,13 +314,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
     <div class="hdr-title">{t(lang, "db_title")}</div>
     <div class="hdr-sub">{user.name} &nbsp;{status_badge}{status_action}</div>
   </div>
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-    <a href="/chat" style="color:#fff;font-size:12px;font-weight:600;text-decoration:none;
-       background:#16a34a;padding:6px 14px;border-radius:8px;">▶ Start Session</a>
-    <a href="/user/logout" style="color:rgba(255,255,255,.65);font-size:12px;
-       text-decoration:none;border:1px solid rgba(255,255,255,.25);padding:5px 12px;
-       border-radius:8px;">Sign out</a>
-  </div>
+  {hdr_actions}
 </div>
 <div class="container">
   {suspended_banner}{archived_banner}
@@ -248,6 +329,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
 
   <div class="section-title">{t(lang, "db_section_sessions")}</div>
   {sess_html}
+  {add_session_form}
 
 </div>
 <script>
@@ -262,6 +344,40 @@ async function setStatus(action) {{
   const res = await fetch(url, {{method:'POST', headers, body}});
   if (res.ok) location.reload();
   else alert('Could not update status. Please try again.');
+}}
+async function saveNotes(sessionId) {{
+  const notes = document.getElementById('notes_' + sessionId).value;
+  const res = await fetch('/admin/sessions/' + sessionId + '/notes', {{
+    method: 'PUT',
+    headers: {{'Content-Type':'application/json'}},
+    credentials: 'include',
+    body: JSON.stringify({{coach_notes: notes}}),
+  }});
+  if (res.ok) {{
+    const btn = event.target;
+    btn.textContent = '✅ Saved';
+    setTimeout(() => {{ btn.textContent = '💾 Save Notes'; }}, 2000);
+  }} else {{
+    alert('Failed to save notes. Please try again.');
+  }}
+}}
+async function addSession(userId) {{
+  const date = document.getElementById('new_sess_date').value;
+  const summary = document.getElementById('new_sess_summary').value;
+  const notes = document.getElementById('new_sess_notes').value;
+  if (!date) {{ alert('Please select a session date.'); return; }}
+  const res = await fetch('/admin/users/' + userId + '/sessions', {{
+    method: 'POST',
+    headers: {{'Content-Type':'application/json'}},
+    credentials: 'include',
+    body: JSON.stringify({{session_date: date, summary_for_coach: summary, coach_notes: notes}}),
+  }});
+  if (res.ok) {{
+    document.getElementById('add_sess_msg').textContent = '✅ Session saved!';
+    setTimeout(() => location.reload(), 1200);
+  }} else {{
+    alert('Failed to save session. Please try again.');
+  }}
 }}
 </script>
 </body>
