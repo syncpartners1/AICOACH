@@ -331,3 +331,6 @@ ALTER TABLE funnel_leads ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS "service_role_all_funnel_leads"
     ON funnel_leads FOR ALL
     USING (auth.role() = 'service_role');
+
+-- M008: coaching program application tracking
+ALTER TABLE funnel_leads ADD COLUMN IF NOT EXISTS applied BOOLEAN DEFAULT false;

@@ -1185,3 +1185,11 @@ def mark_funnel_reminded(telegram_user_id: int) -> None:
     db.table("funnel_leads").update({"reminder_sent": True}).eq(
         "telegram_user_id", telegram_user_id
     ).execute()
+
+
+def mark_funnel_applied(telegram_user_id: int) -> None:
+    """Record that this lead submitted a coaching program application."""
+    db = _get_client()
+    db.table("funnel_leads").update({"applied": True}).eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
