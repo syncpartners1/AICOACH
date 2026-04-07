@@ -292,11 +292,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await update.message.reply_text(err, parse_mode="Markdown")
             return ConversationHandler.END
         await update.message.reply_text(
-            t(lang, "welcome_back", name=user.name),
+            t(lang, "welcome_back", name=user.name) + "\n\n"
+            "Use /new\\_session to start a new coaching session.",
             parse_mode="Markdown",
         )
-        await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
-        return CHATTING
+        return ConversationHandler.END
 
     # Non-registered users → sales funnel (nautical micro-assessment)
     try:
@@ -318,36 +318,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return FUNNEL_Q1
 
 
-async def funnel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle /funnel — lets non-registered users (re-)enter the sales funnel."""
+async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle /new_session — start a new coaching session (registered users only)."""
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
-    if user:
-        lang = _lang(user, "")
+    lang = _lang(user, "")
+
+    if not user:
         await update.message.reply_text(
-            t(lang, "welcome_back", name=user.name),
-            parse_mode="Markdown",
+            "⚓ Use /start to begin your Voyage Check first.",
         )
         return ConversationHandler.END
 
-    try:
-        from autogpt.coaching.storage import upsert_funnel_lead
-        upsert_funnel_lead(tg_id, update.effective_user.username or "")
-    except Exception:
-        logger.exception("Failed to upsert funnel lead for tg_id=%s", tg_id)
+    if _get_or_restore_session(tg_id) is not None:
+        await update.message.reply_text(t(lang, "already_session"))
+        return CHATTING
 
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("⚓ Start Quick Voyage Check", callback_data="funnel_start"),
-    ]])
+    err = _check_active(user, lang)
+    if err:
+        await update.message.reply_text(err, parse_mode="Markdown")
+        return ConversationHandler.END
+
     await update.message.reply_text(
-        "⚓ *Welcome, Captain!*\n\n"
-        "I'm Adi Ben Nesher — 25+ years navigating leaders through the storms of change and digital transformation.\n\n"
-        "Before we plot your course, let's do a *Quick Voyage Check* — 3 strategic questions to map your current position at sea.\n\n"
-        "_Ready to take stock of where your ship stands?_",
-        reply_markup=keyboard,
-        parse_mode="Markdown",
+        t(lang, "welcome_back", name=user.name), parse_mode="Markdown"
     )
-    return FUNNEL_Q1
+    await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
+    return CHATTING
 
 
 async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -456,9 +452,10 @@ async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         except Exception:
             logger.exception("Funnel: failed to notify admin after Q3 for tg_id=%s", tg_id)
 
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🌊 Complete Full Assessment →", callback_data=f"funnel_link:{tg_id}"),
-    ]])
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌊 Complete Full Assessment →", callback_data=f"funnel_link:{tg_id}")],
+        [InlineKeyboardButton("🚢 Apply to Coaching Program", callback_data=f"funnel_apply:{tg_id}")],
+    ])
     await update.message.reply_text(
         "⚓ *Captain, you've charted your position.*\n\n"
         "Based on your answers, there are *real opportunities* to strengthen your ship "
@@ -507,6 +504,78 @@ async def funnel_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"🌊 *Excellent, Captain!* Here's your link:\n\n"
         f"{_FUNNEL_WEBSITE_URL}\n\n"
         "Complete the assessment and Adi will be in touch within 24 hours with your Navigation Report.",
+        parse_mode="Markdown",
+    )
+
+
+async def funnel_apply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """User clicked 'Apply to Coaching Program' — show commitment declaration."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        tg_id = int(query.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        tg_id = update.effective_user.id
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "✅ I commit — send my application",
+            callback_data=f"funnel_commit:{tg_id}",
+        )
+    ]])
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        "🚢 *Ready to set sail, Captain?*\n\n"
+        "By applying you are declaring that you are *ready to commit the time and effort* "
+        "required for real, lasting transformation.\n\n"
+        "This isn't a light voyage — it's a full course correction.\n\n"
+        "_Confirm your commitment below to send your application to Adi:_",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+
+
+async def funnel_commit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """User confirmed their commitment — record application and notify admin."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        tg_id = int(query.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        tg_id = update.effective_user.id
+    username = update.effective_user.username or str(tg_id)
+
+    try:
+        from autogpt.coaching.storage import mark_funnel_applied
+        mark_funnel_applied(tg_id)
+    except Exception:
+        logger.exception("Funnel: failed to mark applied for tg_id=%s", tg_id)
+
+    if coaching_config.admin_telegram_id:
+        try:
+            await query.get_bot().send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=(
+                    f"🚢 *New Coaching Application!*\n\n"
+                    f"*Captain:* @{username} (ID: {tg_id})\n"
+                    f"Has completed the Voyage Check and declared their commitment."
+                ),
+                parse_mode="Markdown",
+            )
+        except Exception:
+            logger.exception("Funnel: failed to notify admin of application for tg_id=%s", tg_id)
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        "⚓ *Application received, Captain!*\n\n"
+        "Adi will review your Voyage Check answers and be in touch to plot your course together.\n\n"
+        "_Fair winds and following seas._ 🌊",
         parse_mode="Markdown",
     )
 
@@ -1751,7 +1820,7 @@ def _build_app(token: str) -> Application:
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            CommandHandler("funnel", funnel_command),
+            CommandHandler("new_session", new_session_command),
             CommandHandler("link", link_start),
             CommandHandler("plan", plan_start),
             CommandHandler("highlight", highlight_start),
@@ -1853,8 +1922,10 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("refresh", refresh_command))
 
-    # Funnel: website link click (outside conversation — fires after END)
-    app.add_handler(CallbackQueryHandler(funnel_link_handler, pattern=r"^funnel_link:"))
+    # Funnel: post-conversation callbacks (fire after ConversationHandler.END)
+    app.add_handler(CallbackQueryHandler(funnel_link_handler,   pattern=r"^funnel_link:"))
+    app.add_handler(CallbackQueryHandler(funnel_apply_handler,  pattern=r"^funnel_apply:"))
+    app.add_handler(CallbackQueryHandler(funnel_commit_handler, pattern=r"^funnel_commit:"))
 
     # Admin commands
     app.add_handler(CommandHandler("users", admin_users))
@@ -1881,6 +1952,36 @@ async def run_polling(token: str) -> None:
         scheduler = AsyncIOScheduler()
         try:
             await application.initialize()
+
+            # Register command menu visible to users when they type /
+            from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+            _user_commands = [
+                BotCommand("start",       "Begin your Voyage Check"),
+                BotCommand("new_session", "Start a new coaching session"),
+                BotCommand("done",        "End & save current session"),
+                BotCommand("plan",        "Submit your weekly plan"),
+                BotCommand("myplan",      "View your current week plan"),
+                BotCommand("highlight",   "Log today's highlight"),
+                BotCommand("book",        "Book a 1:1 session"),
+                BotCommand("mybookings",  "View your bookings"),
+                BotCommand("lang",        "Switch language (עב / EN)"),
+                BotCommand("suspend",     "Pause the program"),
+                BotCommand("resume",      "Resume the program"),
+                BotCommand("help",        "Show help"),
+                BotCommand("cancel",      "Cancel current action"),
+            ]
+            await application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault())
+            if coaching_config.admin_telegram_id:
+                await application.bot.set_my_commands(
+                    _user_commands + [
+                        BotCommand("users",     "List all participants"),
+                        BotCommand("report",    "Get user report"),
+                        BotCommand("invite",    "Create invite link"),
+                        BotCommand("broadcast", "Send broadcast message"),
+                    ],
+                    scope=BotCommandScopeChat(chat_id=coaching_config.admin_telegram_id),
+                )
+
             await application.start()
             await application.updater.start_polling(drop_pending_updates=True)
             # Schedule 24-hour funnel follow-up reminders (checked hourly)
