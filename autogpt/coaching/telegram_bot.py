@@ -1827,7 +1827,23 @@ async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> 
             pass
 
 
+
+async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log all handler exceptions and notify admin for immediate visibility."""
+    logger.error("Unhandled exception in handler:", exc_info=context.error)
+    if coaching_config.admin_telegram_id:
+        try:
+            await context.bot.send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=f"⚠️ Bot handler error: `{context.error}`",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
+
+
 # ── Bot builder ────────────────────────────────────────────────────────────────
+
 
 def _build_app(token: str) -> Application:
     app = Application.builder().token(token).build()
@@ -1953,9 +1969,11 @@ def _build_app(token: str) -> Application:
         filters.REPLY & filters.TEXT & ~filters.COMMAND,
         admin_reply_handler,
     ))
-app.add_error_handler(_error_handler)
+
+    app.add_error_handler(_error_handler)
 
     return app
+
 
 
 async def run_polling(token: str) -> None:
