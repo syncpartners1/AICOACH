@@ -1975,7 +1975,6 @@ def _build_app(token: str) -> Application:
     return app
 
 
-
 async def run_polling(token: str) -> None:
     """Start the bot in polling mode with automatic restart on errors."""
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -1986,44 +1985,53 @@ async def run_polling(token: str) -> None:
         scheduler = AsyncIOScheduler()
         try:
             await application.initialize()
-        try:
-            await application.bot.delete_webhook(drop_pending_updates=True)
-            logger.info("Webhook cleared — polling mode active")
-        except Exception:
-            logger.exception("Failed to delete webhook (non-fatal, continuing)")
+
+            # Clear any stale webhook so polling actually receives updates.
+            # Without this, if a webhook was ever set, Telegram routes all
+            # updates to the webhook URL and the polling bot sees nothing.
+            try:
+                await application.bot.delete_webhook(drop_pending_updates=True)
+                logger.info("Webhook cleared — polling mode active")
+            except Exception:
+                logger.exception("Failed to delete webhook (non-fatal, continuing)")
+
             # Register command menu visible to users when they type /
-            from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
-            _user_commands = [
-                BotCommand("start",       "Begin your Voyage Check"),
-                BotCommand("new_session", "Start a new coaching session"),
-                BotCommand("done",        "End & save current session"),
-                BotCommand("plan",        "Submit your weekly plan"),
-                BotCommand("myplan",      "View your current week plan"),
-                BotCommand("highlight",   "Log today's highlight"),
-                BotCommand("book",        "Book a 1:1 session"),
-                BotCommand("mybookings",  "View your bookings"),
-                BotCommand("lang",        "Switch language (עב / EN)"),
-                BotCommand("suspend",     "Pause the program"),
-                BotCommand("resume",      "Resume the program"),
-                BotCommand("help",        "Show help"),
-                BotCommand("cancel",      "Cancel current action"),
-            ]
-            await application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault())
-             logger.info("Bot command menu registered")
-              logger.exception("Failed to register bot commands (non-fatal, continuing)")
-            if coaching_config.admin_telegram_id:
-                await application.bot.set_my_commands(
-                    _user_commands + [
-                        BotCommand("users",     "List all participants"),
-                        BotCommand("report",    "Get user report"),
-                        BotCommand("invite",    "Create invite link"),
-                        BotCommand("broadcast", "Send broadcast message"),
-                    ],
-                    scope=BotCommandScopeChat(chat_id=coaching_config.admin_telegram_id),
-                )
+            # Isolated in its own try-except so a Telegram API error here
+            # cannot prevent the bot from starting polling.
+            try:
+                from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+                _user_commands = [
+                    BotCommand("start",       "Begin your Voyage Check"),
+                    BotCommand("new_session", "Start a new coaching session"),
+                    BotCommand("done",        "End & save current session"),
+                    BotCommand("plan",        "Submit your weekly plan"),
+                    BotCommand("myplan",      "View your current week plan"),
+                    BotCommand("highlight",   "Log today's highlight"),
+                    BotCommand("book",        "Book a 1:1 session"),
+                    BotCommand("mybookings",  "View your bookings"),
+                    BotCommand("lang",        "Switch language (עב / EN)"),
+                    BotCommand("suspend",     "Pause the program"),
+                    BotCommand("resume",      "Resume the program"),
+                    BotCommand("help",        "Show help"),
+                    BotCommand("cancel",      "Cancel current action"),
+                ]
+                await application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault())
+                if coaching_config.admin_telegram_id:
+                    await application.bot.set_my_commands(
+                        _user_commands + [
+                            BotCommand("users",     "List all participants"),
+                            BotCommand("report",    "Get user report"),
+                            BotCommand("invite",    "Create invite link"),
+                            BotCommand("broadcast", "Send broadcast message"),
+                        ],
+                        scope=BotCommandScopeChat(chat_id=coaching_config.admin_telegram_id),
+                    )
+                logger.info("Bot command menu registered")
+            except Exception:
+                logger.exception("Failed to register bot commands (non-fatal, continuing)")
 
             await application.start()
-            await application.updater.start_polling(drop_pending_updates=True)
+            await application.updater.start_polling()
             # Schedule 24-hour funnel follow-up reminders (checked hourly)
             scheduler.add_job(
                 _send_funnel_reminders,
