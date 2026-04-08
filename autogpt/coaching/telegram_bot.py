@@ -31,6 +31,7 @@ Commands (admin — only for ADMIN_TELEGRAM_ID):
 from __future__ import annotations
 
 import asyncio
+from email.mime import application
 import logging
 import re
 from datetime import date, timedelta
@@ -1811,6 +1812,20 @@ async def cancelmeeting_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data.pop("cancel_bookings", None)
     return ConversationHandler.END
 
+#---global error handler ────────────────────────────────────────────────────────────
+async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log all handler exceptions and notify admin for immediate visibility."""
+    logger.error("Unhandled exception in handler:", exc_info=context.error)
+    if coaching_config.admin_telegram_id:
+        try:
+            await context.bot.send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=f"⚠️ Bot handler error: `{context.error}`",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
+
 
 # ── Bot builder ────────────────────────────────────────────────────────────────
 
@@ -1938,6 +1953,7 @@ def _build_app(token: str) -> Application:
         filters.REPLY & filters.TEXT & ~filters.COMMAND,
         admin_reply_handler,
     ))
+app.add_error_handler(_error_handler)
 
     return app
 
@@ -1952,7 +1968,11 @@ async def run_polling(token: str) -> None:
         scheduler = AsyncIOScheduler()
         try:
             await application.initialize()
-
+        try:
+            await application.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Webhook cleared — polling mode active")
+        except Exception:
+            logger.exception("Failed to delete webhook (non-fatal, continuing)")
             # Register command menu visible to users when they type /
             from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
             _user_commands = [
@@ -1971,6 +1991,8 @@ async def run_polling(token: str) -> None:
                 BotCommand("cancel",      "Cancel current action"),
             ]
             await application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault())
+             logger.info("Bot command menu registered")
+              logger.exception("Failed to register bot commands (non-fatal, continuing)")
             if coaching_config.admin_telegram_id:
                 await application.bot.set_my_commands(
                     _user_commands + [
