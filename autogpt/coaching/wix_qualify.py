@@ -61,12 +61,16 @@ def compute_score(p: CoachingQualPayload) -> str:
 def create_clickup_task(p: CoachingQualPayload, verdict: str) -> Optional[str]:
     """Create task in the correct Co-Navigator CRM list. Returns task URL or None."""
     if not CLICKUP_API_KEY:
-        logger.error("CLICKUP_API_KEY not set — task creation skipped")
+        logger.error("CLICKUP_API_KEY not set in environment — task creation skipped")
         return None
 
     list_id = CLICKUP_LISTS[verdict]
     headers = {"Authorization": CLICKUP_API_KEY, "Content-Type": "application/json"}
     yes_no  = lambda v: "✅ Yes" if str(v).strip().lower() in ("yes", "כן", "true", "1") else "❌ No"
+
+    # Use first 8 chars of API key for safe debugging in logs
+    key_debug = CLICKUP_API_KEY[:8] + "..." if CLICKUP_API_KEY else "None"
+    logger.info(f"Creating ClickUp task for {p.q8_name} (verdict: {verdict}) on list {list_id} (API Key: {key_debug})")
 
     task_body = {
         "name": f"{p.q8_name} | Coaching {verdict} | {datetime.now().strftime('%Y-%m-%d')}",
@@ -94,40 +98,51 @@ def create_clickup_task(p: CoachingQualPayload, verdict: str) -> Optional[str]:
             json=task_body, headers=headers, timeout=10
         )
         if not resp.ok:
-            logger.error(f"ClickUp {resp.status_code}: {resp.text[:400]}")
+            logger.error(f"ClickUp error {resp.status_code}: {resp.text[:400]}")
             return None
         task_id = resp.json().get("id")
-        logger.info(f"ClickUp task created: {task_id}")
+        logger.info(f"ClickUp task created successfully: {task_id}")
         return f"https://app.clickup.com/t/{task_id}"
     except Exception as e:
-        logger.error(f"ClickUp request exception: {e}")
+        logger.error(f"ClickUp request exception for {p.q8_name}: {e}")
         return None
 
 
 def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: str):
     """Slow network tasks: ClickUp and Emails."""
+    logger.info(f"Background process started for {payload.q8_name} (verdict: {verdict})")
     clickup = create_clickup_task(payload, verdict)
 
     from autogpt.coaching.gmail_service import send_qualify_notification, send_lead_response
     
-    send_qualify_notification(
-        lead_name    = payload.q8_name,
-        lead_email   = payload.q9_email,
-        challenge    = payload.q1_challenge,
-        outcome      = payload.q2_outcome,
-        yes_count    = sum(1 for v in [payload.q3_priority, payload.q4_commit_time,
-                           payload.q5_commit_tasks, payload.q6_coaching, payload.q7_capability]
-                           if str(v).strip().lower() in ("yes", "כן", "true", "1")),
-        verdict      = verdict,
-        clickup_url  = clickup or "",
-        booking_url  = SCHEDULER_URL,
-    )
+    try:
+        send_qualify_notification(
+            lead_name    = payload.q8_name,
+            lead_email   = payload.q9_email,
+            challenge    = payload.q1_challenge,
+            outcome      = payload.q2_outcome,
+            yes_count    = sum(1 for v in [payload.q3_priority, payload.q4_commit_time,
+                               payload.q5_commit_tasks, payload.q6_coaching, payload.q7_capability]
+                               if str(v).strip().lower() in ("yes", "כן", "true", "1")),
+            verdict      = verdict,
+            clickup_url  = clickup or "",
+            booking_url  = SCHEDULER_URL,
+        )
+        logger.info(f"Coach notification sent for {payload.q8_name}")
+    except Exception as e:
+        logger.error(f"Failed to send coach notification for {payload.q8_name}: {e}")
 
-    send_lead_response(
-        lead_name  = payload.q8_name,
-        lead_email = payload.q9_email,
-        verdict    = verdict,
-    )
+    try:
+        send_lead_response(
+            lead_name  = payload.q8_name,
+            lead_email = payload.q9_email,
+            verdict    = verdict,
+        )
+        logger.info(f"Lead response email sent to {payload.q9_email}")
+    except Exception as e:
+        logger.error(f"Failed to send lead response email to {payload.q9_email}: {e}")
+
+    logger.info(f"Background process completed for {payload.q8_name}")
 
 
 async def handle_coaching_qualify(payload: CoachingQualPayload, background_tasks = None) -> dict:

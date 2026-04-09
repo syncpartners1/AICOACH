@@ -2031,8 +2031,10 @@ async def wix_consult_form_lead(payload: WixConsultFormPayload, background_tasks
 
 @app.post("/wix-qualify", summary="Wix lead qualification webhook (legacy)")
 async def wix_qualify_lead(payload: CoachingQualPayload, background_tasks: BackgroundTasks):
-    verdict = await handle_coaching_qualify(payload)
-    return verdict
+    """
+    Called by Wix Automation on /coaching-qualify form submit.
+    """
+    return await handle_coaching_qualify(payload, background_tasks)
 
 
 @app.post("/wix-consult", summary="CM Readiness Diagnostic webhook")

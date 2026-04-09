@@ -34,11 +34,15 @@ class ConsultPayload(BaseModel):
 def create_consult_clickup_task(payload: ConsultPayload) -> Optional[str]:
     """Create task in the correct ClickUp list based on readinessLevel. Returns task URL or None."""
     if not CLICKUP_API_KEY:
-        logger.error("CLICKUP_API_KEY not set — consult task creation skipped")
+        logger.error("CLICKUP_API_KEY not set in environment — consult task creation skipped")
         return None
 
     list_id = _CLICKUP_LISTS.get(payload.readinessLevel, _CLICKUP_LISTS["MEDIUM"])
     headers = {"Authorization": CLICKUP_API_KEY, "Content-Type": "application/json"}
+    
+    # Debug info (first 8 chars of key)
+    key_debug = CLICKUP_API_KEY[:8] + "..." if CLICKUP_API_KEY else "None"
+    logger.info(f"Creating ClickUp task (Diagnostic) for {payload.respondentName} (Level: {payload.readinessLevel}) on list {list_id} (API Key: {key_debug})")
 
     task_body = {
         "name": (
@@ -69,8 +73,8 @@ def create_consult_clickup_task(payload: ConsultPayload) -> Optional[str]:
             return None
         task_id = resp.json().get("id")
         task_url = f"https://app.clickup.com/t/{task_id}"
-        logger.info(f"Consult ClickUp task created: {task_url}")
+        logger.info(f"Consult ClickUp task created successfully: {task_url}")
         return task_url
     except Exception as e:
-        logger.error(f"ClickUp consult request failed: {e}")
+        logger.error(f"ClickUp consult request failed for {payload.respondentName}: {e}")
         return None

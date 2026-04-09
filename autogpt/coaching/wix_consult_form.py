@@ -91,6 +91,9 @@ def create_consult_clickup_task(p: WixConsultFormPayload, verdict: str) -> Optio
     list_id    = CLICKUP_CONSULT_LISTS[verdict]
     type_label = {"consulting": "ייעוץ", "workshop": "סדנה"}.get(p.c12_form_type, p.c12_form_type)
     headers    = {"Authorization": CLICKUP_API_KEY, "Content-Type": "application/json"}
+    
+    key_debug = CLICKUP_API_KEY[:8] + "..."
+    logger.info(f"Creating ClickUp task for {p.c1_name} (verdict: {verdict}) on list {list_id} (API Key: {key_debug})")
 
     task_body = {
         "name": f"{p.c1_name} | {p.c4_org_name} | {type_label} {verdict} | {datetime.now().strftime('%Y-%m-%d')}",
@@ -128,12 +131,13 @@ def create_consult_clickup_task(p: WixConsultFormPayload, verdict: str) -> Optio
         logger.info(f"Consult ClickUp task created: {task_url}")
         return task_url
     except Exception as e:
-        logger.error(f"ClickUp consult request failed: {e}")
+        logger.error(f"ClickUp consult request failed for {p.c1_name}: {e}")
         return None
 
 
 def _process_wix_consult_background(payload: WixConsultFormPayload, verdict: str):
     """Slow network tasks: ClickUp and Emails."""
+    logger.info(f"Background process started for {payload.c1_name} (verdict: {verdict})")
     clickup = create_consult_clickup_task(payload, verdict)
 
     from autogpt.coaching.gmail_service import send_consult_notification, send_consult_lead_response
