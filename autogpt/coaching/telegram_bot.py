@@ -31,7 +31,6 @@ Commands (admin — only for ADMIN_TELEGRAM_ID):
 from __future__ import annotations
 
 import asyncio
-from email.mime import application
 import logging
 import re
 from datetime import date, timedelta
@@ -1828,19 +1827,6 @@ async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 
-async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Log all handler exceptions and notify admin for immediate visibility."""
-    logger.error("Unhandled exception in handler:", exc_info=context.error)
-    if coaching_config.admin_telegram_id:
-        try:
-            await context.bot.send_message(
-                chat_id=coaching_config.admin_telegram_id,
-                text=f"⚠️ Bot handler error: `{context.error}`",
-                parse_mode="Markdown",
-            )
-        except Exception:
-            pass
-
 
 # ── Bot builder ────────────────────────────────────────────────────────────────
 
@@ -1977,13 +1963,12 @@ def _build_app(token: str) -> Application:
 
 async def run_polling(token: str) -> None:
     """Start the bot in polling mode with automatic restart on errors."""
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
     retry_delay = 5
     while True:
-        application = _build_app(token)
-        scheduler = AsyncIOScheduler()
         try:
+            from apscheduler.schedulers.asyncio import AsyncIOScheduler
+            application = _build_app(token)
+            scheduler = AsyncIOScheduler()
             await application.initialize()
 
             # Clear any stale webhook so polling actually receives updates.
