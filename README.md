@@ -20,6 +20,8 @@ by a **FastAPI** service connected to **Supabase**.
 | **Admin dashboard** | Coach view of all participants: alerts, avg KR %, full per-user reports |
 | **Bilingual (EN / HE)** | Full English and Hebrew support; RTL layout for Hebrew |
 | **Multi-channel** | Telegram Bot, WhatsApp Bot, Web Chat, Google OAuth |
+| **CRM Integration** | Automatic lead creation in **ClickUp** pipelines from all web forms |
+| **Embeddable Forms** | iFrame-ready forms for Wix: Coaching Qualify, Consulting Inquiry, and Diagnostics |
 
 ---
 
@@ -44,6 +46,7 @@ by a **FastAPI** service connected to **Supabase**.
 5. **Weekly cycle:** open session → review OKRs → log progress → discuss obstacles → `/done`
 6. Use `/plan` to log weekly activities per Key Result; use `/highlight` for daily wins
 7. Book 1:1 meetings with the coach via `/book`; view and cancel via `/mybookings`
+8. **Non-registered users**: Telegram `/start` triggers a 3-question "Voyage Check" funnel before directing to the full assessment
 
 ---
 
@@ -112,6 +115,7 @@ python -m pytest tests/ -v
 | `SUPABASE_SERVICE_KEY` | Supabase service-role key |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
 | `ADMIN_TELEGRAM_ID` | Telegram user ID of the coach / admin |
+| `CLICKUP_API_KEY` | Personal API key for ClickUp integration |
 
 ### Coaching
 
@@ -185,6 +189,10 @@ python -m pytest tests/ -v
 | `POST` | `/admin/invites` | Create a new invitation |
 | `POST` | `/telegram/webhook` | Telegram webhook receiver |
 | `POST` | `/whatsapp/webhook` | WhatsApp webhook receiver |
+| `GET` | `/qualify-form` | Coaching qualification form (iFrame embed) |
+| `GET` | `/consult-form` | Consulting/Workshop inquiry form (iFrame embed) |
+| `POST` | `/coaching-qualify` | Lead handler (ClickUp + Email) |
+| `POST` | `/wix-consult-form` | Consulting lead handler (ClickUp + Email) |
 
 ---
 
