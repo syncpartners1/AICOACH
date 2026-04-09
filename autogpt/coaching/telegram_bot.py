@@ -363,8 +363,8 @@ async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 # ── Sales funnel (non-registered users) ───────────────────────────────────────
 
-_FUNNEL_WEBSITE_URL = "https://www.ben-nesher.com/?source=tg_bot"
-_FUNNEL_WEBSITE_URL_REMINDER = "https://www.ben-nesher.com/?source=tg_bot_reminder"
+_FUNNEL_WEBSITE_URL = "https://www.ben-nesher.com/coaching/coaching-qualify?source=tg_bot"
+_FUNNEL_WEBSITE_URL_REMINDER = "https://www.ben-nesher.com/coaching/coaching-qualify?source=tg_bot_reminder"
 
 
 async def funnel_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -510,7 +510,7 @@ async def funnel_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     esc_url = html.escape(_FUNNEL_WEBSITE_URL)
     await query.message.reply_text(
         f"🌊 <b>Excellent, Captain!</b> Here's your link:\n\n"
-        f"<code>{esc_url}</code>\n\n"
+        f"🚢 <a href=\"{esc_url}\"><b>Complete Full Assessment</b></a>\n\n"
         "Complete the assessment and Adi will be in touch within 24 hours with your Navigation Report.",
         parse_mode="HTML",
     )
