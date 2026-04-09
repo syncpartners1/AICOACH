@@ -1,4 +1,4 @@
-﻿# autogpt/coaching/wix_qualify.py
+# autogpt/coaching/wix_qualify.py
 # UPDATED: 2026-03-22 v2
 # Revised to Yes/No + free-text qualification model (replaces old 10-question scale model)
 # Added: send_lead_response() — email to lead after qualification
@@ -104,14 +104,12 @@ def create_clickup_task(p: CoachingQualPayload, verdict: str) -> Optional[str]:
         return None
 
 
-async def handle_coaching_qualify(payload: CoachingQualPayload) -> dict:
-    """
-    Main handler — called from both the /coaching-qualify Wix webhook
-    and the bot conversational qualification flow.
-    """
-    verdict = compute_score(payload)
+def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: str):
+    """Slow network tasks: ClickUp and Emails."""
     clickup = create_clickup_task(payload, verdict)
 
+    from autogpt.coaching.gmail_service import send_qualify_notification, send_lead_response
+    
     send_qualify_notification(
         lead_name    = payload.q8_name,
         lead_email   = payload.q9_email,
@@ -131,4 +129,38 @@ async def handle_coaching_qualify(payload: CoachingQualPayload) -> dict:
         verdict    = verdict,
     )
 
-    return {"status": "ok", "verdict": verdict, "clickup": clickup}
+
+async def handle_coaching_qualify(payload: CoachingQualPayload, background_tasks = None) -> dict:
+    """
+    Main handler — called from both the /coaching-qualify Wix webhook
+    and the bot conversational qualification flow.
+    """
+    verdict = compute_score(payload)
+    
+    if background_tasks:
+        background_tasks.add_task(_process_coaching_qualify_background, payload, verdict)
+        return {"status": "ok", "verdict": verdict, "clickup": "processing"}
+    else:
+        # Fallback for bot flow if background_tasks not provided (though bot could also use them)
+        # For now, let's keep it sync if no background_tasks provided, or just run it.
+        # Actually, let's just run it if we have no background_tasks.
+        clickup = create_clickup_task(payload, verdict)
+        from autogpt.coaching.gmail_service import send_qualify_notification, send_lead_response
+        send_qualify_notification(
+            lead_name    = payload.q8_name,
+            lead_email   = payload.q9_email,
+            challenge    = payload.q1_challenge,
+            outcome      = payload.q2_outcome,
+            yes_count    = sum(1 for v in [payload.q3_priority, payload.q4_commit_time,
+                               payload.q5_commit_tasks, payload.q6_coaching, payload.q7_capability]
+                               if str(v).strip().lower() in ("yes", "כן", "true", "1")),
+            verdict      = verdict,
+            clickup_url  = clickup or "",
+            booking_url  = SCHEDULER_URL,
+        )
+        send_lead_response(
+            lead_name  = payload.q8_name,
+            lead_email = payload.q9_email,
+            verdict    = verdict,
+        )
+        return {"status": "ok", "verdict": verdict, "clickup": clickup}

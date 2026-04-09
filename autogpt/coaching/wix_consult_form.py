@@ -1,4 +1,4 @@
-﻿# autogpt/coaching/wix_consult_form.py
+# autogpt/coaching/wix_consult_form.py
 # NEW: 2026-03-22
 # Handles raw Wix form submissions for Consulting & Workshops leads.
 # SEPARATE from /wix-consult (which handles pre-scored CM Readiness Diagnostic results).
@@ -132,10 +132,11 @@ def create_consult_clickup_task(p: WixConsultFormPayload, verdict: str) -> Optio
         return None
 
 
-async def handle_wix_consult_form(payload: WixConsultFormPayload) -> dict:
-    """Main handler for /wix-consult-form endpoint."""
-    verdict  = compute_consult_score(payload)
-    clickup  = create_consult_clickup_task(payload, verdict)
+def _process_wix_consult_background(payload: WixConsultFormPayload, verdict: str):
+    """Slow network tasks: ClickUp and Emails."""
+    clickup = create_consult_clickup_task(payload, verdict)
+
+    from autogpt.coaching.gmail_service import send_consult_notification, send_consult_lead_response
 
     send_consult_notification(
         lead_name      = payload.c1_name,
@@ -155,4 +156,31 @@ async def handle_wix_consult_form(payload: WixConsultFormPayload) -> dict:
         readiness_level= verdict,
     )
 
-    return {"status": "ok", "verdict": verdict, "clickup": clickup}
+
+async def handle_wix_consult_form(payload: WixConsultFormPayload, background_tasks = None) -> dict:
+    """Main handler for /wix-consult-form endpoint."""
+    verdict  = compute_consult_score(payload)
+    
+    if background_tasks:
+        background_tasks.add_task(_process_wix_consult_background, payload, verdict)
+        return {"status": "ok", "verdict": verdict, "clickup": "processing"}
+    else:
+        clickup  = create_consult_clickup_task(payload, verdict)
+        from autogpt.coaching.gmail_service import send_consult_notification, send_consult_lead_response
+        send_consult_notification(
+            lead_name      = payload.c1_name,
+            lead_org       = payload.c4_org_name,
+            lead_email     = payload.c2_email,
+            lead_role      = payload.c5_role,
+            form_type      = payload.c12_form_type,
+            readiness_level= verdict,
+            total_score    = 0,
+            clickup_url    = clickup or "",
+        )
+        send_consult_lead_response(
+            lead_name      = payload.c1_name,
+            lead_email     = payload.c2_email,
+            form_type      = payload.c12_form_type,
+            readiness_level= verdict,
+        )
+        return {"status": "ok", "verdict": verdict, "clickup": clickup}

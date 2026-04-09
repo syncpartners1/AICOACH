@@ -2012,21 +2012,21 @@ def health() -> dict:
 
 
 @app.post("/coaching-qualify")
-async def coaching_qualify_lead(payload: CoachingQualPayload):
+async def coaching_qualify_lead(payload: CoachingQualPayload, background_tasks: BackgroundTasks):
     """
     Coaching qualification webhook � Yes/No model.
     Called by Wix Automation on /coaching-qualify form submit, and internally by the bot.
     """
-    return await handle_coaching_qualify(payload)
+    return await handle_coaching_qualify(payload, background_tasks)
 
 
 @app.post("/wix-consult-form")
-async def wix_consult_form_lead(payload: WixConsultFormPayload):
+async def wix_consult_form_lead(payload: WixConsultFormPayload, background_tasks: BackgroundTasks):
     """
     Consulting & Workshops lead form handler.
     Called by Wix Automation on /consulting-inquiry and /workshop-inquiry.
     """
-    return await handle_wix_consult_form(payload)
+    return await handle_wix_consult_form(payload, background_tasks)
 
 
 @app.post("/wix-qualify", summary="Wix lead qualification webhook (legacy)")
@@ -2685,7 +2685,11 @@ function submitForm(){
     q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
   fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
   .then(function(r){
-    if(r.ok){document.getElementById('form-wrap').style.display='none';document.getElementById('thanksMsg').style.display='block';}
+    if(r.ok){
+      window.scrollTo(0,0);
+      document.getElementById('form-wrap').style.display='none';
+      document.getElementById('thanksMsg').style.display='block';
+    }
     else{r.text().then(function(t){err.textContent='שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
   }).catch(function(){err.textContent='בעיית תקשורת. נסה/י שוב.';err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});
 }
@@ -2828,7 +2832,11 @@ function submitForm(){
     q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
   fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
   .then(function(r){
-    if(r.ok){document.getElementById('form-wrap').style.display='none';document.getElementById('thanksMsg').style.display='block';}
+    if(r.ok){
+      window.scrollTo(0,0);
+      document.getElementById('form-wrap').style.display='none';
+      document.getElementById('thanksMsg').style.display='block';
+    }
     else{r.text().then(function(t){err.textContent='Error: '+t;err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});}
   }).catch(function(){err.textContent='Connection error. Please try again.';err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});
 }
@@ -2993,7 +3001,11 @@ function submitConsult(){
     c13_source:document.getElementById('c13').value.trim()};
   fetch('/wix-consult-form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
   .then(function(r){
-    if(r.ok){document.getElementById('form-wrap').style.display='none';document.getElementById('thanksMsg').style.display='block';}
+    if(r.ok){
+      window.scrollTo(0,0);
+      document.getElementById('form-wrap').style.display='none';
+      document.getElementById('thanksMsg').style.display='block';
+    }
     else{r.text().then(function(t){err.textContent='שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
   }).catch(function(){err.textContent='בעיית תקשורת. נסה/י שוב.';err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});
 }
