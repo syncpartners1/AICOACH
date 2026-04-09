@@ -31,6 +31,7 @@ Commands (admin — only for ADMIN_TELEGRAM_ID):
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import re
 from datetime import date, timedelta
@@ -339,8 +340,9 @@ async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(err, parse_mode="Markdown")
         return ConversationHandler.END
 
+    esc_name = html.escape(user.name)
     await update.message.reply_text(
-        t(lang, "welcome_back", name=user.name), parse_mode="Markdown"
+        t(lang, "welcome_back", name=esc_name), parse_mode="HTML"
     )
     await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
     return CHATTING
@@ -438,16 +440,20 @@ async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     # Notify admin
     if coaching_config.admin_telegram_id:
         try:
+            esc_name = html.escape(username)
+            esc_q1 = html.escape(q1)
+            esc_q2 = html.escape(q2)
+            esc_q3 = html.escape(answer)
             await update.get_bot().send_message(
                 chat_id=coaching_config.admin_telegram_id,
                 text=(
-                    f"🎯 *New Voyage Check completed*\n\n"
-                    f"*Captain:* @{username} (ID: {tg_id})\n\n"
-                    f"*Q1 — Team sync:* {q1}\n\n"
-                    f"*Q2 — Operations:* {q2}\n\n"
-                    f"*Q3 — Biggest wave:* {answer}"
+                    f"🎯 <b>New Voyage Check completed</b>\n\n"
+                    f"<b>Captain:</b> @{esc_name} (ID: {tg_id})\n\n"
+                    f"<b>Q1 — Team sync:</b> {esc_q1}\n\n"
+                    f"<b>Q2 — Operations:</b> {esc_q2}\n\n"
+                    f"<b>Q3 — Biggest wave:</b> {esc_q3}"
                 ),
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         except Exception:
             logger.exception("Funnel: failed to notify admin after Q3 for tg_id=%s", tg_id)
@@ -487,10 +493,11 @@ async def funnel_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if coaching_config.admin_telegram_id:
         try:
+            esc_name = html.escape(username)
             await context.bot.send_message(
                 chat_id=coaching_config.admin_telegram_id,
-                text=f"🔗 *Website link clicked*\n\n@{username} (ID: {tg_id}) is heading to the full assessment.",
-                parse_mode="Markdown",
+                text=f"🔗 <b>Website link clicked</b>\n\n@{esc_name} (ID: {tg_id}) is heading to the full assessment.",
+                parse_mode="HTML",
             )
         except Exception:
             logger.exception("Funnel: failed to notify admin of click for tg_id=%s", tg_id)
@@ -556,14 +563,15 @@ async def funnel_commit_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     if coaching_config.admin_telegram_id:
         try:
+            esc_name = html.escape(username)
             await query.get_bot().send_message(
                 chat_id=coaching_config.admin_telegram_id,
                 text=(
-                    f"🚢 *New Coaching Application!*\n\n"
-                    f"*Captain:* @{username} (ID: {tg_id})\n"
+                    f"🚢 <b>New Coaching Application!</b>\n\n"
+                    f"<b>Captain:</b> @{esc_name} (ID: {tg_id})\n"
                     f"Has completed the Voyage Check and declared their commitment."
                 ),
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         except Exception:
             logger.exception("Funnel: failed to notify admin of application for tg_id=%s", tg_id)
@@ -683,9 +691,10 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                 logger.warning("Could not link telegram to existing user %s", existing.user_id)
             st = existing.account_status.value if hasattr(existing.account_status, "value") else str(existing.account_status)
             if st == "active":
+                esc_name = html.escape(existing.name)
                 await update.message.reply_text(
-                    t(lang, "linked_existing", name=existing.name),
-                    parse_mode="Markdown",
+                    t(lang, "linked_existing", name=esc_name),
+                    parse_mode="HTML",
                 )
                 await _start_coaching_session(update, context, tg_id,
                                               existing.user_id, existing.name, lang)
@@ -720,16 +729,19 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             try:
                 tg_username = update.effective_user.username or ""
                 tg_display = f"@{tg_username}" if tg_username else f"tg_id:{tg_id}"
+                esc_name = html.escape(name)
+                esc_phone = html.escape(phone)
+                esc_tg = html.escape(tg_display)
                 await update.get_bot().send_message(
                     chat_id=coaching_config.admin_telegram_id,
                     text=(
-                        f"🆕 *New registration pending approval*\n\n"
-                        f"*Name:* {name}\n"
-                        f"*Phone:* {phone}\n"
-                        f"*Telegram:* {tg_display}\n\n"
+                        f"🆕 <b>New registration pending approval</b>\n\n"
+                        f"<b>Name:</b> {esc_name}\n"
+                        f"<b>Phone:</b> {esc_phone}\n"
+                        f"<b>Telegram:</b> {esc_tg}\n\n"
                         f"Visit the admin dashboard to approve."
                     ),
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                 )
             except Exception:
                 pass
@@ -791,7 +803,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         _cancel_inactivity_timer(tg_id)
         del _sessions[tg_id]
         delete_telegram_session(tg_id)  # clean up persisted session now it's finalised
-        await update.message.reply_text(_format_summary(summary), parse_mode="Markdown")
+        await update.message.reply_text(_format_summary(summary), parse_mode="HTML")
     except Exception:
         logger.exception("End session error for telegram user %s", tg_id)
         _sessions.pop(tg_id, None)
@@ -828,9 +840,10 @@ async def link_receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
         link_telegram(user.user_id, tg_id)
         # Persist detected language on fresh link
         linked_lang = _lang(user)
+        esc_name = html.escape(user.name)
         await update.message.reply_text(
-            t(linked_lang, "linked_ok", name=user.name),
-            parse_mode="Markdown",
+            t(linked_lang, "linked_ok", name=esc_name),
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Link error for tg user %s", tg_id)
@@ -1078,12 +1091,14 @@ async def msg_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await update.message.reply_text(t(lang, "msg_empty"))
         return MSG_WAITING
 
-    name = context.user_data.get("msg_user_name", "A user")
+    name = context.user_data.get("msg_user_name", "Unknown")
     try:
+        esc_name = html.escape(name)
+        esc_text = html.escape(text)
         forwarded = await context.bot.send_message(
             chat_id=coaching_config.admin_telegram_id,
-            text=t(lang, "admin_msg_fmt", name=name, tid=tg_id, text=text),
-            parse_mode="Markdown",
+            text=t(lang, "admin_msg_fmt", name=esc_name, tid=tg_id, text=esc_text),
+            parse_mode="HTML",
         )
         _forward_map[forwarded.message_id] = tg_id
         await update.message.reply_text(t(lang, "msg_sent"))
@@ -1115,10 +1130,11 @@ async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     lang = _lang(recipient)
 
     try:
+        esc_text = html.escape(msg.text)
         await context.bot.send_message(
             chat_id=original_user_tg_id,
-            text=t(lang, "admin_reply_fmt", text=msg.text),
-            parse_mode="Markdown",
+            text=t(lang, "admin_reply_fmt", text=esc_text),
+            parse_mode="HTML",
         )
         await msg.reply_text(t("en", "admin_reply_ok"))
     except Exception:
@@ -1172,9 +1188,10 @@ async def resume_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         from autogpt.coaching.storage import set_account_status
         from autogpt.coaching.models import AccountStatus
         set_account_status(user.user_id, AccountStatus.ACTIVE)
+        esc_name = html.escape(user.name)
         await update.message.reply_text(
-            t(lang, "resume_ok", name=user.name),
-            parse_mode="Markdown",
+            t(lang, "resume_ok", name=esc_name),
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Could not reactivate user %s", user.user_id)
@@ -1218,14 +1235,15 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("No users registered yet.")
         return
 
-    lines = ["👥 *Program Members*\n"]
+    lines = ["👥 <b>Program Members</b>\n"]
     for u in users:
         dot = "🟢" if u.avg_kr_pct >= 70 else "🟡" if u.avg_kr_pct >= 40 else "🔴"
-        contact = u.email or u.phone_number or "—"
+        contact = html.escape(u.email or u.phone_number or "—")
+        esc_name = html.escape(u.name)
         last = u.last_session.strftime("%d %b") if u.last_session else "never"
-        lines.append(f"{dot} *{u.name}* ({contact})\n"
+        lines.append(f"{dot} <b>{esc_name}</b> ({contact})\n"
                      f"   KR avg: {u.avg_kr_pct:.0f}% · {u.objectives_count} OKRs · last: {last}")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1251,26 +1269,31 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     plan = get_weekly_plan(user_id)
     sessions = get_past_sessions(user_id, limit=3)
 
-    lines = [f"📊 *Report — {user.name}*\n"]
+    esc_user_name = html.escape(user.name)
+    lines = [f"📊 <b>Report — {esc_user_name}</b>\n"]
     for obj in objectives:
-        lines.append(f"🎯 *{obj.title}*")
+        esc_obj_title = html.escape(obj.title)
+        lines.append(f"🎯 <b>{esc_obj_title}</b>")
         for kr in obj.key_results:
             dot = "🟢" if kr.current_pct >= 70 else "🟡" if kr.current_pct >= 40 else "🔴"
-            lines.append(f"  {dot} {kr.description}: {kr.current_pct}%")
+            esc_kr_desc = html.escape(kr.description)
+            lines.append(f"  {dot} {esc_kr_desc}: {kr.current_pct}%")
         lines.append("")
 
     if plan.daily_highlights:
-        lines.append("*This week's highlights:*")
+        lines.append("<b>This week's highlights:</b>")
         for h in plan.daily_highlights:
-            lines.append(f"  {h.day_of_week.value[:3].capitalize()}: {h.highlight}")
+            esc_hl = html.escape(h.highlight)
+            lines.append(f"  {h.day_of_week.value[:3].capitalize()}: {esc_hl}")
         lines.append("")
 
     if sessions:
-        lines.append("*Recent sessions:*")
+        lines.append("<b>Recent sessions:</b>")
         for s in sessions:
-            lines.append(f"  {s.timestamp[:10]} [{s.alert_level.upper()}]: {s.summary_for_coach[:80]}…")
+            esc_summary = html.escape(s.summary_for_coach[:80])
+            lines.append(f"  {s.timestamp[:10]} [{s.alert_level.upper()}]: {esc_summary}…")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def admin_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1293,10 +1316,13 @@ async def admin_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         public_url=coaching_config.public_url,
     )
     url = invite.register_url or f"/register?token={invite.token}"
+    esc_name = html.escape(name) if name else ""
+    esc_url = html.escape(url)
+    esc_token = html.escape(invite.token)
     await update.message.reply_text(
-        f"✅ *Invite created*{' for ' + name if name else ''}!\n\n"
-        f"Registration link:\n`{url}`\n\nToken: `{invite.token}`",
-        parse_mode="Markdown",
+        f"✅ <b>Invite created</b>{ ' for ' + esc_name if esc_name else ''}!\n\n"
+        f"Registration link:\n<code>{esc_url}</code>\n\nToken: <code>{esc_token}</code>",
+        parse_mode="HTML",
     )
 
 
@@ -1388,31 +1414,38 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 # ── Summary formatter ─────────────────────────────────────────────────────────
 
 def _format_summary(summary) -> str:
-    lines = [f"✅ *Session Summary — {summary.client_name}*\n"]
+    esc_client = html.escape(summary.client_name)
+    lines = [f"✅ <b>Session Summary — {esc_client}</b>\n"]
     log = summary.weekly_log
     if log:
         if log.focus_goal:
-            lines.append(f"🎯 *Focus:* {log.focus_goal}")
+            esc_focus = html.escape(log.focus_goal)
+            lines.append(f"🎯 <b>Focus:</b> {esc_focus}")
         if log.key_results:
-            lines.append("\n📊 *Key Results:*")
+            lines.append("\n📊 <b>Key Results:</b>")
             for kr in log.key_results:
                 dot = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(kr.status_color, "⚪")
-                lines.append(f"  {dot} {kr.description}: {kr.status_pct}%")
+                esc_kr_desc = html.escape(kr.description)
+                lines.append(f"  {dot} {esc_kr_desc}: {kr.status_pct}%")
         unresolved = [o for o in (log.obstacles or []) if not o.resolved]
         if unresolved:
-            lines.append("\n⚠️ *Open Obstacles:*")
+            lines.append("\n⚠️ <b>Open Obstacles:</b>")
             for o in unresolved:
-                lines.append(f"  • {o.description}")
+                esc_obs = html.escape(o.description)
+                lines.append(f"  • {esc_obs}")
     if summary.alerts and summary.alerts.reason:
         dot = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(
             getattr(summary.alerts, "level", "green").value
             if hasattr(summary.alerts, "level") else "green", "⚪")
-        lines.append(f"\n{dot} *Alert:* {summary.alerts.reason}")
+        esc_reason = html.escape(summary.alerts.reason)
+        lines.append(f"\n{dot} <b>Alert:</b> {esc_reason}")
     if summary.summary_for_coach:
         excerpt = summary.summary_for_coach[:280]
-        lines.append(f"\n📝 *Coach Notes:* {excerpt}…")
+        esc_excerpt = html.escape(excerpt)
+        lines.append(f"\n📝 <b>Coach Notes:</b> {esc_excerpt}…")
     if coaching_config.scheduler_url:
-        lines.append(f"\n📅 [Book your next session]({coaching_config.scheduler_url})")
+        esc_url = html.escape(coaching_config.scheduler_url)
+        lines.append(f"\n📅 <a href=\"{esc_url}\">Book your next session</a>")
     return "\n".join(lines)
 
 
@@ -1817,10 +1850,11 @@ async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> 
     logger.error("Unhandled exception in handler:", exc_info=context.error)
     if coaching_config.admin_telegram_id:
         try:
+            esc_error = html.escape(str(context.error))
             await context.bot.send_message(
                 chat_id=coaching_config.admin_telegram_id,
-                text=f"⚠️ Bot handler error: `{context.error}`",
-                parse_mode="Markdown",
+                text=f"⚠️ <b>Bot handler error:</b> <code>{esc_error}</code>",
+                parse_mode="HTML",
             )
         except Exception:
             pass

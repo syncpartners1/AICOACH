@@ -29,7 +29,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         "welcome_title": "ABN Co-Navigator — AI Coaching",
         "welcome_name": "Welcome, {name}! Ready to start your coaching session?",
-        "welcome_back": "Welcome back, *{name}*! 👋\n\nStarting your weekly check-in session…",
+        "welcome_back": "Welcome back, <b>{name}</b>! 👋\n\nStarting your weekly check-in session…",
         "welcome_new": (
             "👋 *Welcome to the ABN Consulting AI Co-Navigator!*\n\n"
             "I'll guide you through structured coaching sessions — reviewing "
@@ -69,7 +69,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         # ── Coach identity ────────────────────────────────────────────────────
         "coach_name": "Adi Ben-Nesher",
-        "linked_existing": "✅ Your Telegram is now linked to *{name}*'s account. Starting your session…",
+        "linked_existing": "✅ Your Telegram is now linked to <b>{name}</b>'s account. Starting your session…",
         "starting_session": "Starting your session… ⏳",
         "start_failed": "Sorry, I couldn't start your session. Please try again with /start.",
         "no_active_session": "No active session — use /start to begin.",
@@ -97,13 +97,13 @@ _S: dict[str, dict[str, str]] = {
         "suspend_error": "Sorry, something went wrong. Please try again.",
         "already_active": "Your coaching is already active! Use /start for your session.",
         "resume_ok": (
-            "▶ Welcome back, *{name}*! Your coaching is now *active* again.\n\n"
+            "▶ Welcome back, <b>{name}</b>! Your coaching is now <b>active</b> again.\n\n"
             "Use /start to begin your session whenever you're ready."
         ),
         "resume_error": "Sorry, something went wrong. Please try again.",
         # ── Bot: /link ────────────────────────────────────────────────────────
         "already_linked": (
-            "Your Telegram is already linked to *{name}*. "
+            "Your Telegram is already linked to <b>{name}</b>. "
             "Use /start to begin a session."
         ),
         "ask_phone_link": (
@@ -112,7 +112,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         "phone_not_found": "Phone number not found. Please check and try again, or use /cancel.",
         "linked_ok": (
-            "✅ Linked! Welcome, *{name}*.\n\n"
+            "✅ Linked! Welcome, <b>{name}</b>.\n\n"
             "Use /start to begin a coaching session, /plan to fill in your "
             "weekly plan, or /help to see all commands."
         ),
@@ -150,8 +150,8 @@ _S: dict[str, dict[str, str]] = {
         "msg_empty": "Please type your message and send it.",
         "msg_sent": "✅ Your message has been sent to Adi.",
         "msg_error": "Sorry, couldn't deliver your message. Please try again.",
-        "admin_msg_fmt": "📨 *Message from {name}* (telegram id: {tid})\n\n{text}",
-        "admin_reply_fmt": "💬 *Message from Adi Ben Nesher:*\n\n{text}",
+        "admin_msg_fmt": "📨 <b>Message from {name}</b> (telegram id: {tid})\n\n{text}",
+        "admin_reply_fmt": "💬 <b>Message from Adi Ben Nesher:</b>\n\n{text}",
         "admin_reply_ok": "✅ Reply delivered.",
         "admin_reply_fail": "Could not deliver the reply.",
         # ── Bot: /book ────────────────────────────────────────────────────────
@@ -391,7 +391,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         "welcome_title": "ABN Co-Navigator — אימון AI",
         "welcome_name": "ברוך הבא, {name}! מוכן להתחיל את פגישת האימון שלך?",
-        "welcome_back": "ברוך שובך, *{name}*! 👋\n\nמתחיל את הפגישה השבועית שלך…",
+        "welcome_back": "ברוך שובך, <b>{name}</b>! 👋\n\nמתחיל את הפגישה השבועית שלך…",
         "welcome_new": (
             "👋 *ברוכים הבאים ל-ABN Consulting AI Co-Navigator!*\n\n"
             "אני אלווה אותך בפגישות אימון מובנות — בחינת ה-OKR שלך, "
@@ -430,7 +430,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         # ── Coach identity ────────────────────────────────────────────────────
         "coach_name": "עדי בן נשר",
-        "linked_existing": "✅ חשבון הטלגרם שלך קושר לפרופיל של *{name}*. מתחיל את הפגישה…",
+        "linked_existing": "✅ חשבון הטלגרם שלך קושר לפרופיל של <b>{name}</b>. מתחיל את הפגישה…",
         "starting_session": "מתחיל את הפגישה… ⏳",
         "start_failed": "מצטער, לא הצלחתי להתחיל את הפגישה. נסה שוב עם /start.",
         "no_active_session": "אין פגישה פעילה — השתמש ב-/start להתחיל.",
@@ -458,13 +458,13 @@ _S: dict[str, dict[str, str]] = {
         "suspend_error": "מצטער, משהו השתבש. נסה שוב.",
         "already_active": "האימון שלך כבר פעיל! השתמש ב-/start לפגישה.",
         "resume_ok": (
-            "▶ ברוך שובך, *{name}*! האימון שלך *פעיל* שוב.\n\n"
+            "▶ ברוך שובך, <b>{name}</b>! האימון שלך <b>פעיל</b> שוב.\n\n"
             "השתמש ב-/start להתחיל את הפגישה כשתהיה מוכן."
         ),
         "resume_error": "מצטער, משהו השתבש. נסה שוב.",
         # ── Bot: /link ────────────────────────────────────────────────────────
         "already_linked": (
-            "הטלגרם שלך כבר מקושר ל-*{name}*. "
+            "הטלגרם שלך כבר מקושר ל-<b>{name}</b>. "
             "השתמש ב-/start להתחיל פגישה."
         ),
         "ask_phone_link": (
@@ -473,7 +473,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         "phone_not_found": "מספר הטלפון לא נמצא. בדוק ונסה שוב, או שלח /cancel.",
         "linked_ok": (
-            "✅ מקושר! ברוך הבא, *{name}*.\n\n"
+            "✅ מקושר! ברוך הבא, <b>{name}</b>.\n\n"
             "השתמש ב-/start לפגישת אימון, ב-/plan למילוי התכנית השבועית, "
             "או ב-/help לרשימת הפקודות."
         ),
@@ -512,8 +512,8 @@ _S: dict[str, dict[str, str]] = {
         "msg_empty": "אנא הקלד את ההודעה ושלח.",
         "msg_sent": "✅ ההודעה שלך נשלחה לעדי.",
         "msg_error": "מצטער, לא הצלחתי לשלוח את ההודעה. נסה שוב.",
-        "admin_msg_fmt": "📨 *הודעה מ-{name}* (telegram id: {tid})\n\n{text}",
-        "admin_reply_fmt": "💬 *הודעה מעדי בן נשר:*\n\n{text}",
+        "admin_msg_fmt": "📨 <b>הודעה מ-{name}</b> (telegram id: {tid})\n\n{text}",
+        "admin_reply_fmt": "💬 <b>הודעה מעדי בן נשר:</b>\n\n{text}",
         "admin_reply_ok": "✅ התשובה נמסרה.",
         "admin_reply_fail": "לא ניתן היה למסור את התשובה.",
         # ── Bot: /book ────────────────────────────────────────────────────────
