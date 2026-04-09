@@ -463,14 +463,14 @@ async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         [InlineKeyboardButton("🚢 Apply to Coaching Program", callback_data=f"funnel_apply:{tg_id}")],
     ])
     await update.message.reply_text(
-        "⚓ *Captain, you've charted your position.*\n\n"
-        "Based on your answers, there are *real opportunities* to strengthen your ship "
+        "⚓ <b>Captain, you've charted your position.</b>\n\n"
+        "Based on your answers, there are <b>real opportunities</b> to strengthen your ship "
         "and accelerate your course.\n\n"
-        "The full assessment (5 min) will generate your personalised *Navigation Report* — "
-        "and completing it unlocks a *free 30-minute strategy call* with Adi.\n\n"
-        "🧭 _The sea doesn't wait. Neither should you._",
+        "The full assessment (5 min) will generate your personalised <b>Navigation Report</b> — "
+        "and completing it unlocks a <b>free 30-minute strategy call</b> with Adi.\n\n"
+        "🧭 <i>The sea doesn't wait. Neither should you.</i>",
         reply_markup=keyboard,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return ConversationHandler.END
 
@@ -507,11 +507,12 @@ async def funnel_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_reply_markup(reply_markup=None)
     except Exception:
         pass
+    esc_url = html.escape(_FUNNEL_WEBSITE_URL)
     await query.message.reply_text(
-        f"🌊 *Excellent, Captain!* Here's your link:\n\n"
-        f"{_FUNNEL_WEBSITE_URL}\n\n"
+        f"🌊 <b>Excellent, Captain!</b> Here's your link:\n\n"
+        f"<code>{esc_url}</code>\n\n"
         "Complete the assessment and Adi will be in touch within 24 hours with your Navigation Report.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -535,13 +536,13 @@ async def funnel_apply_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception:
         pass
     await query.message.reply_text(
-        "🚢 *Ready to set sail, Captain?*\n\n"
-        "By applying you are declaring that you are *ready to commit the time and effort* "
+        "🚢 <b>Ready to set sail, Captain?</b>\n\n"
+        "By applying you are declaring that you are <b>ready to commit the time and effort</b> "
         "required for real, lasting transformation.\n\n"
         "This isn't a light voyage — it's a full course correction.\n\n"
-        "_Confirm your commitment below to send your application to Adi:_",
+        "<i>Confirm your commitment below to send your application to Adi:</i>",
         reply_markup=keyboard,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -581,10 +582,10 @@ async def funnel_commit_handler(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         pass
     await query.message.reply_text(
-        "⚓ *Application received, Captain!*\n\n"
+        "⚓ <b>Application received, Captain!</b>\n\n"
         "Adi will review your Voyage Check answers and be in touch to plot your course together.\n\n"
-        "_Fair winds and following seas._ 🌊",
-        parse_mode="Markdown",
+        "<i>Fair winds and following seas.</i> 🌊",
+        parse_mode="HTML",
     )
 
 
@@ -595,15 +596,16 @@ async def _send_funnel_reminders(app) -> None:
         leads = get_unreminded_leads(cutoff_hours=24)
         for lead in leads:
             try:
+                esc_url = html.escape(_FUNNEL_WEBSITE_URL_REMINDER)
                 await app.bot.send_message(
                     chat_id=lead["telegram_user_id"],
                     text=(
-                        "⚓ *Captain, the sea doesn't wait.*\n\n"
+                        "⚓ <b>Captain, the sea doesn't wait.</b>\n\n"
                         "You started your Voyage Check but haven't completed the full assessment yet.\n\n"
                         "Your personalised Navigation Report — and that free strategy call — are still waiting for you.\n\n"
-                        f"🌊 [Complete the assessment now]({_FUNNEL_WEBSITE_URL_REMINDER})"
+                        f"🌊 <a href=\"{esc_url}\">Complete the assessment now</a>"
                     ),
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                 )
                 mark_funnel_reminded(lead["telegram_user_id"])
             except Exception:
