@@ -67,7 +67,7 @@ _S: dict[str, dict[str, str]] = {
             "you stay on course.\n\n"
             "Send /start to begin your first session. 🚀"
         ),
- Broadway        # ── Coach identity ────────────────────────────────────────────────────
+        # ── Coach identity ────────────────────────────────────────────────────
         "coach_name": "Adi Ben-Nesher",
         "linked_existing": "✅ Your Telegram is now linked to <b>{name}</b>'s account. Starting your session…",
         "starting_session": "Starting your session… ⏳",
