@@ -47,6 +47,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.error import Conflict
 from telegram.warnings import PTBUserWarning
 import warnings
 warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*per_message=False.*")
@@ -1852,6 +1853,9 @@ async def cancelmeeting_confirm(update: Update, context: ContextTypes.DEFAULT_TY
 #---global error handler ────────────────────────────────────────────────────────────
 async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log all handler exceptions and notify admin for immediate visibility."""
+    if isinstance(context.error, Conflict):
+        logger.warning("Telegram bot conflict: Another instance is already running. This is normal during re-deployment.")
+        return
     logger.error("Unhandled exception in handler:", exc_info=context.error)
     if coaching_config.admin_telegram_id:
         try:
