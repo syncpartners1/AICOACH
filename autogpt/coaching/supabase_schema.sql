@@ -281,7 +281,8 @@ CREATE INDEX IF NOT EXISTS idx_coaching_learnings_scope_generated
 
 ALTER TABLE coaching_learnings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "service_role_all_coaching_learnings"
+DROP POLICY IF EXISTS "service_role_all_coaching_learnings" ON coaching_learnings;
+CREATE POLICY "service_role_all_coaching_learnings"
     ON coaching_learnings FOR ALL
     USING (auth.role() = 'service_role');
 
@@ -302,7 +303,8 @@ CREATE TABLE IF NOT EXISTS telegram_sessions (
 
 ALTER TABLE telegram_sessions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "service_role_all_telegram_sessions"
+DROP POLICY IF EXISTS "service_role_all_telegram_sessions" ON telegram_sessions;
+CREATE POLICY "service_role_all_telegram_sessions"
     ON telegram_sessions FOR ALL
     USING (auth.role() = 'service_role');
 
@@ -328,7 +330,8 @@ CREATE INDEX IF NOT EXISTS idx_funnel_leads_reminder ON funnel_leads(reminder_se
 
 ALTER TABLE funnel_leads ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "service_role_all_funnel_leads"
+DROP POLICY IF EXISTS "service_role_all_funnel_leads" ON funnel_leads;
+CREATE POLICY "service_role_all_funnel_leads"
     ON funnel_leads FOR ALL
     USING (auth.role() = 'service_role');
 

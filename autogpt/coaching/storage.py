@@ -1006,36 +1006,56 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
 def save_telegram_session(telegram_user_id: int, session) -> None:
     """Persist an active CoachingSession to Supabase so it survives restarts."""
     db = _get_client()
-    db.table("telegram_sessions").upsert({
-        "telegram_user_id": telegram_user_id,
-        "session_id": session.session_id,
-        "client_id": session.client_id,
-        "client_name": session.client_name,
-        "user_id": session.user_id,
-        "lang": session.lang,
-        "system_prompt": session._system_prompt,
-        "message_history": session.full_message_history,
-        "updated_at": datetime.utcnow().isoformat(),
-    }, on_conflict="telegram_user_id").execute()
+    try:
+        db.table("telegram_sessions").upsert({
+            "telegram_user_id": telegram_user_id,
+            "session_id": session.session_id,
+            "client_id": session.client_id,
+            "client_name": session.client_name,
+            "user_id": session.user_id,
+            "lang": session.lang,
+            "system_prompt": session._system_prompt,
+            "message_history": session.full_message_history,
+            "updated_at": datetime.utcnow().isoformat(),
+        }, on_conflict="telegram_user_id").execute()
+    except Exception as e:
+        # Gracefully handle missing table (PGRST205) or other DB hiccups
+        if "PGRST205" in str(e):
+            logger.warning("Active session persistence skipped: 'telegram_sessions' table missing.")
+        else:
+            logger.exception("Failed to persist telegram session for user %s", telegram_user_id)
 
 
 def load_telegram_session(telegram_user_id: int):
     """Load a persisted CoachingSession from Supabase, or return None if not found."""
     db = _get_client()
-    result = db.table("telegram_sessions").select("*").eq(
-        "telegram_user_id", telegram_user_id
-    ).execute()
-    if not result.data:
+    try:
+        result = db.table("telegram_sessions").select("*").eq(
+            "telegram_user_id", telegram_user_id
+        ).execute()
+        if not result.data:
+            return None
+        return result.data[0]
+    except Exception as e:
+        if "PGRST205" in str(e):
+            logger.warning("Active session restore skipped: 'telegram_sessions' table missing.")
+        else:
+            logger.exception("Failed to restore telegram session for user %s", telegram_user_id)
         return None
-    return result.data[0]
 
 
 def delete_telegram_session(telegram_user_id: int) -> None:
     """Remove a persisted session when it is finished or cancelled."""
     db = _get_client()
-    db.table("telegram_sessions").delete().eq(
-        "telegram_user_id", telegram_user_id
-    ).execute()
+    try:
+        db.table("telegram_sessions").delete().eq(
+            "telegram_user_id", telegram_user_id
+        ).execute()
+    except Exception as e:
+        if "PGRST205" in str(e):
+            pass # Table missing, nothing to delete
+        else:
+            logger.exception("Failed to delete telegram session for user %s", telegram_user_id)
 
 
 def get_latest_session_per_client() -> List[SessionSummary]:
