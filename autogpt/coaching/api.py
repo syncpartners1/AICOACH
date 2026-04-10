@@ -102,11 +102,13 @@ from autogpt.coaching.wix_consult import ConsultPayload, create_consult_clickup_
 async def lifespan(app: FastAPI):
     telegram_task = None
     if coaching_config.telegram_bot_token:
-        from autogpt.coaching.telegram_bot import run_polling
-        telegram_task = asyncio.create_task(
-            run_polling(coaching_config.telegram_bot_token)
-        )
-        logger.warning("🚀 Telegram bot task launched successfully (token detected)")
+        async def _delayed_start():
+            await asyncio.sleep(10)
+            from autogpt.coaching.telegram_bot import run_polling
+            await run_polling(coaching_config.telegram_bot_token)
+
+        telegram_task = asyncio.create_task(_delayed_start())
+        logger.warning("🚀 Telegram bot startup scheduled (10s delay to avoid deployment conflict)")
     else:
         logger.warning("TELEGRAM_BOT_TOKEN is missing. Telegram bot will NOT be initialized.")
     yield
