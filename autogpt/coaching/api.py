@@ -106,7 +106,7 @@ async def lifespan(app: FastAPI):
         telegram_task = asyncio.create_task(
             run_polling(coaching_config.telegram_bot_token)
         )
-        logger.info("Telegram bot task created (token found)")
+        logger.warning("🚀 Telegram bot task launched successfully (token detected)")
     else:
         logger.warning("TELEGRAM_BOT_TOKEN is missing. Telegram bot will NOT be initialized.")
     yield
