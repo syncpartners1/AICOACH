@@ -1868,9 +1868,9 @@ async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 def _build_app(token: str) -> Application:
-    app = Application.builder().token(token).build()
-
+    logger.info("Building Telegram application...")
     conv = ConversationHandler(
+        per_message=False,
         entry_points=[
             CommandHandler("start", start),
             CommandHandler("new_session", new_session_command),
@@ -2011,8 +2011,11 @@ async def run_polling(token: str) -> None:
             # Without this, if a webhook was ever set, Telegram routes all
             # updates to the webhook URL and the polling bot sees nothing.
             try:
-                await application.bot.delete_webhook(drop_pending_updates=True)
+                logger.info("Clearing webhook...")
+                await asyncio.wait_for(application.bot.delete_webhook(drop_pending_updates=True), timeout=10)
                 logger.info("Webhook cleared — polling mode active")
+            except asyncio.TimeoutError:
+                logger.warning("Webhook delete timed out after 10s (continuing...)")
             except Exception:
                 logger.exception("Failed to delete webhook (non-fatal, continuing)")
 
@@ -2036,18 +2039,24 @@ async def run_polling(token: str) -> None:
                     BotCommand("help",        "Show help"),
                     BotCommand("cancel",      "Cancel current action"),
                 ]
-                await application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault())
+                logger.info("Registering bot command menu...")
+                await asyncio.wait_for(application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault()), timeout=10)
                 if coaching_config.admin_telegram_id:
-                    await application.bot.set_my_commands(
-                        _user_commands + [
-                            BotCommand("users",     "List all participants"),
-                            BotCommand("report",    "Get user report"),
-                            BotCommand("invite",    "Create invite link"),
-                            BotCommand("broadcast", "Send broadcast message"),
-                        ],
-                        scope=BotCommandScopeChat(chat_id=coaching_config.admin_telegram_id),
+                    await asyncio.wait_for(
+                        application.bot.set_my_commands(
+                            _user_commands + [
+                                BotCommand("users",     "List all participants"),
+                                BotCommand("report",    "Get user report"),
+                                BotCommand("invite",    "Create invite link"),
+                                BotCommand("broadcast", "Send broadcast message"),
+                            ],
+                            scope=BotCommandScopeChat(chat_id=coaching_config.admin_telegram_id),
+                        ),
+                        timeout=10
                     )
                 logger.info("Bot command menu registered")
+            except asyncio.TimeoutError:
+                logger.warning("Bot command registration timed out after 10s (continuing...)")
             except Exception:
                 logger.exception("Failed to register bot commands (non-fatal, continuing)")
 
