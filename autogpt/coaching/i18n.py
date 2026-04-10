@@ -30,6 +30,7 @@ _S: dict[str, dict[str, str]] = {
         "welcome_title": "ABN Co-Navigator — AI Coaching",
         "welcome_name": "Welcome, {name}! Ready to start your coaching session?",
         "welcome_back": "Welcome back to the Co-Navigator, <b>{name}</b>! 👋\n\nPreparing your weekly Navigator Log…",
+        "ready_to_begin": "Ready to begin? Use /new_session to start your coaching check-in.",
         "welcome_new": (
             "👋 *Welcome to the ABN Consulting Co-Navigator!*\n\n"
             "I'm your digital coaching assistant, designed to help you navigate "
@@ -392,6 +393,7 @@ _S: dict[str, dict[str, str]] = {
         "welcome_title": "ABN Co-Navigator — אימון AI",
         "welcome_name": "ברוך הבא, {name}! מוכן להתחיל את פגישת האימון שלך?",
         "welcome_back": "ברוך שובך ל-Co-Navigator, <b>{name}</b>! 👋\n\nמכין את יומן הנווט (Navigator Log) השבועי שלך…",
+        "ready_to_begin": "מוכן להתחיל? השתמש ב-/new_session כדי להתחיל את הצ'ק-אין השבועי שלך.",
         "welcome_new": (
             "👋 *ברוכים הבאים ל-ABN Consulting Co-Navigator!*\n\n"
             "אני עוזר האימון הדיגיטלי שלך, שנועד לעזור לך לנווט "

@@ -313,9 +313,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await update.message.reply_text(err, parse_mode="Markdown")
             return ConversationHandler.END
         await update.message.reply_text(
-            t(lang, "welcome_back", name=user.name) + "\n\n"
-            "Ready to begin? Use /new\\_session to start your coaching check-in.",
-            parse_mode="Markdown",
+            t(lang, "welcome_back", name=user.name) + "\n\n" +
+            t(lang, "ready_to_begin"),
+            parse_mode="HTML",
         )
         return ConversationHandler.END
 
