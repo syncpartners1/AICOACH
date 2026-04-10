@@ -314,7 +314,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             return ConversationHandler.END
         await update.message.reply_text(
             t(lang, "welcome_back", name=user.name) + "\n\n"
-            "Use /new\\_session to start a new coaching session.",
+            "Ready to set sail? Use /new\\_session to start your coaching check-in.",
             parse_mode="Markdown",
         )
         return ConversationHandler.END
@@ -841,8 +841,8 @@ async def link_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = _lang(user, update.message.text or "")
     if user:
         await update.message.reply_text(
-            t(lang, "already_linked", name=user.name),
-            parse_mode="Markdown",
+            f"🚀 *Starting your Navigator Log check-in...*",
+            parse_mode="Markdown"
         )
         return ConversationHandler.END
     await update.message.reply_text(t(lang, "ask_phone_link"), parse_mode="Markdown")
@@ -861,6 +861,9 @@ async def link_receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return LINK_WAITING_PHONE
         link_telegram(user.user_id, tg_id)
         # Persist detected language on fresh link
+        # Initial greeting for unlinked users
+        welcome = t(lang, "welcome_new")
+        await update.message.reply_text(welcome, parse_mode="Markdown")
         linked_lang = _lang(user)
         esc_name = html.escape(user.name)
         await update.message.reply_text(
@@ -1437,7 +1440,7 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 def _format_summary(summary) -> str:
     esc_client = html.escape(summary.client_name)
-    lines = [f"✅ <b>Session Summary — {esc_client}</b>\n"]
+    lines = [f"⚓ <b>Navigator Log Summary — {esc_client}</b>\n"]
     log = summary.weekly_log
     if log:
         if log.focus_goal:
@@ -1451,7 +1454,7 @@ def _format_summary(summary) -> str:
                 lines.append(f"  {dot} {esc_kr_desc}: {kr.status_pct}%")
         unresolved = [o for o in (log.obstacles or []) if not o.resolved]
         if unresolved:
-            lines.append("\n⚠️ <b>Open Obstacles:</b>")
+            lines.append("\n⚠️ <b>Current Obstacles & Storms:</b>")
             for o in unresolved:
                 esc_obs = html.escape(o.description)
                 lines.append(f"  • {esc_obs}")
@@ -1460,7 +1463,7 @@ def _format_summary(summary) -> str:
             getattr(summary.alerts, "level", "green").value
             if hasattr(summary.alerts, "level") else "green", "⚪")
         esc_reason = html.escape(summary.alerts.reason)
-        lines.append(f"\n{dot} <b>Alert:</b> {esc_reason}")
+        lines.append(f"\n{dot} <b>Navigation Alert:</b> {esc_reason}")
     if summary.summary_for_coach:
         excerpt = summary.summary_for_coach[:280]
         esc_excerpt = html.escape(excerpt)
