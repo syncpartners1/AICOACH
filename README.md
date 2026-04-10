@@ -12,7 +12,7 @@ by a **FastAPI** service connected to **Supabase**.
 |---|---|
 | **AI coaching sessions** | Claude-powered weekly check-ins anchored to each participant's Objectives & Key Results |
 | **OKR management** | Create, track, and evolve Objectives & Key Results; AI can mutate them mid-session |
-| **Weekly planning** | `/plan` walks through activities, progress, insights, gaps, and corrective actions per KR |
+| **Weekly Log** | `/plan` walks through activities, progress, insights, gaps, and strategic adjustments per KR |
 | **Daily highlights** | Quick daily win logging; visible in the personal dashboard |
 | **Progress alerts** | GREEN / YELLOW / RED signal per session based on KR averages and obstacle count |
 | **Personal dashboard** | Server-rendered at `/dashboard/{user_id}` — progress bars, highlights, session history |
@@ -44,18 +44,18 @@ by a **FastAPI** service connected to **Supabase**.
 3. Coach approves from the admin dashboard — welcome email sent, account activated
 4. Start first session on Telegram / WhatsApp / Web — AI guides OKR setup
 5. **Weekly cycle:** open session → review OKRs → log progress → discuss obstacles → `/done`
-6. Use `/plan` to log weekly activities per Key Result; use `/highlight` for daily wins
+6. Use `/plan` to log weekly entries per Key Result; use `/highlight` for daily wins
 7. Book 1:1 meetings with the coach via `/book`; view and cancel via `/mybookings`
-8. **Non-registered users**: Telegram `/start` triggers a 3-question "Voyage Check" funnel before directing to the full assessment
+8. **Non-registered users**: Telegram `/start` triggers a 3-question **Strategic Alignment Check** funnel before directing to the full assessment
 
 ---
 
 ## Telegram Bot Commands
 
 ```
-start         - Register or begin a new AI coaching session
+start         - Register or begin Strategic Alignment Check / Coaching session
 link          - Link your Telegram to a registered account by phone number
-plan          - Enter this week's activities and progress for each Key Result
+plan          - Enter this week's Strategic Weekly Log entries per Key Result
 highlight     - Record today's key win or highlight
 myplan        - View your current week's plan summary
 book          - Book a 1-on-1 meeting with your coach

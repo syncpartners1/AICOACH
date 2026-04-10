@@ -27,13 +27,16 @@
 The **ABN Co-Navigator** is an AI-powered coaching assistant embedded inside
 the AutoGPT platform. It enables:
 
-- Structured weekly coaching sessions over Telegram (free-form AI chat + guided
-  plan entry).
-- A personalised **OKR dashboard** (Objectives & Key Results) accessible from
-  any browser.
-- Automated **session summaries** written by GPT and stored in Supabase.
-- Admin tools for the coach (Adi Ben Nesher) to monitor progress, send
-  broadcasts, and manage users.
+- **Strategic Alignment**: Weekly coaching sessions over Telegram (direct AI chat + guided
+  Strategic Weekly Log).
+- **Executive Context**: Integration of ACT (Acceptance and Commitment Therapy) and 
+  DBT commitments into the coaching persona for deeper psychological impact.
+- **Precision Tracking**: A personalised **OKR dashboard** (Objectives & Key Results) 
+  accessible from any browser.
+- **Session Persistence**: Active chat sessions survive container restarts and deployments.
+- **Onboarding Funnel**: Strategic micro-assessments for unregistered users.
+- **Admin Control**: Tools for the coach to monitor trajectory, manage users, and 
+  broadcast insights.
 
 ---
 
@@ -66,15 +69,15 @@ the AutoGPT platform. It enables:
 
 | Feature | Description |
 |---|---|
-| **AI coaching sessions** | Free-form GPT-powered chat anchored to the user's OKRs and past sessions |
-| **Guided weekly plan** | `/plan` walks through each KR one field at a time (activities, progress, insights, gaps, corrections) |
-| **Daily highlights** | `/highlight` captures a one-line daily win |
-| **OKR management** | Objectives and Key Results stored in Supabase; AI can mutate them during a session |
-| **Personal dashboard** | Server-rendered HTML at `/dashboard/{user_id}` with progress bars, highlights grid, and session history |
-| **Invite system** | Coach generates time-limited registration tokens; users self-register at `/register?token=…` |
-| **Account lifecycle** | Users can self-suspend (`/suspend`) and reactivate (`/resume`); admin can archive |
-| **Bilingual (EN / HE)** | Full English and Hebrew support in the bot, plans, OKR fields, and dashboard |
-| **Admin tools** | `/users`, `/report`, `/invite`, `/broadcast` commands (admin Telegram ID only) |
+| **AI coaching sessions** | Analytical, direct, and executive-focused chat anchored to OKRs and past sessions |
+| **Strategic Weekly Log** | `/plan` walks through results (activities, progress, insights, gaps, adjustments) |
+| **Daily highlights** | `/highlight` captures a one-line key strategic win |
+| **OKR management** | Objectives and Key Results stored in Supabase; AI can mutate them mid-session |
+| **Personal dashboard** | Server-rendered HTML progress bars, highlights grid, and session history |
+| **Invite system** | Time-limited registration tokens with self-service registration |
+| **Account lifecycle** | Self-suspension (`/suspend`) and reactivation (`/resume`) support |
+| **Bilingual (EN / HE)** | Professional terminology used across both English and Hebrew interfaces |
+| **Admin tools** | `/users`, `/report`, `/invite`, `/broadcast` for the coach |
 
 ---
 
@@ -142,7 +145,9 @@ Key tables (see `supabase_schema.sql` for the full DDL):
 | `weekly_plans` | One row per (user, week_start) |
 | `weekly_kr_activities` | Per-KR fields: planned activities, progress, insights, gaps, corrective actions |
 | `daily_highlights` | One-line daily wins, per day of week |
-| `coaching_sessions` | Session records with alert level, mood, and coach summary |
+| `coaching_sessions` | Session summaries with alert level, mood, and extraction |
+| `telegram_sessions` | Persistent active session state (survives bot restarts) |
+| `funnel_leads` | Micro-assessment results from non-registered users |
 | `invites` | Registration tokens with optional expiry and usage tracking |
 
 ### Adding the `language` column to an existing DB
@@ -269,7 +274,9 @@ See the [Tasks & Next Steps](#tasks--next-steps) section below for outstanding w
 | ✅ Done | 🟡 Medium | `/register` web page — detect browser `Accept-Language` header for HE/EN |
 | ✅ Done | 🟡 Medium | Admin dashboard (`admin_ui.py`) — add language selector (`?lang=en\|he`) |
 | ✅ Done | 🟢 Low | CI pipeline: `pytest autogpt/coaching/tests/` on every PR |
-| ✅ Done | 🔴 High | Remove hardcoded secrets from `config.py` (`FACEBOOK_APP_SECRET`, `ADMIN_PASSWORD`, `EMAILJS_PRIVATE_KEY`) |
-| ⏳ Open | 🟡 Medium | Set `ADMIN_PASSWORD` in production `.env` (password login disabled until set) |
-| ⏳ Open | 🟢 Low | Unit tests for `render_dashboard` (both langs) and storage CRUD |
+| ✅ Done | 🔴 High | Professionalize branding: rename Voyage/Captain to Strategic Alignment |
+| ✅ Done | 🔴 High | Session persistence: add `telegram_sessions` to survive container restarts |
+| ✅ Done | 🟡 Medium | Refactor `i18n.py` to remove nautical jargon and standardize terminology |
+| ✅ Done | 🔴 High | Fix invalid SQL policy syntax in `supabase_schema.sql` |
 | ⏳ Open | 🟢 Low | Push notifications / reminders: weekly plan reminder on Sunday evenings |
+| ⏳ Open | 🟢 Low | Unit tests for `render_dashboard` (both langs) and storage CRUD |
