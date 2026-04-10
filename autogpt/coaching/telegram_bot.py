@@ -47,6 +47,9 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.warnings import PTBUserWarning
+import warnings
+warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*per_message=False.*")
 
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.i18n import LANG_PROMPT, detect_lang, get_coach_name, t
@@ -1869,6 +1872,7 @@ async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def _build_app(token: str) -> Application:
     logger.info("Building Telegram application...")
+    app = Application.builder().token(token).build()
     conv = ConversationHandler(
         per_message=False,
         entry_points=[
