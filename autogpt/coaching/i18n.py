@@ -29,7 +29,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         "welcome_title": "ABN Co-Navigator — AI Coaching",
         "welcome_name": "Welcome, {name}! Ready to start your coaching session?",
-        "welcome_back": "Welcome back to the bridge, <b>{name}</b>! 👋\n\nPreparing your weekly Navigator Log…",
+        "welcome_back": "Welcome back to the Co-Navigator, <b>{name}</b>! 👋\n\nPreparing your weekly Navigator Log…",
         "welcome_new": (
             "👋 *Welcome to the ABN Consulting Co-Navigator!*\n\n"
             "I'm your digital coaching assistant, designed to help you navigate "
@@ -121,20 +121,20 @@ _S: dict[str, dict[str, str]] = {
         "link_first": "Please link your account first with /link, then try again.",
         "no_krs": "🧭 *No Objectives or Key Results found.* Please set them up first with /start.",
         "plan_header": (
-            "⚓ *Voyage Plan — {week}*\n\n"
-            "Let's log your navigation maneuvers for each key marker. "
+            "⚓ *Strategic Weekly Log — {week}*\n\n"
+            "Let's log your strategic actions for each key result. "
             "I'll ask you one question at a time.\n\n"
             "Send /skip to leave a field blank, /done to finish early."
         ),
         "plan_kr_prompt": (
-            "*Marker {idx}/{total}* — _{obj}_\n"
+            "*Result {idx}/{total}* — _{obj}_\n"
             "📌 *{kr}* ({pct}% complete)\n\n"
-            "What are your *planned maneuvers* for this marker this week?"
+            "What are your *strategic actions* for this result this week?"
         ),
         "ask_progress": "Any *progress logged* since we last checked? (/skip to leave blank)",
-        "ask_insights": "Any *navigation insights* from the past few days? (/skip to leave blank)",
-        "ask_gaps": "Any *choppy waters* or challenges? (/skip to leave blank)",
-        "ask_corrections": "*Course corrections* for next steps? (/skip to leave blank)",
+        "ask_insights": "Any *strategic insights* from the past few days? (/skip to leave blank)",
+        "ask_gaps": "Any *challenges* or specific obstacles? (/skip to leave blank)",
+        "ask_corrections": "*Strategic adjustments* for next steps? (/skip to leave blank)",
         "plan_saved": (
             "✅ *Weekly plan saved!* ({count} key result(s) updated)\n\n"
             "Use /myplan to view your full plan, or /highlight to add today's highlights."
@@ -218,7 +218,7 @@ _S: dict[str, dict[str, str]] = {
         "cancelled": "Operation cancelled. Use /start or /help whenever you're ready.",
         # ── Bot: /help ────────────────────────────────────────────────────────
         "help_text": (
-            "🚢 *Navigator Commands*\n\n"
+            "🎯 *Co-Navigator Commands*\n\n"
             "/start — Begin or resume a coaching session\n"
             "/link — Link your Telegram to your registered account\n"
             "/plan — Fill in your weekly plan (per key result)\n"
@@ -308,7 +308,7 @@ _S: dict[str, dict[str, str]] = {
             "No active session. Type *start* to begin your weekly coaching check-in.\n\n"
             "• *start* — begin session\n• *help* — show all commands"
         ),
-        "wa_session_saved_footer": "Session saved. See you next week! 🚢",
+        "wa_session_saved_footer": "Session saved. See you next week! 🎯",
         "wa_session_end_error": "Something went wrong saving your session. Please contact your coach.",
         "wa_summary_title": "✅ *Session Summary*\n",
         "wa_summary_focus": "*Focus goal:* {value}",
@@ -391,7 +391,7 @@ _S: dict[str, dict[str, str]] = {
         ),
         "welcome_title": "ABN Co-Navigator — אימון AI",
         "welcome_name": "ברוך הבא, {name}! מוכן להתחיל את פגישת האימון שלך?",
-        "welcome_back": "ברוך שובך לגשר הפיקוד, <b>{name}</b>! 👋\n\nמכין את יומן הנווט (Navigator Log) השבועי שלך…",
+        "welcome_back": "ברוך שובך ל-Co-Navigator, <b>{name}</b>! 👋\n\nמכין את יומן הנווט (Navigator Log) השבועי שלך…",
         "welcome_new": (
             "👋 *ברוכים הבאים ל-ABN Consulting Co-Navigator!*\n\n"
             "אני עוזר האימון הדיגיטלי שלך, שנועד לעזור לך לנווט "
@@ -490,7 +490,7 @@ _S: dict[str, dict[str, str]] = {
         "plan_kr_prompt": (
             "*מדד {idx}/{total}* — _{obj}_\n"
             "📌 *{kr}* ({pct}% הושלם)\n\n"
-            "מהם *התמרונים המתוכננים* שלך למדד זה השבוע?"
+            "מהן *הפעולות האסטרטגיות* המתוכננות שלך למדד זה השבוע?"
         ),
         "ask_progress": "יש *עדכון התקדמות* עד כה? (/skip לדילוג)",
         "ask_insights": "יש *תובנות* מהשבוע? (/skip לדילוג)",
@@ -670,7 +670,7 @@ _S: dict[str, dict[str, str]] = {
             "אין פגישה פעילה. שלח *start* להתחיל את הצ'ק-אין השבועי שלך.\n\n"
             "• *start* — פתח פגישה\n• *help* — הצג פקודות"
         ),
-        "wa_session_saved_footer": "הפגישה נשמרה. להתראות בשבוע הבא! 🚢",
+        "wa_session_saved_footer": "הפגישה נשמרה. להתראות בשבוע הבא! 🎯",
         "wa_session_end_error": "משהו השתבש בשמירת הפגישה. אנא צור קשר עם המאמן שלך.",
         "wa_summary_title": "✅ *סיכום פגישה*\n",
         "wa_summary_focus": "*מטרת מיקוד:* {value}",

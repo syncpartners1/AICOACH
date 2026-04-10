@@ -314,25 +314,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             return ConversationHandler.END
         await update.message.reply_text(
             t(lang, "welcome_back", name=user.name) + "\n\n"
-            "Ready to set sail? Use /new\\_session to start your coaching check-in.",
+            "Ready to begin? Use /new\\_session to start your coaching check-in.",
             parse_mode="Markdown",
         )
         return ConversationHandler.END
 
-    # Non-registered users → sales funnel (nautical micro-assessment)
+    # Non-registered users → sales funnel (strategic micro-assessment)
     try:
         from autogpt.coaching.storage import upsert_funnel_lead
         upsert_funnel_lead(tg_id, update.effective_user.username or "")
     except Exception:
         logger.exception("Failed to upsert funnel lead for tg_id=%s", tg_id)
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("⚓ Start Quick Voyage Check", callback_data="funnel_start"),
+        InlineKeyboardButton("🎯 Start Strategic Alignment Check", callback_data="funnel_start"),
     ]])
     await update.message.reply_text(
-        "⚓ *Welcome, Captain!*\n\n"
-        "I'm Adi Ben Nesher — 25+ years navigating leaders through the storms of change and digital transformation.\n\n"
-        "Before we plot your course, let's do a *Quick Voyage Check* — 3 strategic questions to map your current position at sea.\n\n"
-        "_Ready to take stock of where your ship stands?_",
+        "👋 *Welcome to the Co-Navigator*\n\n"
+        "I'm Adi Ben Nesher — 25+ years guiding leaders through complex change and digital transformation.\n\n"
+        "Before we start, let's do a *Strategic Alignment Check* — 3 targeted questions to evaluate your current trajectory.\n\n"
+        "_Ready to evaluate your current strategic position?_",
         reply_markup=keyboard,
         parse_mode="Markdown",
     )
@@ -347,7 +347,7 @@ async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if not user:
         await update.message.reply_text(
-            "⚓ Use /start to begin your Voyage Check first.",
+            "🎯 Use /start for your Strategic Alignment Check.",
         )
         return ConversationHandler.END
 
@@ -388,13 +388,13 @@ _FUNNEL_WEBSITE_URL_REMINDER = "https://www.ben-nesher.com/coaching/coaching-qua
 
 
 async def funnel_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """User clicked 'Start Quick Voyage Check' — ask Q1."""
+    """User clicked 'Start Strategic Alignment Check' — ask Q1."""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "🧭 *Question 1 of 3*\n\n"
-        "*How synchronized is your crew (team) with your current digital vision?*\n\n"
-        "_Is everyone rowing in the same direction — or are some oars pulling you off course?_",
+        "🎯 *Question 1 of 3*\n\n"
+        "*How aligned is your team with your current strategic vision?*\n\n"
+        "_Is everyone fully synchronized — or is there hidden friction pulling you off track?_",
         parse_mode="Markdown",
     )
     return FUNNEL_Q1
@@ -411,11 +411,11 @@ async def funnel_receive_q1(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         logger.exception("Funnel: failed to save Q1 for tg_id=%s", tg_id)
     await update.message.reply_text(
-        "⚓ *Noted, Captain.*\n\n"
-        "🧭 *Question 2 of 3*\n\n"
-        "*Is your ship built for the current market storm, or are you leaking resources?*\n\n"
-        "_Are your operations, processes and costs aligned with where the market is heading — "
-        "or are you taking on water?_",
+        "🎯 *Noted.*\n\n"
+        "🎯 *Question 2 of 3*\n\n"
+        "*Is your organization structured for current market conditions, or are you facing efficiency loss?*\n\n"
+        "_Are your operations, processes, and resources aligned with where the market is heading — "
+        "or are you facing strategic drift?_",
         parse_mode="Markdown",
     )
     return FUNNEL_Q2
@@ -432,18 +432,18 @@ async def funnel_receive_q2(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         logger.exception("Funnel: failed to save Q2 for tg_id=%s", tg_id)
     await update.message.reply_text(
-        "⚓ *Understood.*\n\n"
-        "🧭 *Question 3 of 3*\n\n"
-        "*What is the biggest wave threatening your stability right now?*\n\n"
-        "_What is the one challenge — internal or external — that if left unaddressed, "
-        "could put your leadership or organisation off course?_",
+        "🎯 *Understood.*\n\n"
+        "🎯 *Question 3 of 3*\n\n"
+        "*What is the most significant challenge threatening your stability right now?*\n\n"
+        "_What is the one obstacle — internal or external — that if left unaddressed, "
+        "could impact your organizational trajectory?_",
         parse_mode="Markdown",
     )
     return FUNNEL_Q3
 
 
 async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Collect Q3 answer, notify admin, send bridge message with website button."""
+    """Collect Q3 answer, notify admin, send confirmation message with website button."""
     tg_id = update.effective_user.id
     answer = update.message.text.strip()
     context.user_data["funnel_q3"] = answer
@@ -467,11 +467,11 @@ async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await update.get_bot().send_message(
                 chat_id=coaching_config.admin_telegram_id,
                 text=(
-                    f"🎯 <b>New Voyage Check completed</b>\n\n"
-                    f"<b>Captain:</b> @{esc_name} (ID: {tg_id})\n\n"
-                    f"<b>Q1 — Team sync:</b> {esc_q1}\n\n"
+                    f"🎯 <b>Strategic Alignment Check completed</b>\n\n"
+                    f"<b>Lead:</b> @{esc_name} (ID: {tg_id})\n\n"
+                    f"<b>Q1 — Team alignment:</b> {esc_q1}\n\n"
                     f"<b>Q2 — Operations:</b> {esc_q2}\n\n"
-                    f"<b>Q3 — Biggest wave:</b> {esc_q3}"
+                    f"<b>Q3 — Main challenge:</b> {esc_q3}"
                 ),
                 parse_mode="HTML",
             )
@@ -483,12 +483,12 @@ async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         [InlineKeyboardButton("🚢 Apply to Coaching Program", callback_data=f"funnel_apply:{tg_id}")],
     ])
     await update.message.reply_text(
-        "⚓ <b>Captain, you've charted your position.</b>\n\n"
-        "Based on your answers, there are <b>real opportunities</b> to strengthen your ship "
-        "and accelerate your course.\n\n"
-        "The full assessment (5 min) will generate your personalised <b>Navigation Report</b> — "
+        "🎯 <b>You've identified your key strategic gaps.</b>\n\n"
+        "Based on your answers, there are <b>real opportunities</b> to stabilize your operations "
+        "and accelerate your results.\n\n"
+        "The full assessment (5 min) will generate your personalised <b>Strategic Report</b> — "
         "and completing it unlocks a <b>free 30-minute strategy call</b> with Adi.\n\n"
-        "🧭 <i>The sea doesn't wait. Neither should you.</i>",
+        "🎯 <i>Strategic change doesn't wait. Neither should you.</i>",
         reply_markup=keyboard,
         parse_mode="HTML",
     )
@@ -529,9 +529,9 @@ async def funnel_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         pass
     esc_url = html.escape(_FUNNEL_WEBSITE_URL)
     await query.message.reply_text(
-        f"🌊 <b>Excellent, Captain!</b> Here's your link:\n\n"
+        f"🎯 <b>Excellent!</b> Here's your link:\n\n"
         f"🚢 <a href=\"{esc_url}\"><b>Complete Full Assessment</b></a>\n\n"
-        "Complete the assessment and Adi will be in touch within 24 hours with your Navigation Report.",
+        "Complete the assessment and Adi will be in touch within 24 hours with your Strategic Report. ",
         parse_mode="HTML",
     )
 
@@ -556,10 +556,10 @@ async def funnel_apply_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception:
         pass
     await query.message.reply_text(
-        "🚢 <b>Ready to set sail, Captain?</b>\n\n"
-        "By applying you are declaring that you are <b>ready to commit the time and effort</b> "
-        "required for real, lasting transformation.\n\n"
-        "This isn't a light voyage — it's a full course correction.\n\n"
+        "🎯 <b>Ready to commit to your transformation?</b>\n\n"
+        "By applying, you are declaring that you are <b>ready to commit the time and effort</b> "
+        "required for real, lasting results.\n\n"
+        "This is a commitment to a significant strategic transformation.\n\n"
         "<i>Confirm your commitment below to send your application to Adi:</i>",
         reply_markup=keyboard,
         parse_mode="HTML",
@@ -589,8 +589,8 @@ async def funnel_commit_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 chat_id=coaching_config.admin_telegram_id,
                 text=(
                     f"🚢 <b>New Coaching Application!</b>\n\n"
-                    f"<b>Captain:</b> @{esc_name} (ID: {tg_id})\n"
-                    f"Has completed the Voyage Check and declared their commitment."
+                    f"<b>Lead:</b> @{esc_name} (ID: {tg_id})\n"
+                    f"Has completed the Strategic Alignment Check and declared their commitment."
                 ),
                 parse_mode="HTML",
             )
@@ -602,9 +602,9 @@ async def funnel_commit_handler(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         pass
     await query.message.reply_text(
-        "⚓ <b>Application received, Captain!</b>\n\n"
-        "Adi will review your Voyage Check answers and be in touch to plot your course together.\n\n"
-        "<i>Fair winds and following seas.</i> 🌊",
+        "🎯 <b>Application received.</b>\n\n"
+        "Adi will review your Strategic Alignment Check and be in touch to discuss your results.\n\n"
+        "<i>Looking forward to our next steps.</i>",
         parse_mode="HTML",
     )
 
@@ -620,10 +620,10 @@ async def _send_funnel_reminders(app) -> None:
                 await app.bot.send_message(
                     chat_id=lead["telegram_user_id"],
                     text=(
-                        "⚓ <b>Captain, the sea doesn't wait.</b>\n\n"
-                        "You started your Voyage Check but haven't completed the full assessment yet.\n\n"
-                        "Your personalised Navigation Report — and that free strategy call — are still waiting for you.\n\n"
-                        f"🌊 <a href=\"{esc_url}\">Complete the assessment now</a>"
+                        "🎯 <b>Strategic change doesn't wait.</b>\n\n"
+                        "You started your Alignment Check but haven't completed the full assessment yet.\n\n"
+                        "Your personalised Strategic Report — and that free strategy call — are still waiting for you.\n\n"
+                        f"🎯 <a href=\"{esc_url}\">Complete the assessment now</a>"
                     ),
                     parse_mode="HTML",
                 )
@@ -2052,7 +2052,7 @@ async def run_polling(token: str) -> None:
             try:
                 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
                 _user_commands = [
-                    BotCommand("start",       "Begin your Voyage Check"),
+                    BotCommand("start",       "Begin Strategic Alignment Check"),
                     BotCommand("new_session", "Start a new coaching session"),
                     BotCommand("done",        "End & save current session"),
                     BotCommand("plan",        "Submit your weekly plan"),
