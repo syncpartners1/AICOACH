@@ -57,6 +57,20 @@ from autogpt.coaching.i18n import LANG_PROMPT, detect_lang, get_coach_name, t
 
 logger = logging.getLogger(__name__)
 
+# Filter out noisy "Conflict" tracebacks during deployment overlapping
+class ConflictFilter(logging.Filter):
+    def filter(self, record):
+        # Silence both the raw exception logs and the library's "Exception happened while polling" wrapper
+        msg = record.getMessage()
+        if "Conflict: terminated by other getUpdates request" in msg:
+            return False
+        if record.exc_info and isinstance(record.exc_info[1], Conflict):
+            return False
+        return True
+
+logging.getLogger("telegram.ext").addFilter(ConflictFilter())
+logging.getLogger("telegram.vendor").addFilter(ConflictFilter())
+
 _JSON_BLOCK_RE = re.compile(
     r'\[(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\].*?\[/(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\]',
     re.DOTALL,
