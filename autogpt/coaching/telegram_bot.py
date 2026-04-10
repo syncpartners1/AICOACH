@@ -62,14 +62,16 @@ class ConflictFilter(logging.Filter):
     def filter(self, record):
         # Silence both the raw exception logs and the library's "Exception happened while polling" wrapper
         msg = record.getMessage()
-        if "Conflict: terminated by other getUpdates request" in msg:
+        if "Conflict" in msg:
             return False
-        if record.exc_info and isinstance(record.exc_info[1], Conflict):
-            return False
+        if record.exc_info:
+            exc_text = str(record.exc_info[1])
+            if "Conflict" in exc_text:
+                return False
         return True
 
+logging.getLogger("telegram").addFilter(ConflictFilter())
 logging.getLogger("telegram.ext").addFilter(ConflictFilter())
-logging.getLogger("telegram.vendor").addFilter(ConflictFilter())
 
 _JSON_BLOCK_RE = re.compile(
     r'\[(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\].*?\[/(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\]',
