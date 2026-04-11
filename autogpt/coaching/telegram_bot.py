@@ -327,13 +327,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except Exception:
         logger.exception("Failed to upsert funnel lead for tg_id=%s", tg_id)
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🎯 Start Strategic Alignment Check", callback_data="funnel_start"),
+        InlineKeyboardButton(t(lang, "funnel_btn_start"), callback_data="funnel_start"),
     ]])
     await update.message.reply_text(
-        "👋 <b>Welcome to the Co-Navigator</b>\n\n"
-        "I'm Adi Ben Nesher — 25+ years guiding leaders through complex change and digital transformation.\n\n"
-        "Before we start, let's do a <b>Strategic Alignment Check</b> — 3 targeted questions to evaluate your current trajectory.\n\n"
-        "<i>Ready to evaluate your current strategic position?</i>",
+        t(lang, "funnel_welcome"),
         reply_markup=keyboard,
         parse_mode="HTML",
     )
@@ -393,9 +390,7 @@ async def funnel_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "🎯 <b>Question 1 of 3</b>\n\n"
-        "<b>How aligned is your team with your current strategic vision?</b>\n\n"
-        "<i>Is everyone fully synchronized — or is there hidden friction pulling you off track?</i>",
+        t(lang, "funnel_q1_title") + "\n\n" + t(lang, "funnel_q1_desc"),
         parse_mode="HTML",
     )
     return FUNNEL_Q1
@@ -412,11 +407,8 @@ async def funnel_receive_q1(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         logger.exception("Funnel: failed to save Q1 for tg_id=%s", tg_id)
     await update.message.reply_text(
-        "🎯 <b>Noted.</b>\n\n"
-        "🎯 <b>Question 2 of 3</b>\n\n"
-        "<b>Is your organization structured for current market conditions, or are you facing efficiency loss?</b>\n\n"
-        "<i>Are your operations, processes, and resources aligned with where the market is heading — "
-        "or are you facing strategic drift?</i>",
+        "🎯 <b>Noted.</b>\n\n" +
+        t(lang, "funnel_q2_title") + "\n\n" + t(lang, "funnel_q2_desc"),
         parse_mode="HTML",
     )
     return FUNNEL_Q2
@@ -433,11 +425,8 @@ async def funnel_receive_q2(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         logger.exception("Funnel: failed to save Q2 for tg_id=%s", tg_id)
     await update.message.reply_text(
-        "🎯 <b>Understood.</b>\n\n"
-        "🎯 <b>Question 3 of 3</b>\n\n"
-        "<b>What is the most significant challenge threatening your stability right now?</b>\n\n"
-        "<i>What is the one obstacle — internal or external — that if left unaddressed, "
-        "could impact your organizational trajectory?</i>",
+        "🎯 <b>Understood.</b>\n\n" +
+        t(lang, "funnel_q3_title") + "\n\n" + t(lang, "funnel_q3_desc"),
         parse_mode="HTML",
     )
     return FUNNEL_Q3
@@ -480,16 +469,11 @@ async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             logger.exception("Funnel: failed to notify admin after Q3 for tg_id=%s", tg_id)
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🌊 Complete Full Assessment →", callback_data=f"funnel_link:{tg_id}")],
-        [InlineKeyboardButton("🎯 Apply to Coaching Program", callback_data=f"funnel_apply:{tg_id}")],
+        [InlineKeyboardButton(t(lang, "funnel_btn_assessment"), callback_data=f"funnel_link:{tg_id}")],
+        [InlineKeyboardButton(t(lang, "funnel_btn_apply"), callback_data=f"funnel_apply:{tg_id}")],
     ])
     await update.message.reply_text(
-        "🎯 <b>You've identified your key strategic gaps.</b>\n\n"
-        "Based on your answers, there are <b>real opportunities</b> to stabilize your operations "
-        "and accelerate your results.\n\n"
-        "The full assessment (5 min) will generate your personalised <b>Strategic Report</b> — "
-        "and completing it unlocks a <b>free 30-minute strategy call</b> with Adi.\n\n"
-        "🎯 <i>Strategic change doesn't wait. Neither should you.</i>",
+        t(lang, "funnel_done_title") + "\n\n" + t(lang, "funnel_done_desc"),
         reply_markup=keyboard,
         parse_mode="HTML",
     )
@@ -843,7 +827,7 @@ async def link_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = _lang(user, update.message.text or "")
     if user:
         await update.message.reply_text(
-            f"🚀 <b>Starting your Navigator Log check-in...</b>",
+            t(lang, "starting_navigator_log"),
             parse_mode="HTML"
         )
         return ConversationHandler.END
@@ -1442,22 +1426,24 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 # ── Summary formatter ─────────────────────────────────────────────────────────
 
 def _format_summary(summary) -> str:
+    from autogpt.coaching.i18n import detect_lang
+    lang = detect_lang(summary.summary_for_coach or "")
     esc_client = html.escape(summary.client_name)
-    lines = [f"🎯 <b>Navigator Log Summary — {esc_client}</b>\n"]
+    lines = [t(lang, "summary_title", name=esc_client) + "\n"]
     log = summary.weekly_log
     if log:
         if log.focus_goal:
             html_focus = markdown_to_html(log.focus_goal)
-            lines.append(f"🎯 <b>Focus:</b> {html_focus}")
+            lines.append(f"{t(lang, 'summary_focus')} {html_focus}")
         if log.key_results:
-            lines.append("\n📊 <b>Key Results:</b>")
+            lines.append(f"\n{t(lang, 'summary_krs')}")
             for kr in log.key_results:
                 dot = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(kr.status_color, "⚪")
                 html_kr_desc = markdown_to_html(kr.description)
                 lines.append(f"  {dot} {html_kr_desc}: {kr.status_pct}%")
         unresolved = [o for o in (log.obstacles or []) if not o.resolved]
         if unresolved:
-            lines.append("\n⚠️ <b>Current Obstacles & Challenges:</b>")
+            lines.append(f"\n{t(lang, 'summary_obstacles')}")
             for o in unresolved:
                 html_obs = markdown_to_html(o.description)
                 lines.append(f"  • {html_obs}")
@@ -1466,11 +1452,11 @@ def _format_summary(summary) -> str:
             getattr(summary.alerts, "level", "green").value
             if hasattr(summary.alerts, "level") else "green", "⚪")
         html_reason = markdown_to_html(summary.alerts.reason)
-        lines.append(f"\n{dot} <b>Strategic Alignment Alert:</b> {html_reason}")
+        lines.append(f"\n{dot} <b>{t(lang, 'summary_alert')}</b> {html_reason}")
     if summary.summary_for_coach:
         excerpt = summary.summary_for_coach[:280]
         html_excerpt = markdown_to_html(excerpt)
-        lines.append(f"\n📝 <b>Coach Notes:</b> {html_excerpt}…")
+        lines.append(f"\n{t(lang, 'summary_coach_notes')} {html_excerpt}…")
     if coaching_config.scheduler_url:
         esc_url = html.escape(coaching_config.scheduler_url)
         lines.append(f"\n📅 <a href=\"{esc_url}\">Book your next session</a>")

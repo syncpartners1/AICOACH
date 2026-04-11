@@ -19,6 +19,7 @@ from autogpt.coaching.models import (
     WeeklyLog,
 )
 from autogpt.coaching.prompts import SUMMARY_EXTRACTION_PROMPT, build_navigator_system_prompt
+from autogpt.coaching.i18n import t
 
 Message = dict  # {"role": str, "content": str}
 
@@ -88,17 +89,11 @@ class CoachingSession:
     def open(self) -> str:
         """Generate the opening Navigator message for this session."""
         if self.user_id and self.objectives:
-            opener = (
-                f"Hello {self.client_name}! Welcome back to your weekly check-in. "
-                f"Let's start by reviewing your current objectives."
-            )
+            opener = t(self.lang, "opener_welcome_back", name=self.client_name)
         elif self.user_id and not self.objectives:
-            opener = (
-                f"Hello {self.client_name}! Welcome to the coaching program. "
-                f"Since this is your first session, let's begin by setting up your objectives and key results."
-            )
+            opener = t(self.lang, "opener_new_user", name=self.client_name)
         else:
-            opener = f"Hello {self.client_name}! I'm ready for our weekly check-in."
+            opener = t(self.lang, "opener_neutral", name=self.client_name)
 
         return self.chat(opener)
 

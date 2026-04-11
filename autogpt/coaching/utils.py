@@ -32,23 +32,27 @@ def markdown_to_html(text: str) -> str:
     # 2. Headers (# Header) -> Bold
     text = re.sub(r'^#+\s+(.*?)$', r'<b>\1</b>', text, flags=re.MULTILINE)
 
-    # 3. Bold (**text** or *text*)
-    # Use non-greedy match to avoid eating up the whole string
-    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
-    text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
+    # 3. Bullets (* Item) -> • Item
+    # We do this BEFORE bold to avoid consuming the leading * as a bold start
+    text = re.sub(r'^\*\s+', r'• ', text, flags=re.MULTILINE)
+    text = re.sub(r'^\-\s+', r'• ', text, flags=re.MULTILINE)
 
-    # 4. Italic (__text__ or _text_)
-    text = re.sub(r'__(.*?)__', r'<i>\1</i>', text)
-    text = re.sub(r'_(.*?)_', r'<i>\1</i>', text)
+    # 4. Bold (**text** or *text*)
+    # We use patterns that try to avoid matching across lines or between unrelated bullets
+    text = re.sub(r'\*\*(?=\S)(.+?)(?<=\S)\*\*', r'<b>\1</b>', text, flags=re.DOTALL)
+    text = re.sub(r'\*(?=\S)([^\*\n]+?)(?<=\S)\*', r'<b>\1</b>', text)
 
-    # 5. Inline code (`text`)
+    # 5. Italic (__text__ or _text_)
+    text = re.sub(r'__(?=\S)(.+?)(?<=\S)__', r'<i>\1</i>', text, flags=re.DOTALL)
+    text = re.sub(r'_(?=\S)([^_\n]+?)(?<=\S)_', r'<i>\1</i>', text)
+
+    # 6. Code blocks (```code```)
+    text = re.sub(r'```(?:[\w\-\.]+)?\n?(.*?)\n?```', r'<pre><code>\1</code></pre>', text, flags=re.DOTALL)
+
+    # 7. Inline code (`text`)
     text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
 
-    # 6. Links ([text](url))
-    # We must ensure the URL isn't double-escaped if it was already safe, 
-    # but html.escape already handled it. 
-    # However, we need to unescape the URL part specifically if we want to use it in href,
-    # but Telegram's href attribute handles escaped URLs fine.
+    # 8. Links ([text](url))
     text = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2">\1</a>', text)
 
     return text
