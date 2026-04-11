@@ -17,9 +17,9 @@ class AlertLevel(str, Enum):
 
 
 class NavigationStatus(str, Enum):
-    CLEAR = "clear"
-    CHOPPY = "choppy"
-    STORMY = "stormy"
+    STABLE = "stable"
+    AT_RISK = "at_risk"
+    CRITICAL = "critical"
 
 
 class OKRStatus(str, Enum):

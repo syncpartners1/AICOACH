@@ -256,7 +256,7 @@ def _current_week_label(lang: str = "en") -> str:
     today = date.today()
     sunday = today - timedelta(days=(today.weekday() + 1) % 7)
     saturday = sunday + timedelta(days=6)
-    return f"{sunday.strftime('%d %b')} – {saturday.strftime('%d %b %Y')}"
+    return f"{sunday.strftime('%d-%m-%Y')} – {saturday.strftime('%d-%m-%Y')}"
 
 
 def _today_day_name(lang: str = "en") -> str:

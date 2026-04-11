@@ -168,19 +168,26 @@ def render_dashboard(
             # Editable notes textarea + save button
             escaped_notes = s.coach_notes.replace('"', '&quot;').replace('\n', '&#10;')
             notes_html = f"""
+                notes_html = f"""
 <div style="margin-top:8px">
   <textarea id="notes_{s.session_id}"
     style="width:100%;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
            resize:vertical;min-height:56px;color:#374151"
-    placeholder="Add coach notes…">{s.coach_notes}</textarea>
+    placeholder="{t(lang, 'db_session_notes_placeholder')}">{s.coach_notes}</textarea>
   <button onclick="saveNotes('{s.session_id}')"
     style="margin-top:4px;font-size:11px;background:#1a2b4a;color:#fff;border:none;
-           padding:4px 12px;border-radius:6px;cursor:pointer">💾 Save Notes</button>
+           padding:4px 12px;border-radius:6px;cursor:pointer">💾 {t(lang, 'db_btn_save_session')}</button>
 </div>"""
-        sess_html += f"""
+        session_date_str = s.timestamp[:10]
+    try:
+        from datetime import datetime
+        session_date_str = datetime.strptime(s.timestamp[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
+    except Exception:
+        pass
+    sess_html += f"""
 <div style="border-{('right' if is_rtl else 'left')}:3px solid {dot_color};padding:8px 14px;
             margin-bottom:10px;background:#f9fafb;border-radius:0 8px 8px 0">
-  <div style="font-size:12px;font-weight:600;color:#374151">{s.timestamp[:10]}
+  <div style="font-size:12px;font-weight:600;color:#374151">{session_date_str}
     <span style="margin-left:8px;padding:1px 7px;border-radius:10px;font-size:11px;
                  background:{dot_color}22;color:{dot_color}">{s.alert_level.upper()}</span>
     {session_type_badge}
@@ -198,31 +205,31 @@ def render_dashboard(
 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;
             margin-top:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
   <div style="font-size:14px;font-weight:700;color:#1a2b4a;margin-bottom:12px">
-    ➕ Add 1:1 Coaching Session Record
+    {t(lang, 'db_add_session_record')}
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
     <div>
-      <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">Session Date</label>
+      <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">{t(lang, 'db_session_date')}</label>
       <input type="date" id="new_sess_date"
         style="font-size:13px;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px"
         value="{date.today().isoformat()}">
     </div>
   </div>
-  <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">Summary</label>
-  <input type="text" id="new_sess_summary" placeholder="Brief session summary…"
+  <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">{t(lang, 'db_session_summary_label')}</label>
+  <input type="text" id="new_sess_summary" placeholder="{t(lang, 'db_session_summary_placeholder')}"
     style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;
            padding:6px 8px;margin-bottom:8px">
-  <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">Key Outcomes / Coach Notes</label>
-  <textarea id="new_sess_notes" placeholder="Key outcomes, actions agreed, observations…"
+  <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">{t(lang, 'db_session_notes_label')}</label>
+  <textarea id="new_sess_notes" placeholder="{t(lang, 'db_session_notes_placeholder')}"
     style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
            resize:vertical;min-height:72px;margin-bottom:10px"></textarea>
   <button onclick="addSession('{user.user_id}')"
     style="background:#16a34a;color:#fff;border:none;padding:7px 18px;border-radius:8px;
-           font-size:13px;font-weight:600;cursor:pointer">✅ Save Session</button>
+           font-size:13px;font-weight:600;cursor:pointer">{t(lang, 'db_btn_save_session')}</button>
   <span id="add_sess_msg" style="margin-left:10px;font-size:12px;color:#16a34a"></span>
 </div>"""
 
-    week_label = f"{week_start.strftime('%d %b')} – {week_end.strftime('%d %b %Y')}"
+    week_label = f"{week_start.strftime('%d-%m-%Y')} – {week_end.strftime('%d-%m-%Y')}"
     status_val = user.account_status.value if hasattr(user.account_status, "value") else "active"
     status_badge = _status_badge(user.account_status, lang)
 
@@ -250,10 +257,10 @@ def render_dashboard(
     admin_banner = (
         f'<div style="background:#1a2b4a;color:#fff;padding:10px 24px;font-size:13px;'
         f'display:flex;align-items:center;justify-content:space-between;gap:12px">'
-        f'<span>👁 <strong>Admin View</strong> — {user.name}\'s Dashboard</span>'
+        f'<span>{t(lang, "db_admin_banner", name=user.name)}</span>'
         f'<a href="/admin" style="color:#93c5fd;font-size:12px;text-decoration:none;'
         f'border:1px solid rgba(147,197,253,.4);padding:3px 10px;border-radius:6px">'
-        f'← Back to Admin Console</a>'
+        f'{t(lang, "db_admin_back")}</a>'
         f'</div>'
     ) if is_admin_view else ""
 
@@ -276,10 +283,10 @@ def render_dashboard(
         hdr_actions = (
             f'<div style="margin-left:auto;display:flex;gap:8px;align-items:center">'
             f'<a href="/chat" style="color:#fff;font-size:12px;font-weight:600;text-decoration:none;'
-            f'background:#16a34a;padding:6px 14px;border-radius:8px;">▶ Start Session</a>'
+            f'background:#16a34a;padding:6px 14px;border-radius:8px;">{t(lang, "db_btn_start_session")}</a>'
             f'<a href="/user/logout" style="color:rgba(255,255,255,.65);font-size:12px;'
             f'text-decoration:none;border:1px solid rgba(255,255,255,.25);padding:5px 12px;'
-            f'border-radius:8px;">Sign out</a>'
+            f'border-radius:8px;">{t(lang, "db_btn_signout")}</a>'
             f'</div>'
         )
 
@@ -373,7 +380,7 @@ async function addSession(userId) {{
     body: JSON.stringify({{session_date: date, summary_for_coach: summary, coach_notes: notes}}),
   }});
   if (res.ok) {{
-    document.getElementById('add_sess_msg').textContent = '✅ Session saved!';
+    document.getElementById('add_sess_msg').textContent = '{t(lang, "db_session_saved")}';
     setTimeout(() => location.reload(), 1200);
   }} else {{
     alert('Failed to save session. Please try again.');

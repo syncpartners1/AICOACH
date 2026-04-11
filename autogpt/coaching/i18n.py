@@ -15,6 +15,8 @@ import re
 from autogpt.coaching.i18n.en import S_EN
 from autogpt.coaching.i18n.he import S_HE
 
+__all__ = ["t", "detect_lang", "get_coach_name", "S_EN", "S_HE"]
+
 # Match Hebrew unicode blocks (Hebrew, Hebrew Presentation Forms)
 _HE_RE = re.compile(r"[\u0590-\u05FF\uFB1D-\uFB4F]")
 
@@ -33,9 +35,14 @@ def t(lang: str, key: str, **kwargs: object) -> str:
     """Return the translation for *key* in *lang*, falling back to English.
 
     Keyword arguments are interpolated with str.format().
+    Returns [key] if the key is missing from both lang and 'en'.
     """
     bucket = _S.get(lang, _S["en"])
-    text: str = bucket.get(key) or _S["en"].get(key, key)
+    text: str | None = bucket.get(key)
+    if text is None:
+        text = _S["en"].get(key)
+    if text is None:
+        return f"[{key}]"
     return text.format(**kwargs) if kwargs else text
 
 

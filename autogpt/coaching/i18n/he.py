@@ -266,11 +266,26 @@ S_HE = {
     "db_day_saturday": "ש׳",
     # ── Summary Formatting ────────────────────────────────────────────────
     "summary_title": "🎯 <b>סיכום יומן נווט אסטרטגי — {name}</b>",
-    "summary_focus": "🎯 <b>מיקוד:</b>",
+    "summary_focus": "🎯 <b>מיקוד:</b> {value}",
+    "summary_mood": "🎯 <b>מצב רוח:</b> {value}",
+    "summary_env": "🎯 <b>שינויים סביבתיים:</b> {value}",
     "summary_krs": "📊 <b>תוצאות מפתח:</b>",
     "summary_obstacles": "⚠️ <b>מכשולים ואתגרים נוכחיים:</b>",
-    "summary_alert": "<b>התראת סנכרון אסטרטגי:</b>",
-    "summary_coach_notes": "📝 <b>הערות מאמן:</b>",
+    "summary_alert": "<b>התראת סנכרון אסטרטגי:</b> {level} — {reason}",
+    "summary_coach_notes": "📝 <b>הערות מאמן:</b> {note}",
+    # ── Dashboard buttons & Admin banner ──────────────────────────────────
+    "db_btn_start_session": "▶ התחל פגישה",
+    "db_btn_signout": "התנתק",
+    "db_admin_banner": "👁 <strong>תצוגת מנהל</strong> — לוח הבקרה של {name}",
+    "db_admin_back": "← חזרה ללוח בקרה למנהל",
+    "db_add_session_record": "➕ הוסף תיעוד פגישת אימון 1:1",
+    "db_session_date": "תאריך פגישה",
+    "db_session_summary_label": "סיכום",
+    "db_session_summary_placeholder": "סיכום קצר של הפגישה...",
+    "db_session_notes_label": "תוצאות מרכזיות / הערות מאמן",
+    "db_session_notes_placeholder": "תוצאות מרכזיות, פעולות שהוסכמו, תצפיות...",
+    "db_btn_save_session": "✅ שמור פגישה",
+    "db_session_saved": "✅ הפגישה נשמרה!",
     # ── WhatsApp bot ──────────────────────────────────────────────────────
     "wa_help": (
         "👋 <b>ABN Co-Navigator — פקודות WhatsApp</b>\n\n"
@@ -295,7 +310,7 @@ S_HE = {
     "wa_no_session_end": "אין פגישה פעילה. שלח <b>start</b> להתחיל פגישת אימון.",
     "wa_no_session_cancel": "אין פגישה פעילה לביטול.",
     "wa_session_discarded": "הפגישה בוטלה. לא נשמר כלום. שלח <b>start</b> להתחיל מחדש.",
-    "wa_no_session_chat": (
+    "wa_session_chat_prompt": (
         "אין פגישה פעילה. שלח <b>start</b> להתחיל את הצ'ק-אין השבועי שלך.\n\n"
         "• <b>start</b> — פתח פגישה\n• <b>help</b> — הצג פקודות"
     ),

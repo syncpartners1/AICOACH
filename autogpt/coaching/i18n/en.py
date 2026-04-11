@@ -266,11 +266,26 @@ S_EN = {
     "db_day_saturday": "Sat",
     # ── Summary Formatting ────────────────────────────────────────────────
     "summary_title": "🎯 <b>Navigator Log Summary — {name}</b>",
-    "summary_focus": "🎯 <b>Focus:</b>",
+    "summary_focus": "🎯 <b>Focus:</b> {value}",
+    "summary_mood": "🎯 <b>Mood:</b> {value}",
+    "summary_env": "🎯 <b>Environmental changes:</b> {value}",
     "summary_krs": "📊 <b>Key Results:</b>",
     "summary_obstacles": "⚠️ <b>Current Obstacles & Challenges:</b>",
-    "summary_alert": "<b>Strategic Alignment Alert:</b>",
-    "summary_coach_notes": "📝 <b>Coach Notes:</b>",
+    "summary_alert": "<b>Strategic Alignment Alert:</b> {level} — {reason}",
+    "summary_coach_notes": "📝 <b>Coach Notes:</b> {note}",
+    # ── Dashboard buttons & Admin banner ──────────────────────────────────
+    "db_btn_start_session": "▶ Start Session",
+    "db_btn_signout": "Sign out",
+    "db_admin_banner": "👁 <strong>Admin View</strong> — {name}'s Dashboard",
+    "db_admin_back": "← Back to Admin Console",
+    "db_add_session_record": "➕ Add 1:1 Coaching Session Record",
+    "db_session_date": "Session Date",
+    "db_session_summary_label": "Summary",
+    "db_session_summary_placeholder": "Brief session summary…",
+    "db_session_notes_label": "Key Outcomes / Coach Notes",
+    "db_session_notes_placeholder": "Key outcomes, actions agreed, observations…",
+    "db_btn_save_session": "✅ Save Session",
+    "db_session_saved": "✅ Session saved!",
     # ── WhatsApp bot ──────────────────────────────────────────────────────
     "wa_help": (
         "👋 *ABN Co-Navigator — WhatsApp commands*\n\n"
@@ -295,7 +310,7 @@ S_EN = {
     "wa_no_session_end": "No active session. Type *start* to begin a coaching session.",
     "wa_no_session_cancel": "No active session to cancel.",
     "wa_session_discarded": "Session discarded. Nothing was saved. Type *start* to begin again.",
-    "wa_no_session_chat": (
+    "wa_session_chat_prompt": (
         "No active session. Type *start* to begin your weekly coaching check-in.\n\n"
         "• *start* — begin session\n• *help* — show all commands"
     ),

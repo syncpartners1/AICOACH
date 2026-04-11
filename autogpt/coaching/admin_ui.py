@@ -46,8 +46,8 @@ def render_admin(
 
     user_rows = ""
     for u in users:
-        last_sess = u.last_session.strftime("%d %b %Y") if u.last_session else "—"
-        last_plan = u.last_weekly_plan.strftime("%d %b %Y") if u.last_weekly_plan else "—"
+        last_sess = u.last_session.strftime("%d-%m-%Y") if u.last_session else "—"
+        last_plan = u.last_weekly_plan.strftime("%d-%m-%Y") if u.last_weekly_plan else "—"
         contact = u.phone_number or u.email or "—"
         dashboard_url = f"{public_url}/dashboard/{u.user_id}" if public_url else f"/dashboard/{u.user_id}"
         st = u.account_status.value if hasattr(u.account_status, "value") else str(u.account_status)

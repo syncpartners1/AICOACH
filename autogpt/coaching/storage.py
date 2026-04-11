@@ -1080,10 +1080,10 @@ def get_latest_session_per_client() -> List[SessionSummary]:
 
 def _navigation_status(avg_pct: float) -> NavigationStatus:
     if avg_pct >= 70:
-        return NavigationStatus.CLEAR
+        return NavigationStatus.STABLE
     if avg_pct >= 40:
-        return NavigationStatus.CHOPPY
-    return NavigationStatus.STORMY
+        return NavigationStatus.AT_RISK
+    return NavigationStatus.CRITICAL
 
 
 def get_client_statuses() -> List[ClientStatus]:
