@@ -54,6 +54,7 @@ warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*per_messag
 
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.i18n import LANG_PROMPT, detect_lang, get_coach_name, t
+from autogpt.coaching.utils import markdown_to_html
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +276,7 @@ def _check_active(user, lang: str = "en") -> Optional[str]:
     st = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
     if st == "pending":
         return (
-            "⏳ Your account is *pending approval* by the coach. "
+            "⏳ Your account is <b>pending approval</b> by the coach. "
             "You'll be notified once it's activated."
         )
     if st == "suspended":
@@ -310,7 +311,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if user:
         err = _check_active(user, lang)
         if err:
-            await update.message.reply_text(err, parse_mode="Markdown")
+            await update.message.reply_text(err, parse_mode="HTML")
             return ConversationHandler.END
         await update.message.reply_text(
             t(lang, "welcome_back", name=user.name) + "\n\n" +
@@ -329,12 +330,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         InlineKeyboardButton("🎯 Start Strategic Alignment Check", callback_data="funnel_start"),
     ]])
     await update.message.reply_text(
-        "👋 *Welcome to the Co-Navigator*\n\n"
+        "👋 <b>Welcome to the Co-Navigator</b>\n\n"
         "I'm Adi Ben Nesher — 25+ years guiding leaders through complex change and digital transformation.\n\n"
-        "Before we start, let's do a *Strategic Alignment Check* — 3 targeted questions to evaluate your current trajectory.\n\n"
-        "_Ready to evaluate your current strategic position?_",
+        "Before we start, let's do a <b>Strategic Alignment Check</b> — 3 targeted questions to evaluate your current trajectory.\n\n"
+        "<i>Ready to evaluate your current strategic position?</i>",
         reply_markup=keyboard,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return FUNNEL_Q1
 
@@ -357,7 +358,7 @@ async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     err = _check_active(user, lang)
     if err:
-        await update.message.reply_text(err, parse_mode="Markdown")
+        await update.message.reply_text(err, parse_mode="HTML")
         return ConversationHandler.END
 
     esc_name = html.escape(user.name)
@@ -376,7 +377,7 @@ async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["lang"] = lang
     await query.edit_message_text(
         t(lang, "welcome_new"),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return WAITING_NAME
 
@@ -392,10 +393,10 @@ async def funnel_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "🎯 *Question 1 of 3*\n\n"
-        "*How aligned is your team with your current strategic vision?*\n\n"
-        "_Is everyone fully synchronized — or is there hidden friction pulling you off track?_",
-        parse_mode="Markdown",
+        "🎯 <b>Question 1 of 3</b>\n\n"
+        "<b>How aligned is your team with your current strategic vision?</b>\n\n"
+        "<i>Is everyone fully synchronized — or is there hidden friction pulling you off track?</i>",
+        parse_mode="HTML",
     )
     return FUNNEL_Q1
 
@@ -411,12 +412,12 @@ async def funnel_receive_q1(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         logger.exception("Funnel: failed to save Q1 for tg_id=%s", tg_id)
     await update.message.reply_text(
-        "🎯 *Noted.*\n\n"
-        "🎯 *Question 2 of 3*\n\n"
-        "*Is your organization structured for current market conditions, or are you facing efficiency loss?*\n\n"
-        "_Are your operations, processes, and resources aligned with where the market is heading — "
-        "or are you facing strategic drift?_",
-        parse_mode="Markdown",
+        "🎯 <b>Noted.</b>\n\n"
+        "🎯 <b>Question 2 of 3</b>\n\n"
+        "<b>Is your organization structured for current market conditions, or are you facing efficiency loss?</b>\n\n"
+        "<i>Are your operations, processes, and resources aligned with where the market is heading — "
+        "or are you facing strategic drift?</i>",
+        parse_mode="HTML",
     )
     return FUNNEL_Q2
 
@@ -432,12 +433,12 @@ async def funnel_receive_q2(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         logger.exception("Funnel: failed to save Q2 for tg_id=%s", tg_id)
     await update.message.reply_text(
-        "🎯 *Understood.*\n\n"
-        "🎯 *Question 3 of 3*\n\n"
-        "*What is the most significant challenge threatening your stability right now?*\n\n"
-        "_What is the one obstacle — internal or external — that if left unaddressed, "
-        "could impact your organizational trajectory?_",
-        parse_mode="Markdown",
+        "🎯 <b>Understood.</b>\n\n"
+        "🎯 <b>Question 3 of 3</b>\n\n"
+        "<b>What is the most significant challenge threatening your stability right now?</b>\n\n"
+        "<i>What is the one obstacle — internal or external — that if left unaddressed, "
+        "could impact your organizational trajectory?</i>",
+        parse_mode="HTML",
     )
     return FUNNEL_Q3
 
@@ -480,7 +481,7 @@ async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🌊 Complete Full Assessment →", callback_data=f"funnel_link:{tg_id}")],
-        [InlineKeyboardButton("🚢 Apply to Coaching Program", callback_data=f"funnel_apply:{tg_id}")],
+        [InlineKeyboardButton("🎯 Apply to Coaching Program", callback_data=f"funnel_apply:{tg_id}")],
     ])
     await update.message.reply_text(
         "🎯 <b>You've identified your key strategic gaps.</b>\n\n"
@@ -530,7 +531,7 @@ async def funnel_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     esc_url = html.escape(_FUNNEL_WEBSITE_URL)
     await query.message.reply_text(
         f"🎯 <b>Excellent!</b> Here's your link:\n\n"
-        f"🚢 <a href=\"{esc_url}\"><b>Complete Full Assessment</b></a>\n\n"
+        f"🎯 <a href=\"{esc_url}\"><b>Complete Full Assessment</b></a>\n\n"
         "Complete the assessment and Adi will be in touch within 24 hours with your Strategic Report. ",
         parse_mode="HTML",
     )
@@ -658,8 +659,8 @@ async def _start_coaching_session(
     _sessions[tg_id] = session
     opening = session.open()
     _persist_session(tg_id)  # save immediately so restart doesn't lose the new session
-    await update.message.reply_text(opening)
-    await update.message.reply_text(t(lang, "session_tip"), parse_mode="Markdown")
+    await update.message.reply_text(markdown_to_html(opening), parse_mode="HTML")
+    await update.message.reply_text(t(lang, "session_tip"), parse_mode="HTML")
 
 
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -676,7 +677,7 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["lang"] = lang
     await update.message.reply_text(
         t(lang, "ask_phone"),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return WAITING_PHONE
 
@@ -722,7 +723,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                                               existing.user_id, existing.name, lang)
                 return CHATTING
             else:
-                await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
+                await update.message.reply_text(t(lang, "pending_registered"), parse_mode="HTML")
                 return ConversationHandler.END
 
         # New user — register as pending
@@ -744,7 +745,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             logger.warning("Could not link telegram_user_id for user %s — column may not exist in DB", user.user_id)
 
         context.user_data.clear()
-        await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
+        await update.message.reply_text(t(lang, "pending_registered"), parse_mode="HTML")
 
         # Notify admin
         if coaching_config.admin_telegram_id:
@@ -800,7 +801,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             _save_session_from_reply(tg_id, session, reply)
         reply_clean = _strip_json_blocks(reply)
         if reply_clean:
-            await update.message.reply_text(reply_clean)
+            html_reply = markdown_to_html(reply_clean)
+            await update.message.reply_text(html_reply, parse_mode="HTML")
         _start_inactivity_timer(context.bot, update.effective_chat.id, tg_id, lang)
     except Exception:
         logger.exception("Chat error for telegram user %s", tg_id)
@@ -841,11 +843,11 @@ async def link_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = _lang(user, update.message.text or "")
     if user:
         await update.message.reply_text(
-            f"🚀 *Starting your Navigator Log check-in...*",
-            parse_mode="Markdown"
+            f"🚀 <b>Starting your Navigator Log check-in...</b>",
+            parse_mode="HTML"
         )
         return ConversationHandler.END
-    await update.message.reply_text(t(lang, "ask_phone_link"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_phone_link"), parse_mode="HTML")
     return LINK_WAITING_PHONE
 
 
@@ -863,7 +865,7 @@ async def link_receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Persist detected language on fresh link
         # Initial greeting for unlinked users
         welcome = t(lang, "welcome_new")
-        await update.message.reply_text(welcome, parse_mode="Markdown")
+        await update.message.reply_text(welcome, parse_mode="HTML")
         linked_lang = _lang(user)
         esc_name = html.escape(user.name)
         await update.message.reply_text(
@@ -905,7 +907,7 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await update.message.reply_text(
         t(lang, "plan_header", week=_current_week_label(lang)),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return await _ask_plan_activities(update, context)
 
@@ -920,7 +922,7 @@ async def _ask_plan_activities(update: Update, context: ContextTypes.DEFAULT_TYP
         t(lang, "plan_kr_prompt",
           idx=idx + 1, total=total, obj=obj_title,
           kr=kr.description, pct=kr.current_pct),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return PLAN_ACTIVITIES
 
@@ -931,7 +933,7 @@ async def plan_receive_activities(update: Update, context: ContextTypes.DEFAULT_
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"].setdefault(kr_id, {})["planned_activities"] = text
-    await update.message.reply_text(t(lang, "ask_progress"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_progress"), parse_mode="HTML")
     return PLAN_PROGRESS
 
 
@@ -941,7 +943,7 @@ async def plan_receive_progress(update: Update, context: ContextTypes.DEFAULT_TY
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["progress_update"] = text
-    await update.message.reply_text(t(lang, "ask_insights"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_insights"), parse_mode="HTML")
     return PLAN_INSIGHTS
 
 
@@ -951,7 +953,7 @@ async def plan_receive_insights(update: Update, context: ContextTypes.DEFAULT_TY
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["insights"] = text
-    await update.message.reply_text(t(lang, "ask_gaps"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_gaps"), parse_mode="HTML")
     return PLAN_GAPS
 
 
@@ -961,7 +963,7 @@ async def plan_receive_gaps(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["gaps"] = text
-    await update.message.reply_text(t(lang, "ask_corrections"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_corrections"), parse_mode="HTML")
     return PLAN_CORRECTIONS
 
 
@@ -996,7 +998,7 @@ async def _save_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await update.message.reply_text(
         t(lang, "plan_saved", count=saved),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     context.user_data.clear()
     return ConversationHandler.END
@@ -1017,7 +1019,7 @@ async def highlight_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data["lang"] = lang
     await update.message.reply_text(
         t(lang, "ask_highlight", day=day_name),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return HIGHLIGHT_WAITING
 
@@ -1038,7 +1040,7 @@ async def highlight_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         upsert_daily_highlight(user_id=user_id, day_of_week=DayOfWeek(day), highlight=text)
         await update.message.reply_text(
             t(lang, "highlight_saved", day=day_name),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Failed to save highlight for user %s", user_id)
@@ -1063,29 +1065,29 @@ async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     kr_map = {a.kr_id: a for a in plan.kr_activities}
     hl_map = {h.day_of_week.value: h.highlight for h in plan.daily_highlights}
 
-    lines = [f"📋 *{t(lang, 'plan_header', week=_current_week_label(lang)).split(chr(10))[0][5:]}*\n"]
+    lines = [f"📋 <b>{html.escape(t(lang, 'plan_header', week=_current_week_label(lang)).split(chr(10))[0][5:])}</b>\n"]
     for obj in objectives:
-        lines.append(f"🎯 *{obj.title}*")
+        lines.append(f"🎯 <b>{html.escape(obj.title)}</b>")
         for kr in obj.key_results:
             act = kr_map.get(kr.kr_id)
             dot = "🟢" if kr.current_pct >= 70 else "🟡" if kr.current_pct >= 40 else "🔴"
-            lines.append(f"  {dot} *{kr.description}* — {kr.current_pct}%")
+            lines.append(f"  {dot} <b>{html.escape(kr.description)}</b> — {kr.current_pct}%")
             if act and act.planned_activities:
-                lines.append(f"    📌 {t(lang, 'db_field_planned')}: {act.planned_activities}")
+                lines.append(f"    📌 {t(lang, 'db_field_planned')}: {html.escape(act.planned_activities)}")
             if act and act.progress_update:
-                lines.append(f"    📊 {t(lang, 'db_field_progress')}: {act.progress_update}")
+                lines.append(f"    📊 {t(lang, 'db_field_progress')}: {html.escape(act.progress_update)}")
             if act and act.gaps:
-                lines.append(f"    ⚠️ {t(lang, 'db_field_gaps')}: {act.gaps}")
+                lines.append(f"    ⚠️ {t(lang, 'db_field_gaps')}: {html.escape(act.gaps)}")
         lines.append("")
 
     if hl_map:
-        lines.append(f"*{t(lang, 'db_section_highlights')}:*")
+        lines.append(f"<b>{t(lang, 'db_section_highlights')}:</b>")
         for day in ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]:
             if day in hl_map:
                 day_label = t(lang, f"db_day_{day}")
-                lines.append(f"  {day_label}: {hl_map[day]}")
+                lines.append(f"  {day_label}: {html.escape(hl_map[day])}")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 # ── /message — send message to coach ─────────────────────────────────────────
@@ -1104,7 +1106,7 @@ async def msg_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     context.user_data["msg_user_name"] = user.name
     context.user_data["lang"] = lang
-    await update.message.reply_text(t(lang, "ask_message"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_message"), parse_mode="HTML")
     return MSG_WAITING
 
 
@@ -1155,10 +1157,10 @@ async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     lang = _lang(recipient)
 
     try:
-        esc_text = html.escape(msg.text)
+        html_text = markdown_to_html(msg.text)
         await context.bot.send_message(
             chat_id=original_user_tg_id,
-            text=t(lang, "admin_reply_fmt", text=esc_text),
+            text=t(lang, "admin_reply_fmt", text=html_text),
             parse_mode="HTML",
         )
         await msg.reply_text(t("en", "admin_reply_ok"))
@@ -1178,7 +1180,7 @@ async def suspend_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     st = user.account_status.value if hasattr(user.account_status, "value") else "active"
     if st == "archived":
-        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="Markdown")
+        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="HTML")
         return
     if st == "suspended":
         await update.message.reply_text(t(lang, "already_suspended"))
@@ -1187,7 +1189,7 @@ async def suspend_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         from autogpt.coaching.storage import set_account_status
         from autogpt.coaching.models import AccountStatus
         set_account_status(user.user_id, AccountStatus.SUSPENDED, "User self-suspended via Telegram")
-        await update.message.reply_text(t(lang, "suspend_ok"), parse_mode="Markdown")
+        await update.message.reply_text(t(lang, "suspend_ok"), parse_mode="HTML")
     except Exception:
         logger.exception("Could not suspend user %s", user.user_id)
         await update.message.reply_text(t(lang, "suspend_error"))
@@ -1204,7 +1206,7 @@ async def resume_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     st = user.account_status.value if hasattr(user.account_status, "value") else "active"
     if st == "archived":
-        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="Markdown")
+        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="HTML")
         return
     if st == "active":
         await update.message.reply_text(t(lang, "already_active"))
@@ -1244,7 +1246,7 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             logger.exception("Could not save language preference for user %s", user.user_id)
 
     msg_key = "lang_set_he" if new_lang == "he" else "lang_set_en"
-    await update.message.reply_text(t(new_lang, msg_key), parse_mode="Markdown")
+    await update.message.reply_text(t(new_lang, msg_key), parse_mode="HTML")
 
 
 # ── Admin commands ────────────────────────────────────────────────────────────
@@ -1315,8 +1317,8 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if sessions:
         lines.append("<b>Recent sessions:</b>")
         for s in sessions:
-            esc_summary = html.escape(s.summary_for_coach[:80])
-            lines.append(f"  {s.timestamp[:10]} [{s.alert_level.upper()}]: {esc_summary}…")
+            html_summary = markdown_to_html(s.summary_for_coach[:80])
+            lines.append(f"  {s.timestamp[:10]} [{s.alert_level.upper()}]: {html_summary}…")
 
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
@@ -1374,10 +1376,11 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     sent = 0
     for row in rows:
         try:
+            html_text = markdown_to_html(text)
             await context.bot.send_message(
                 chat_id=row["telegram_user_id"],
-                text=f"📢 *Message from Adi Ben Nesher:*\n\n{text}",
-                parse_mode="Markdown",
+                text=f"📢 <b>Message from Adi Ben Nesher:</b>\n\n{html_text}",
+                parse_mode="HTML",
             )
             sent += 1
         except Exception:
@@ -1395,7 +1398,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     admin_extra = t(lang, "help_admin") if _is_admin(tg_id) else ""
     await update.message.reply_text(
         t(lang, "help_text") + admin_extra,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -1427,9 +1430,9 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         from autogpt.coaching.storage import get_user_objectives, get_past_sessions
         objectives = get_user_objectives(user.user_id)
         await update.message.reply_text(
-            f"✅ Synced! You have *{len(objectives)}* active objective(s). "
+            f"✅ Synced! You have <b>{len(objectives)}</b> active objective(s). "
             "Use /start to begin a fresh session with updated data.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Refresh failed for telegram user %s", tg_id)
@@ -1440,34 +1443,34 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 def _format_summary(summary) -> str:
     esc_client = html.escape(summary.client_name)
-    lines = [f"⚓ <b>Navigator Log Summary — {esc_client}</b>\n"]
+    lines = [f"🎯 <b>Navigator Log Summary — {esc_client}</b>\n"]
     log = summary.weekly_log
     if log:
         if log.focus_goal:
-            esc_focus = html.escape(log.focus_goal)
-            lines.append(f"🎯 <b>Focus:</b> {esc_focus}")
+            html_focus = markdown_to_html(log.focus_goal)
+            lines.append(f"🎯 <b>Focus:</b> {html_focus}")
         if log.key_results:
             lines.append("\n📊 <b>Key Results:</b>")
             for kr in log.key_results:
                 dot = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(kr.status_color, "⚪")
-                esc_kr_desc = html.escape(kr.description)
-                lines.append(f"  {dot} {esc_kr_desc}: {kr.status_pct}%")
+                html_kr_desc = markdown_to_html(kr.description)
+                lines.append(f"  {dot} {html_kr_desc}: {kr.status_pct}%")
         unresolved = [o for o in (log.obstacles or []) if not o.resolved]
         if unresolved:
-            lines.append("\n⚠️ <b>Current Obstacles & Storms:</b>")
+            lines.append("\n⚠️ <b>Current Obstacles & Challenges:</b>")
             for o in unresolved:
-                esc_obs = html.escape(o.description)
-                lines.append(f"  • {esc_obs}")
+                html_obs = markdown_to_html(o.description)
+                lines.append(f"  • {html_obs}")
     if summary.alerts and summary.alerts.reason:
         dot = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(
             getattr(summary.alerts, "level", "green").value
             if hasattr(summary.alerts, "level") else "green", "⚪")
-        esc_reason = html.escape(summary.alerts.reason)
-        lines.append(f"\n{dot} <b>Navigation Alert:</b> {esc_reason}")
+        html_reason = markdown_to_html(summary.alerts.reason)
+        lines.append(f"\n{dot} <b>Strategic Alignment Alert:</b> {html_reason}")
     if summary.summary_for_coach:
         excerpt = summary.summary_for_coach[:280]
-        esc_excerpt = html.escape(excerpt)
-        lines.append(f"\n📝 <b>Coach Notes:</b> {esc_excerpt}…")
+        html_excerpt = markdown_to_html(excerpt)
+        lines.append(f"\n📝 <b>Coach Notes:</b> {html_excerpt}…")
     if coaching_config.scheduler_url:
         esc_url = html.escape(coaching_config.scheduler_url)
         lines.append(f"\n📅 <a href=\"{esc_url}\">Book your next session</a>")
@@ -1523,7 +1526,7 @@ async def book_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(lang, "book_type_intro"), callback_data="book_type:intro")],
         ])
-    await update.message.reply_text(t(lang, "book_choose_type"), reply_markup=keyboard, parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "book_choose_type"), reply_markup=keyboard, parse_mode="HTML")
     return BOOK_TYPE
 
 
@@ -1540,7 +1543,7 @@ async def book_receive_type(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await query.edit_message_text(
         t(lang, "book_choose_date", type=label),
         reply_markup=_date_keyboard(),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return BOOK_DATE
 
@@ -1584,7 +1587,7 @@ async def book_receive_date(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.edit_message_text(
             t(lang, "book_no_slots", date=date_str),
             reply_markup=_date_keyboard(),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         return BOOK_DATE
 
@@ -1596,7 +1599,7 @@ async def book_receive_date(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await query.edit_message_text(
         t(lang, "book_choose_slot", date=date_str),
         reply_markup=keyboard,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return BOOK_SLOT
 
@@ -1618,7 +1621,7 @@ async def book_receive_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     email = _user_email(user) or context.user_data.get("book_email")
 
     if not email:
-        await query.edit_message_text(t(lang, "book_ask_email"), parse_mode="Markdown")
+        await query.edit_message_text(t(lang, "book_ask_email"), parse_mode="HTML")
         return BOOK_EMAIL
 
     context.user_data["book_email"] = email
@@ -1655,9 +1658,9 @@ async def _show_booking_confirm(msg_or_query, context, lang: str) -> int:
     ]])
 
     if hasattr(msg_or_query, "edit_message_text"):
-        await msg_or_query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        await msg_or_query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
     else:
-        await msg_or_query.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        await msg_or_query.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
     return BOOK_CONFIRM
 
 
@@ -1701,7 +1704,7 @@ async def book_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     if not result.get("ok"):
-        await query.edit_message_text(t(lang, "book_failed"), parse_mode="Markdown")
+        await query.edit_message_text(t(lang, "book_failed"), parse_mode="HTML")
         return ConversationHandler.END
 
     meet_link = result.get("meetLink") or ""
@@ -1714,7 +1717,7 @@ async def book_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         msg = t(lang, "book_confirmed_no_meet", subject=mt["subject"], start=start_fmt)
 
-    await query.edit_message_text(msg, parse_mode="Markdown")
+    await query.edit_message_text(msg, parse_mode="HTML")
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -1768,7 +1771,7 @@ async def _send_bookings(message, email: str, lang: str) -> None:
             lines.append(t(lang, "mybookings_item", subject=subject, start=start_raw, meet_link=meet_link))
         else:
             lines.append(t(lang, "mybookings_item_no_meet", subject=subject, start=start_raw))
-    await message.reply_text("".join(lines), parse_mode="Markdown")
+    await message.reply_text("".join(lines), parse_mode="HTML")
 
 
 # ── /cancelmeeting conversation ────────────────────────────────────────────────
@@ -1819,7 +1822,7 @@ async def _show_cancel_list(message, email: str, lang: str, context) -> int:
             start_raw = start_raw.replace("T", " ")[:16]
         rows.append([InlineKeyboardButton(f"{subject} — {start_raw}", callback_data=f"cancel_pick:{i}")])
     keyboard = InlineKeyboardMarkup(rows)
-    await message.reply_text(t(lang, "cancel_meeting_choose"), reply_markup=keyboard, parse_mode="Markdown")
+    await message.reply_text(t(lang, "cancel_meeting_choose"), reply_markup=keyboard, parse_mode="HTML")
     return CANCEL_SELECT
 
 
@@ -1862,9 +1865,9 @@ async def cancelmeeting_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
     if result.get("ok") is False:
-        await query.edit_message_text(t(lang, "cancel_meeting_failed"), parse_mode="Markdown")
+        await query.edit_message_text(t(lang, "cancel_meeting_failed"), parse_mode="HTML")
     else:
-        await query.edit_message_text(t(lang, "cancel_meeting_ok"), parse_mode="Markdown")
+        await query.edit_message_text(t(lang, "cancel_meeting_ok"), parse_mode="HTML")
 
     context.user_data.pop("cancel_bookings", None)
     return ConversationHandler.END

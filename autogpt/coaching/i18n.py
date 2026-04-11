@@ -32,20 +32,20 @@ _S: dict[str, dict[str, str]] = {
         "welcome_back": "Welcome back to the Co-Navigator, <b>{name}</b>! 👋\n\nPreparing your weekly Navigator Log…",
         "ready_to_begin": "Ready to begin? Use /new_session to start your coaching check-in.",
         "welcome_new": (
-            "👋 *Welcome to the ABN Consulting Co-Navigator!*\n\n"
+            "👋 <b>Welcome to the ABN Consulting Co-Navigator!</b>\n\n"
             "I'm your digital coaching assistant, designed to help you navigate "
             "through professional and personal change while keeping your strategic goals on track.\n\n"
             "What is your name?"
         ),
         "session_tip": (
-            "_Navigator’s Tip: Use /plan for structured weekly planning, or share your thoughts freely. "
-            "Send /done when you've finalized your entries to save your Navigator Log._"
+            "<i>Navigator’s Tip: Use /plan for structured weekly planning, or share your thoughts freely. "
+            "Send /done when you've finalized your entries to save your Navigator Log.</i>"
         ),
         "ask_name": "What's your name?",
         "invalid_name": "Please enter a valid name (up to 100 characters).",
         "ask_phone": (
             "Great! To register you in the program, please share your phone number "
-            "(include country code, e.g. *+1 234 567 8900*)."
+            "(include country code, e.g. <b>+1 234 567 8900</b>)."
         ),
         "invalid_phone": (
             "That doesn't look like a valid phone number. "
@@ -56,13 +56,13 @@ _S: dict[str, dict[str, str]] = {
             "Use /link to connect this Telegram account to your existing profile."
         ),
         "pending_registered": (
-            "✅ *You're registered!*\n\n"
+            "✅ <b>You're registered!</b>\n\n"
             "Your account is awaiting approval by the coach. "
             "You'll receive a message here as soon as it's activated.\n\n"
             "You can also reach the coach via the web: /start will check your status."
         ),
         "welcome_activated": (
-            "✅ *Welcome to the program, {name}!*\n\n"
+            "✅ <b>Welcome to the program, {name}!</b>\n\n"
             "Your account is active. As your AI Co-Navigator, I'm here to "
             "support your weekly check-ins, manage your OKRs, and ensure "
             "you stay on course.\n\n"
@@ -82,16 +82,16 @@ _S: dict[str, dict[str, str]] = {
         "inactivity_timeout": "Looks like you stepped away. Whenever you're ready, just write to me and we'll pick up where we left off.",
         # ── Bot: account status ───────────────────────────────────────────────
         "suspended_msg": (
-            "⏸ Your coaching is currently *paused*. "
+            "⏸ Your coaching is currently <b>paused</b>. "
             "Send /resume to reactivate it whenever you're ready."
         ),
         "archived_msg": (
-            "🚫 Your account has been *archived*. "
+            "🚫 Your account has been <b>archived</b>. "
             "Please contact Adi Ben Nesher to discuss reactivation."
         ),
         "already_suspended": "Your coaching is already paused. Use /resume to reactivate.",
         "suspend_ok": (
-            "⏸ Your coaching has been *paused*.\n\n"
+            "⏸ Your coaching has been <b>paused</b>.\n\n"
             "Use /resume whenever you're ready to continue. "
             "Your progress and OKRs are safely saved."
         ),
@@ -108,7 +108,7 @@ _S: dict[str, dict[str, str]] = {
             "Use /start to begin a session."
         ),
         "ask_phone_link": (
-            "Please send your registered phone number (e.g. *+972501234567*) "
+            "Please send your registered phone number (e.g. <b>+972501234567</b>) "
             "to link your account."
         ),
         "phone_not_found": "Phone number not found. Please check and try again, or use /cancel.",
@@ -120,30 +120,30 @@ _S: dict[str, dict[str, str]] = {
         "link_error": "Something went wrong. Please try again.",
         # ── Bot: /plan ────────────────────────────────────────────────────────
         "link_first": "Please link your account first with /link, then try again.",
-        "no_krs": "🧭 *No Objectives or Key Results found.* Please set them up first with /start.",
+        "no_krs": "🧭 <b>No Objectives or Key Results found.</b> Please set them up first with /start.",
         "plan_header": (
-            "⚓ *Strategic Weekly Log — {week}*\n\n"
+            "🎯 <b>Strategic Weekly Log — {week}</b>\n\n"
             "Let's log your strategic actions for each key result. "
             "I'll ask you one question at a time.\n\n"
             "Send /skip to leave a field blank, /done to finish early."
         ),
         "plan_kr_prompt": (
-            "*Result {idx}/{total}* — _{obj}_\n"
-            "📌 *{kr}* ({pct}% complete)\n\n"
-            "What are your *strategic actions* for this result this week?"
+            "<b>Result {idx}/{total}</b> — <i>{obj}</i>\n"
+            "📌 <b>{kr}</b> ({pct}% complete)\n\n"
+            "What are your <b>strategic actions</b> for this result this week?"
         ),
-        "ask_progress": "Any *progress logged* since we last checked? (/skip to leave blank)",
-        "ask_insights": "Any *strategic insights* from the past few days? (/skip to leave blank)",
-        "ask_gaps": "Any *challenges* or specific obstacles? (/skip to leave blank)",
-        "ask_corrections": "*Strategic adjustments* for next steps? (/skip to leave blank)",
+        "ask_progress": "Any <b>progress logged</b> since we last checked? (/skip to leave blank)",
+        "ask_insights": "Any <b>strategic insights</b> from the past few days? (/skip to leave blank)",
+        "ask_gaps": "Any <b>challenges</b> or specific obstacles? (/skip to leave blank)",
+        "ask_corrections": "<b>Strategic adjustments</b> for next steps? (/skip to leave blank)",
         "plan_saved": (
-            "✅ *Weekly plan saved!* ({count} key result(s) updated)\n\n"
+            "✅ <b>Weekly plan saved!</b> ({count} key result(s) updated)\n\n"
             "Use /myplan to view your full plan, or /highlight to add today's highlights."
         ),
         # ── Bot: /highlight ───────────────────────────────────────────────────
-        "ask_highlight": "📝 What's your key highlight for *{day}*? (one line is great)",
+        "ask_highlight": "📝 What's your key highlight for <b>{day}</b>? (one line is great)",
         "highlight_empty": "Please type your highlight and send it.",
-        "highlight_saved": "✅ Highlight saved for *{day}*!\n\nUse /myplan to see your full week.",
+        "highlight_saved": "✅ Highlight saved for <b>{day}</b>!\n\nUse /myplan to see your full week.",
         "highlight_error": "Sorry, I couldn't save your highlight. Please try again.",
         # ── Bot: /message ─────────────────────────────────────────────────────
         "msg_not_configured": "Direct messaging is not configured yet.",
@@ -163,16 +163,16 @@ _S: dict[str, dict[str, str]] = {
         "book_choose_type": "📅 What kind of meeting would you like to book?",
         "book_type_intro": "🆓 Free Introduction & Evaluation (30 min)",
         "book_type_coaching": "💳 Coaching / Advisory Session (60 min)",
-        "book_choose_date": "📅 Choose a date for your *{type}*:",
+        "book_choose_date": "📅 Choose a date for your <b>{type}</b>:",
         "book_no_slots": (
-            "😕 No available slots on *{date}*.\n"
+            "😕 No available slots on <b>{date}</b>.\n"
             "Please choose another date."
         ),
-        "book_choose_slot": "🕐 Available times on *{date}*:",
+        "book_choose_slot": "🕐 Available times on <b>{date}</b>:",
         "book_ask_email": "📧 Please share your email address for the booking confirmation:",
         "book_invalid_email": "That doesn't look like a valid email. Please try again.",
         "book_confirm_prompt": (
-            "✅ *Confirm your booking:*\n\n"
+            "✅ <b>Confirm your booking:</b>\n\n"
             "📋 {subject}\n"
             "📅 {date}\n"
             "🕐 {time}\n"
@@ -182,17 +182,17 @@ _S: dict[str, dict[str, str]] = {
         "book_btn_confirm": "✅ Confirm",
         "book_btn_cancel": "✗ Cancel",
         "book_confirmed": (
-            "🎉 *Booking confirmed!*\n\n"
+            "🎉 <b>Booking confirmed!</b>\n\n"
             "📋 {subject}\n"
             "📅 {start}\n"
-            "🔗 [Join Google Meet]({meet_link})\n\n"
-            "_A confirmation has been sent to your email._"
+            "🔗 <a href=\"{meet_link}\">Join Google Meet</a>\n\n"
+            "<i>A confirmation has been sent to your email.</i>"
         ),
         "book_confirmed_no_meet": (
-            "🎉 *Booking confirmed!*\n\n"
+            "🎉 <b>Booking confirmed!</b>\n\n"
             "📋 {subject}\n"
             "📅 {start}\n\n"
-            "_A confirmation has been sent to your email._"
+            "<i>A confirmation has been sent to your email.</i>"
         ),
         "book_failed": (
             "❌ Sorry, I couldn't complete the booking.\n"
@@ -203,23 +203,23 @@ _S: dict[str, dict[str, str]] = {
         "mybookings_not_configured": "Booking lookup is not available yet.",
         "mybookings_ask_email": "📧 Please share your email to look up your bookings:",
         "mybookings_none": "📅 You have no upcoming bookings.",
-        "mybookings_header": "📅 *Your upcoming bookings:*\n\n",
-        "mybookings_item": "• *{subject}*\n  📅 {start}\n  🔗 [Meet link]({meet_link})\n\n",
-        "mybookings_item_no_meet": "• *{subject}*\n  📅 {start}\n\n",
+        "mybookings_header": "📅 <b>Your upcoming bookings:</b>\n\n",
+        "mybookings_item": "• <b>{subject}</b>\n  📅 {start}\n  🔗 <a href=\"{meet_link}\">Meet link</a>\n\n",
+        "mybookings_item_no_meet": "• <b>{subject}</b>\n  📅 {start}\n\n",
         # ── Bot: /cancelmeeting ───────────────────────────────────────────────
         "cancel_meeting_none": "📅 You have no upcoming meetings to cancel.",
         "cancel_meeting_choose": "Which meeting would you like to cancel?",
         "cancel_meeting_ok": "✅ Meeting cancelled successfully.",
         "cancel_meeting_failed": "❌ Sorry, I couldn't cancel that meeting. Please try again.",
         # ── Bot: /lang ────────────────────────────────────────────────────────
-        "lang_set_he": "🇮🇱 Language set to *Hebrew*. Bot messages will now appear in Hebrew.",
-        "lang_set_en": "🇬🇧 Language set to *English*. Bot messages will now appear in English.",
+        "lang_set_he": "🇮🇱 Language set to <b>Hebrew</b>. Bot messages will now appear in Hebrew.",
+        "lang_set_en": "🇬🇧 Language set to <b>English</b>. Bot messages will now appear in English.",
         "lang_usage": "Usage: /lang en  or  /lang he",
         # ── Bot: /cancel ──────────────────────────────────────────────────────
         "cancelled": "Operation cancelled. Use /start or /help whenever you're ready.",
         # ── Bot: /help ────────────────────────────────────────────────────────
         "help_text": (
-            "🎯 *Co-Navigator Commands*\n\n"
+            "🎯 <b>Co-Navigator Commands</b>\n\n"
             "/start — Begin or resume a coaching session\n"
             "/link — Link your Telegram to your registered account\n"
             "/plan — Fill in your weekly plan (per key result)\n"
@@ -237,11 +237,11 @@ _S: dict[str, dict[str, str]] = {
             "/help — Show this list"
         ),
         "help_admin": (
-            "\n\n*Admin commands:*\n"
+            "\n\n<b>Admin commands:</b>\n"
             "/users — List all program members\n"
-            "/report <user_id> — Full progress report\n"
+            "/report &lt;user_id&gt; — Full progress report\n"
             "/invite [name] [contact] — Create invite link\n"
-            "/broadcast <text> — Message all linked users"
+            "/broadcast &lt;text&gt; — Message all linked users"
         ),
         # ── Dashboard: section titles ─────────────────────────────────────────
         "db_title": "My Coaching Dashboard",
@@ -395,20 +395,20 @@ _S: dict[str, dict[str, str]] = {
         "welcome_back": "ברוך שובך ל-Co-Navigator, <b>{name}</b>! 👋\n\nמכין את יומן הנווט (Navigator Log) השבועי שלך…",
         "ready_to_begin": "מוכן להתחיל? השתמש ב-/new_session כדי להתחיל את הצ'ק-אין השבועי שלך.",
         "welcome_new": (
-            "👋 *ברוכים הבאים ל-ABN Consulting Co-Navigator!*\n\n"
+            "👋 <b>ברוכים הבאים ל-ABN Consulting Co-Navigator!</b>\n\n"
             "אני עוזר האימון הדיגיטלי שלך, שנועד לעזור לך לנווט "
             "דרך שינויים מקצועיים ואישיים תוך שמירה על היעדים האסטרטגיים שלך.\n\n"
             "מה שמך?"
         ),
         "session_tip": (
-            "_טיפ מהנווט: השתמש ב-/plan לתכנון שבועי מובנה, או שתף את מחשבותיך בחופשיות. "
-            "שלח /done כשתסיים את הרישומים כדי לשמור את יומן הנווט (Navigator Log)._"
+            "<i>טיפ מהנווט: השתמש ב-/plan לתכנון שבועי מובנה, או שתף את מחשבותיך בחופשיות. "
+            "שלח /done כשתסיים את הרישומים כדי לשמור את יומן הנווט (Navigator Log).</i>"
         ),
         "ask_name": "מה שמך?",
         "invalid_name": "אנא הכנס שם תקין (עד 100 תווים).",
         "ask_phone": (
             "מעולה! כדי לרשום אותך לתוכנית, נא שתף את מספר הטלפון שלך "
-            "(כולל קידומת מדינה, לדוגמה: *+972 50 1234567*)."
+            "(כולל קידומת מדינה, לדוגמה: <b>+972 50 1234567</b>)."
         ),
         "invalid_phone": (
             "מספר הטלפון אינו תקין. "
@@ -419,12 +419,12 @@ _S: dict[str, dict[str, str]] = {
             "השתמש ב-/link כדי לקשר את חשבון הטלגרם שלך לפרופיל הקיים."
         ),
         "pending_registered": (
-            "✅ *נרשמת בהצלחה!*\n\n"
+            "✅ <b>נרשמת בהצלחה!</b>\n\n"
             "חשבונך ממתין לאישור המאמן. "
             "תקבל הודעה כאן ברגע שהוא יופעל."
         ),
         "welcome_activated": (
-            "✅ *ברוכים הבאים לתוכנית, {name}!*\n\n"
+            "✅ <b>ברוכים הבאים לתוכנית, {name}!</b>\n\n"
             "החשבון שלך הופעל. כ-AI Co-Navigator שלך, אני כאן כדי "
             "לתמוך בצ'ק-אין השבועי שלך, לנהל את ה-OKR שלך ולוודא "
             "שאתה נשאר במסלול.\n\n"
@@ -444,16 +444,16 @@ _S: dict[str, dict[str, str]] = {
         "inactivity_timeout": "נראה שהרחקת לכת. כשתרצה להמשיך — פשוט כתוב לי ואמשיך מאיפה שעצרנו.",
         # ── Bot: account status ───────────────────────────────────────────────
         "suspended_msg": (
-            "⏸ האימון שלך כרגע *מושהה*. "
+            "⏸ האימון שלך כרגע <b>מושהה</b>. "
             "שלח /resume להפעלה מחדש בכל עת."
         ),
         "archived_msg": (
-            "🚫 החשבון שלך *הועבר לארכיון*. "
+            "🚫 החשבון שלך <b>הועבר לארכיון</b>. "
             "אנא צור קשר עם עדי בן נשר לדיון בהפעלה מחדש."
         ),
         "already_suspended": "האימון שלך כבר מושהה. שלח /resume להפעלה מחדש.",
         "suspend_ok": (
-            "⏸ האימון שלך *הושהה*.\n\n"
+            "⏸ האימון שלך <b>הושהה</b>.\n\n"
             "שלח /resume כשתהיה מוכן להמשיך. "
             "ההתקדמות וה-OKR שלך שמורים בבטחה."
         ),
@@ -470,7 +470,7 @@ _S: dict[str, dict[str, str]] = {
             "השתמש ב-/start להתחיל פגישה."
         ),
         "ask_phone_link": (
-            "אנא שלח את מספר הטלפון הרשום שלך (לדוגמה *+972501234567*) "
+            "אנא שלח את מספר הטלפון הרשום שלך (לדוגמה <b>+972501234567</b>) "
             "לקישור החשבון."
         ),
         "phone_not_found": "מספר הטלפון לא נמצא. בדוק ונסה שוב, או שלח /cancel.",
@@ -482,31 +482,31 @@ _S: dict[str, dict[str, str]] = {
         "link_error": "משהו השתבש. נסה שוב.",
         # ── Bot: /plan ────────────────────────────────────────────────────────
         "link_first": "אנא קשר קודם את החשבון שלך עם /link ואז נסה שוב.",
-        "no_krs": "🧭 *לא נמצאו יעדים או תוצאות מפתח.* אנא הגדר אותם תחילה עם /start.",
+        "no_krs": "🎯 <b>לא נמצאו יעדים או תוצאות מפתח.</b> אנא הגדר אותם תחילה עם /start.",
         "plan_header": (
-            "📋 *תכנית שבועית — {week}*\n\n"
+            "🎯 <b>תכנית שבועית — {week}</b>\n\n"
             "בוא נמלא את התכנית לכל תוצאת מפתח. "
             "אשאל שאלה אחת בכל פעם.\n\n"
             "שלח /skip כדי להשאיר שדה ריק, /done לסיום מוקדם."
         ),
         "plan_kr_prompt": (
-            "*מדד {idx}/{total}* — _{obj}_\n"
-            "📌 *{kr}* ({pct}% הושלם)\n\n"
-            "מהן *הפעולות האסטרטגיות* המתוכננות שלך למדד זה השבוע?"
+            "<b>מדד {idx}/{total}</b> — <i>{obj}</i>\n"
+            "📌 <b>{kr}</b> ({pct}% הושלם)\n\n"
+            "מהן <b>הפעולות האסטרטגיות</b> המתוכננות שלך למדד זה השבוע?"
         ),
-        "ask_progress": "יש *עדכון התקדמות* עד כה? (/skip לדילוג)",
-        "ask_insights": "יש *תובנות* מהשבוע? (/skip לדילוג)",
-        "ask_gaps": "יש *פערים* או אתגרים? (/skip לדילוג)",
-        "ask_corrections": "*פעולות מתקנות* לצעדים הבאים? (/skip לדילוג)",
+        "ask_progress": "יש <b>עדכון התקדמות</b> עד כה? (/skip לדילוג)",
+        "ask_insights": "יש <b>תובנות</b> מהשבוע? (/skip לדילוג)",
+        "ask_gaps": "יש <b>פערים</b> או אתגרים? (/skip לדילוג)",
+        "ask_corrections": "<b>פעולות מתקנות</b> לצעדים הבאים? (/skip לדילוג)",
         "plan_saved": (
-            "✅ *התכנית השבועית נשמרה!* ({count} תוצאות מפתח עודכנו)\n\n"
+            "✅ <b>התכנית השבועית נשמרה!</b> ({count} תוצאות מפתח עודכנו)\n\n"
             "השתמש ב-/myplan לצפייה בתכנית המלאה, "
             "או ב-/highlight להוספת הדגשות יומיות."
         ),
         # ── Bot: /highlight ───────────────────────────────────────────────────
-        "ask_highlight": "📝 מה ההדגשה המרכזית שלך ל*{day}*? (שורה אחת מספיקה)",
+        "ask_highlight": "📝 מה ההדגשה המרכזית שלך ל<b>{day}</b>? (שורה אחת מספיקה)",
         "highlight_empty": "אנא כתוב את ההדגשה ושלח.",
-        "highlight_saved": "✅ ההדגשה נשמרה ל*{day}*!\n\nהשתמש ב-/myplan לצפייה בשבוע המלא.",
+        "highlight_saved": "✅ ההדגשה נשמרה ל<b>{day}</b>!\n\nהשתמש ב-/myplan לצפייה בשבוע המלא.",
         "highlight_error": "מצטער, לא הצלחתי לשמור את ההדגשה. נסה שוב.",
         # ── Bot: /message ─────────────────────────────────────────────────────
         "msg_not_configured": "שליחת הודעות ישירות אינה מוגדרת עדיין.",
@@ -526,16 +526,16 @@ _S: dict[str, dict[str, str]] = {
         "book_choose_type": "📅 איזה סוג פגישה תרצה להזמין?",
         "book_type_intro": "🆓 היכרות והערכה חינם (30 דק׳)",
         "book_type_coaching": "💳 פגישת אימון / ייעוץ (60 דק׳)",
-        "book_choose_date": "📅 בחר תאריך ל*{type}*:",
+        "book_choose_date": "📅 בחר תאריך ל<b>{type}</b>:",
         "book_no_slots": (
-            "😕 אין תורים פנויים ב-*{date}*.\n"
+            "😕 אין תורים פנויים ב-<b>{date}</b>.\n"
             "אנא בחר תאריך אחר."
         ),
-        "book_choose_slot": "🕐 שעות פנויות ב-*{date}*:",
+        "book_choose_slot": "🕐 שעות פנויות ב-<b>{date}</b>:",
         "book_ask_email": "📧 אנא שתף את כתובת האימייל שלך לאישור ההזמנה:",
         "book_invalid_email": "כתובת האימייל אינה תקינה. נסה שוב.",
         "book_confirm_prompt": (
-            "✅ *אשר את ההזמנה:*\n\n"
+            "✅ <b>אשר את ההזמנה:</b>\n\n"
             "📋 {subject}\n"
             "📅 {date}\n"
             "🕐 {time}\n"
@@ -545,17 +545,17 @@ _S: dict[str, dict[str, str]] = {
         "book_btn_confirm": "✅ אשר",
         "book_btn_cancel": "✗ בטל",
         "book_confirmed": (
-            "🎉 *הפגישה אושרה!*\n\n"
+            "🎉 <b>הפגישה אושרה!</b>\n\n"
             "📋 {subject}\n"
             "📅 {start}\n"
-            "🔗 [הצטרף ל-Google Meet]({meet_link})\n\n"
-            "_אישור נשלח לאימייל שלך._"
+            "🔗 <a href=\"{meet_link}\">הצטרף ל-Google Meet</a>\n\n"
+            "<i>אישור נשלח לאימייל שלך.</i>"
         ),
         "book_confirmed_no_meet": (
-            "🎉 *הפגישה אושרה!*\n\n"
+            "🎉 <b>הפגישה אושרה!</b>\n\n"
             "📋 {subject}\n"
             "📅 {start}\n\n"
-            "_אישור נשלח לאימייל שלך._"
+            "<i>אישור נשלח לאימייל שלך.</i>"
         ),
         "book_failed": (
             "❌ מצטער, לא הצלחתי להשלים את ההזמנה.\n"
@@ -566,23 +566,23 @@ _S: dict[str, dict[str, str]] = {
         "mybookings_not_configured": "חיפוש הזמנות אינו זמין עדיין.",
         "mybookings_ask_email": "📧 אנא שתף את האימייל שלך לחיפוש ההזמנות:",
         "mybookings_none": "📅 אין לך הזמנות קרובות.",
-        "mybookings_header": "📅 *ההזמנות הקרובות שלך:*\n\n",
-        "mybookings_item": "• *{subject}*\n  📅 {start}\n  🔗 [קישור ל-Meet]({meet_link})\n\n",
-        "mybookings_item_no_meet": "• *{subject}*\n  📅 {start}\n\n",
+        "mybookings_header": "📅 <b>ההזמנות הקרובות שלך:</b>\n\n",
+        "mybookings_item": "• <b>{subject}</b>\n  📅 {start}\n  🔗 <a href=\"{meet_link}\">קישור ל-Meet</a>\n\n",
+        "mybookings_item_no_meet": "• <b>{subject}</b>\n  📅 {start}\n\n",
         # ── Bot: /cancelmeeting ───────────────────────────────────────────────
         "cancel_meeting_none": "📅 אין לך פגישות קרובות לביטול.",
         "cancel_meeting_choose": "איזו פגישה תרצה לבטל?",
         "cancel_meeting_ok": "✅ הפגישה בוטלה בהצלחה.",
         "cancel_meeting_failed": "❌ מצטער, לא הצלחתי לבטל את הפגישה. נסה שוב.",
         # ── Bot: /lang ────────────────────────────────────────────────────────
-        "lang_set_he": "🇮🇱 השפה הוגדרה ל*עברית*. הודעות הבוט יוצגו בעברית.",
-        "lang_set_en": "🇬🇧 Language set to *English*. Bot messages will now appear in English.",
+        "lang_set_he": "🇮🇱 השפה הוגדרה ל<b>עברית</b>. הודעות הבוט יוצגו בעברית.",
+        "lang_set_en": "🇬🇧 Language set to <b>English</b>. Bot messages will now appear in English.",
         "lang_usage": "שימוש: /lang en  או  /lang he",
         # ── Bot: /cancel ──────────────────────────────────────────────────────
         "cancelled": "הפעולה בוטלה. השתמש ב-/start או ב-/help בכל עת.",
         # ── Bot: /help ────────────────────────────────────────────────────────
         "help_text": (
-            "*ABN Co-Navigator — פקודות*\n\n"
+            "🎯 <b>ABN Co-Navigator — פקודות</b>\n\n"
             "/start — התחל או חדש פגישת אימון\n"
             "/link — קשר את הטלגרם לחשבון הרשום שלך\n"
             "/plan — מלא את התכנית השבועית (לכל תוצאת מפתח)\n"
@@ -600,7 +600,7 @@ _S: dict[str, dict[str, str]] = {
             "/help — הצג רשימה זו"
         ),
         "help_admin": (
-            "\n\n*פקודות מנהל:*\n"
+            "\n\n<b>פקודות מנהל:</b>\n"
             "/users — רשימת כל חברי התוכנית\n"
             "/report <user_id> — דוח מלא למשתמש\n"
             "/invite [name] [contact] — צור קישור הזמנה\n"
@@ -646,16 +646,16 @@ _S: dict[str, dict[str, str]] = {
         "db_day_saturday": "ש׳",
         # ── WhatsApp bot ──────────────────────────────────────────────────────
         "wa_help": (
-            "👋 *ABN Co-Navigator — פקודות WhatsApp*\n\n"
-            "• שלח *start* או *hi* — פתח פגישת אימון חדשה\n"
+            "👋 <b>ABN Co-Navigator — פקודות WhatsApp</b>\n\n"
+            "• שלח <b>start</b> או <b>hi</b> — פתח פגישת אימון חדשה\n"
             "• שלח כל הודעה       — שוחח עם הנווטן\n"
-            "• שלח *done* או *end*  — סיים פגישה וקבל סיכום\n"
-            "• שלח *cancel*         — בטל פגישה ללא שמירה\n"
-            "• שלח *help*           — הצג הודעה זו"
+            "• שלח <b>done</b> או <b>end</b>  — סיים פגישה וקבל סיכום\n"
+            "• שלח <b>cancel</b>         — בטל פגישה ללא שמירה\n"
+            "• שלח <b>help</b>           — הצג הודעה זו"
         ),
         "wa_already_session": (
             "יש לך פגישה פעילה. המשך לשוחח, "
-            "או שלח *done* לסיום ולקבלת הסיכום."
+            "או שלח <b>done</b> לסיום ולקבלת הסיכום."
         ),
         "wa_not_registered": (
             "👋 שלום! הבוט הזה מיועד למשתתפים רשומים בלבד.\n"
@@ -665,23 +665,23 @@ _S: dict[str, dict[str, str]] = {
             "ההרשמה שלך ממתינה לאישור המאמן. "
             "תקבל הודעה ברגע שהחשבון שלך יופעל."
         ),
-        "wa_no_session_end": "אין פגישה פעילה. שלח *start* להתחיל פגישת אימון.",
+        "wa_no_session_end": "אין פגישה פעילה. שלח <b>start</b> להתחיל פגישת אימון.",
         "wa_no_session_cancel": "אין פגישה פעילה לביטול.",
-        "wa_session_discarded": "הפגישה בוטלה. לא נשמר כלום. שלח *start* להתחיל מחדש.",
+        "wa_session_discarded": "הפגישה בוטלה. לא נשמר כלום. שלח <b>start</b> להתחיל מחדש.",
         "wa_no_session_chat": (
-            "אין פגישה פעילה. שלח *start* להתחיל את הצ'ק-אין השבועי שלך.\n\n"
-            "• *start* — פתח פגישה\n• *help* — הצג פקודות"
+            "אין פגישה פעילה. שלח <b>start</b> להתחיל את הצ'ק-אין השבועי שלך.\n\n"
+            "• <b>start</b> — פתח פגישה\n• <b>help</b> — הצג פקודות"
         ),
         "wa_session_saved_footer": "הפגישה נשמרה. להתראות בשבוע הבא! 🎯",
         "wa_session_end_error": "משהו השתבש בשמירת הפגישה. אנא צור קשר עם המאמן שלך.",
-        "wa_summary_title": "✅ *סיכום פגישה*\n",
-        "wa_summary_focus": "*מטרת מיקוד:* {value}",
-        "wa_summary_mood": "*מצב רוח:* {value}",
-        "wa_summary_env": "*שינויים סביבתיים:* {value}",
-        "wa_summary_krs": "\n*תוצאות מפתח:*",
-        "wa_summary_obstacles": "\n⚠ *מכשולים פתוחים:*",
-        "wa_summary_alert": "\n*התראה:* {level} — {reason}",
-        "wa_summary_coach_note": "\n*הערת מאמן:* {note}",
+        "wa_summary_title": "✅ <b>סיכום פגישה</b>\n",
+        "wa_summary_focus": "<b>מטרת מיקוד:</b> {value}",
+        "wa_summary_mood": "<b>מצב רוח:</b> {value}",
+        "wa_summary_env": "<b>שינויים סביבתיים:</b> {value}",
+        "wa_summary_krs": "\n<b>תוצאות מפתח:</b>",
+        "wa_summary_obstacles": "\n⚠ <b>מכשולים פתוחים:</b>",
+        "wa_summary_alert": "\n<b>התראה:</b> {level} — {reason}",
+        "wa_summary_coach_note": "\n<b>הערת מאמן:</b> {note}",
         # ── Register page ─────────────────────────────────────────────────────
         "reg_title": "הצטרף לתוכנית האימון",
         "reg_subtitle": "הירשם להתחיל את מסע האימון האישי שלך עם {coach}.",
@@ -765,8 +765,6 @@ def get_coach_name(lang: str = "en") -> str:
     return t(lang, "coach_name")
 
 
-# Bilingual language-selection prompt shown to new bot users before
-# their language preference is known.
 LANG_PROMPT = (
-    "🌐 *Please choose your language / בחר שפה:*"
+    "🌐 <b>Please choose your language / בחר שפה:</b>"
 )
