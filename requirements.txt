@@ -39,7 +39,7 @@ numpy
 pre-commit
 black
 isort
-gitpython==3.1.41
+gitpython==3.1.47
 auto-gpt-plugin-template
 mkdocs
 pymdown-extensions
