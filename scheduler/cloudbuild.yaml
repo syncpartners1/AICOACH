@@ -1,0 +1,40 @@
+steps:
+  # ── Step 1: Build the Docker image and tag with commit SHA + latest ──────────
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler:$COMMIT_SHA'
+      - '-t'
+      - 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler:latest'
+      - '.'
+    dir: 'scheduler'
+
+  # ── Step 2: Push all tags to Artifact Registry ───────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler']
+
+  # ── Step 3: Deploy to Cloud Run ──────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'change-navigator-scheduler'
+      - '--image=me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler:$COMMIT_SHA'
+      - '--region=me-west1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=256Mi'
+      - '--cpu=1'
+      - '--min-instances=0'
+      - '--max-instances=5'
+      - '--concurrency=100'
+      - '--timeout=30'
+      # Secrets injected at runtime via Secret Manager
+      - '--set-secrets=SCHEDULER_API_KEY=SCHEDULER_API_KEY:latest,GOOGLE_SERVICE_ACCOUNT_JSON=GOOGLE_SERVICE_ACCOUNT_JSON:latest,CALENDAR_ID=CALENDAR_ID:latest'
+      - '--set-env-vars=SCHEDULER_TIMEZONE=Asia/Jerusalem,NODE_ENV=production'
+      - '--service-account=scheduler-sa@$PROJECT_ID.iam.gserviceaccount.com'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
