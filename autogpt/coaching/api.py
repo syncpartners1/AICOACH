@@ -90,16 +90,70 @@ from autogpt.coaching.gmail_service import send_qualify_notification
 
 # ── Telegram bot lifespan ─────────────────────────────────────────────────────
 
+
+def _register_telegram_webhook(bot_token: str, public_url: str) -> None:
+    """Register the Telegram webhook with Telegram's Bot API."""
+    webhook_url = f"{public_url.rstrip('/')}/telegram/webhook"
+    resp = http_requests.post(
+        f"https://api.telegram.org/bot{bot_token}/setWebhook",
+        json={"url": webhook_url, "allowed_updates": ["message", "callback_query", "my_chat_member"]},
+        timeout=15,
+    )
+    if resp.ok and resp.json().get("ok"):
+        logger.info("Telegram webhook registered: %s", webhook_url)
+    else:
+        logger.error("Failed to register Telegram webhook: %s", resp.text)
+
+
+def _delete_telegram_webhook(bot_token: str) -> None:
+    """Remove the Telegram webhook on shutdown."""
+    try:
+        http_requests.post(
+            f"https://api.telegram.org/bot{bot_token}/deleteWebhook",
+            timeout=10,
+        )
+        logger.info("Telegram webhook deleted")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not delete Telegram webhook: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI lifespan: start Telegram in webhook or polling mode depending on config."""
     telegram_task = None
     if coaching_config.telegram_bot_token:
-        from autogpt.coaching.telegram_bot import run_polling
-        telegram_task = asyncio.create_task(
-            run_polling(coaching_config.telegram_bot_token)
-        )
-        logger.info("Telegram bot started")
+        if coaching_config.telegram_webhook_mode:
+            # ── Webhook mode (production / Cloud Run) ──────────────────────────
+            # The bot receives updates via POST /telegram/webhook.
+            # We register the webhook URL with Telegram at startup.
+            if coaching_config.public_url:
+                _register_telegram_webhook(
+                    coaching_config.telegram_bot_token,
+                    coaching_config.public_url,
+                )
+            else:
+                logger.warning(
+                    "TELEGRAM_WEBHOOK_MODE=true but PUBLIC_URL is not set — "
+                    "webhook will NOT be registered. Set PUBLIC_URL to the Cloud Run URL."
+                )
+            # Initialize the bot application so handlers are ready to dispatch
+            from autogpt.coaching.telegram_bot import get_application
+            app.state.telegram_app = await get_application(coaching_config.telegram_bot_token)
+            await app.state.telegram_app.initialize()
+            logger.info("Telegram bot ready in webhook mode")
+        else:
+            # ── Polling mode (local development) ──────────────────────────────
+            from autogpt.coaching.telegram_bot import run_polling
+            telegram_task = asyncio.create_task(
+                run_polling(coaching_config.telegram_bot_token)
+            )
+            logger.info("Telegram bot started in polling mode")
     yield
+    # ── Shutdown ──────────────────────────────────────────────────────────────
+    if coaching_config.telegram_bot_token and coaching_config.telegram_webhook_mode:
+        if hasattr(app.state, "telegram_app"):
+            await app.state.telegram_app.shutdown()
+        _delete_telegram_webhook(coaching_config.telegram_bot_token)
     if telegram_task:
         telegram_task.cancel()
         try:
@@ -109,9 +163,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ABN Consulting AI Co-Navigator",
-    description="Executive change management coaching API",
-    version="2.1.0",
+    title="Change Navigator",
+    description="Executive change management coaching API — powered by Claude AI",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -1866,7 +1920,39 @@ def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
 
 @app.get("/health", summary="Health check")
 def health() -> dict:
-    return {"status": "ok", "service": "ABN Co-Navigator API", "version": "2.1.0", "features": ["demo", "telegram"]}
+    return {
+        "status": "ok",
+        "service": "Change Navigator API",
+        "version": "3.0.0",
+        "features": ["coaching", "telegram", "web"],
+        "telegram_mode": "webhook" if coaching_config.telegram_webhook_mode else "polling",
+    }
+
+
+@app.post("/telegram/webhook", include_in_schema=False)
+async def telegram_webhook(request: Request) -> dict:
+    """Receive Telegram Bot API updates (webhook mode — used on Cloud Run).
+
+    Telegram sends a JSON Update object to this endpoint for every user
+    interaction. The update is dispatched to the bot application's registered
+    handlers exactly as it would be in polling mode.
+    """
+    if not coaching_config.telegram_bot_token:
+        raise HTTPException(status_code=503, detail="Telegram bot not configured")
+    if not coaching_config.telegram_webhook_mode:
+        raise HTTPException(status_code=404, detail="Webhook mode is disabled")
+    telegram_app = getattr(request.app.state, "telegram_app", None)
+    if telegram_app is None:
+        raise HTTPException(status_code=503, detail="Telegram application not initialized")
+    try:
+        from telegram import Update
+        body = await request.json()
+        update = Update.de_json(body, telegram_app.bot)
+        await telegram_app.process_update(update)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Error processing Telegram webhook update: %s", exc)
+        # Return 200 to prevent Telegram from retrying indefinitely
+    return {"ok": True}
 
 
 

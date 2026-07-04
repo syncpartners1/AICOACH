@@ -1,0 +1,95 @@
+steps:
+  # ─── Build main app ──────────────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-main-app'
+    args:
+      - 'build'
+      - '-t'
+      - 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/main-app:$COMMIT_SHA'
+      - '-t'
+      - 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/main-app:latest'
+      - '-f'
+      - 'Dockerfile'
+      - '.'
+
+  # ─── Push main app image ─────────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-main-app'
+    waitFor: ['build-main-app']
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/main-app'
+
+  # ─── Build scheduler ─────────────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-scheduler'
+    args:
+      - 'build'
+      - '-t'
+      - 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler:$COMMIT_SHA'
+      - '-t'
+      - 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler:latest'
+      - './scheduler'
+
+  # ─── Push scheduler image ────────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-scheduler'
+    waitFor: ['build-scheduler']
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler'
+
+  # ─── Deploy scheduler to Cloud Run ───────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-scheduler'
+    waitFor: ['push-scheduler']
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'change-navigator-scheduler'
+      - '--image=me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler:$COMMIT_SHA'
+      - '--region=me-west1'
+      - '--platform=managed'
+      - '--no-allow-unauthenticated'
+      - '--memory=256Mi'
+      - '--cpu=1'
+      - '--min-instances=0'
+      - '--max-instances=5'
+      - '--concurrency=100'
+      - '--timeout=30'
+      - '--service-account=scheduler-sa@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-secrets=SCHEDULER_API_KEY=SCHEDULER_API_KEY:latest,GOOGLE_SERVICE_ACCOUNT_JSON=GOOGLE_SERVICE_ACCOUNT_JSON:latest,CALENDAR_ID=CALENDAR_ID:latest'
+      - '--set-env-vars=SCHEDULER_TIMEZONE=Asia/Jerusalem,WORKING_HOURS_START=09:00,WORKING_HOURS_END=18:00,NODE_ENV=production'
+
+  # ─── Deploy main app to Cloud Run ────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-main-app'
+    waitFor: ['push-main-app', 'deploy-scheduler']
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'change-navigator'
+      - '--image=me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/main-app:$COMMIT_SHA'
+      - '--region=me-west1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--min-instances=0'
+      - '--max-instances=10'
+      - '--concurrency=80'
+      - '--timeout=300'
+      - '--service-account=main-app-sa@$PROJECT_ID.iam.gserviceaccount.com'
+      - >-
+        --set-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,COACHING_API_KEY=COACHING_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_KEY=SUPABASE_SERVICE_KEY:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,TELEGRAM_BOT_USERNAME=TELEGRAM_BOT_USERNAME:latest,ADMIN_TELEGRAM_ID=ADMIN_TELEGRAM_ID:latest,WHATSAPP_ACCESS_TOKEN=WHATSAPP_ACCESS_TOKEN:latest,WHATSAPP_PHONE_NUMBER_ID=WHATSAPP_PHONE_NUMBER_ID:latest,WHATSAPP_BUSINESS_ACCOUNT_ID=WHATSAPP_BUSINESS_ACCOUNT_ID:latest,WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest,WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,GOOGLE_REDIRECT_URI=GOOGLE_REDIRECT_URI:latest,FACEBOOK_APP_ID=FACEBOOK_APP_ID:latest,FACEBOOK_APP_SECRET=FACEBOOK_APP_SECRET:latest,ADMIN_FACEBOOK_ID=ADMIN_FACEBOOK_ID:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,ADMIN_USER_ID=ADMIN_USER_ID:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_WHATSAPP_PHONE=ADMIN_WHATSAPP_PHONE:latest,SCHEDULER_URL=SCHEDULER_URL:latest,SCHEDULER_API_KEY=SCHEDULER_API_KEY:latest,EMAILJS_SERVICE_ID=EMAILJS_SERVICE_ID:latest,EMAILJS_TEMPLATE_INVITE=EMAILJS_TEMPLATE_INVITE:latest,EMAILJS_TEMPLATE_WELCOME=EMAILJS_TEMPLATE_WELCOME:latest,EMAILJS_PUBLIC_KEY=EMAILJS_PUBLIC_KEY:latest,EMAILJS_PRIVATE_KEY=EMAILJS_PRIVATE_KEY:latest,COACHING_DEMO_KEY=COACHING_DEMO_KEY:latest,PUBLIC_URL=PUBLIC_URL:latest
+      - '--set-env-vars=TELEGRAM_WEBHOOK_MODE=true,COACHING_LLM_MODEL=claude-haiku-4-5-20251001,COACHING_LLM_TEMPERATURE=0.7,SCHEDULER_TIMEZONE=Asia/Jerusalem,GCP_PROJECT_ID=$PROJECT_ID'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '1200s'

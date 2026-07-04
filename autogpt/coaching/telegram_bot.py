@@ -1560,3 +1560,14 @@ async def run_polling(token: str) -> None:
             except Exception:
                 pass
     logger.info("Telegram bot stopped")
+
+
+async def get_application(token: str) -> Application:
+    """Build and return the configured Telegram Application for webhook mode.
+
+    The returned application is initialized by the FastAPI lifespan and used to
+    dispatch Update objects received via the POST /telegram/webhook endpoint.
+    Unlike polling mode, no updater/polling loop is started.
+    """
+    app = _build_app(token)
+    return app

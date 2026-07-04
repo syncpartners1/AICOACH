@@ -1,0 +1,178 @@
+name: Deploy to GCP Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+env:
+  PROJECT_ID: change-navigator-abn
+  REGION: me-west1
+  REGISTRY: me-west1-docker.pkg.dev/change-navigator-abn/change-navigator-docker
+  MAIN_SERVICE: change-navigator
+  SCHEDULER_SERVICE: change-navigator-scheduler
+  MAIN_SA: main-app-sa@change-navigator-abn.iam.gserviceaccount.com
+
+permissions:
+  contents: read
+  id-token: write  # Required for Workload Identity Federation
+
+jobs:
+  # ─── Build and push both images in parallel ─────────────────────────────────
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: ${{ env.MAIN_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Set image tag
+        id: meta
+        run: echo "sha=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
+      - name: Build main app image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/main-app:${{ steps.meta.outputs.sha }} \
+            -t ${{ env.REGISTRY }}/main-app:latest \
+            -f Dockerfile .
+
+      - name: Build scheduler image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/scheduler:${{ steps.meta.outputs.sha }} \
+            -t ${{ env.REGISTRY }}/scheduler:latest \
+            ./scheduler
+
+      - name: Push all images
+        run: |
+          docker push --all-tags ${{ env.REGISTRY }}/main-app
+          docker push --all-tags ${{ env.REGISTRY }}/scheduler
+
+  # ─── Deploy scheduler first ─────────────────────────────────────────────────
+  deploy-scheduler:
+    name: Deploy Scheduler
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: ${{ env.MAIN_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy scheduler to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SCHEDULER_SERVICE }} \
+            --image=${{ env.REGISTRY }}/scheduler:${{ needs.build-and-push.outputs.image-tag }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --no-allow-unauthenticated \
+            --memory=256Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=5 \
+            --concurrency=100 \
+            --timeout=30 \
+            --service-account=scheduler-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-secrets="SCHEDULER_API_KEY=SCHEDULER_API_KEY:latest,GOOGLE_SERVICE_ACCOUNT_JSON=GOOGLE_SERVICE_ACCOUNT_JSON:latest,CALENDAR_ID=CALENDAR_ID:latest" \
+            --set-env-vars="SCHEDULER_TIMEZONE=Asia/Jerusalem,WORKING_HOURS_START=09:00,WORKING_HOURS_END=18:00,NODE_ENV=production" \
+            --project=${{ env.PROJECT_ID }}
+
+  # ─── Deploy main app after scheduler ────────────────────────────────────────
+  deploy-main-app:
+    name: Deploy Main App
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-scheduler]
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: ${{ env.MAIN_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy main app to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.MAIN_SERVICE }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGISTRY }}/main-app:${{ needs.build-and-push.outputs.image-tag }}
+          flags: |
+            --memory=512Mi
+            --cpu=1
+            --min-instances=0
+            --max-instances=10
+            --concurrency=80
+            --timeout=300
+            --allow-unauthenticated
+            --service-account=main-app-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+          secrets: |
+            ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+            COACHING_API_KEY=COACHING_API_KEY:latest
+            SUPABASE_URL=SUPABASE_URL:latest
+            SUPABASE_SERVICE_KEY=SUPABASE_SERVICE_KEY:latest
+            TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest
+            TELEGRAM_BOT_USERNAME=TELEGRAM_BOT_USERNAME:latest
+            ADMIN_TELEGRAM_ID=ADMIN_TELEGRAM_ID:latest
+            WHATSAPP_ACCESS_TOKEN=WHATSAPP_ACCESS_TOKEN:latest
+            WHATSAPP_PHONE_NUMBER_ID=WHATSAPP_PHONE_NUMBER_ID:latest
+            WHATSAPP_BUSINESS_ACCOUNT_ID=WHATSAPP_BUSINESS_ACCOUNT_ID:latest
+            WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest
+            WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest
+            GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest
+            GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest
+            GOOGLE_REDIRECT_URI=GOOGLE_REDIRECT_URI:latest
+            FACEBOOK_APP_ID=FACEBOOK_APP_ID:latest
+            FACEBOOK_APP_SECRET=FACEBOOK_APP_SECRET:latest
+            ADMIN_FACEBOOK_ID=ADMIN_FACEBOOK_ID:latest
+            ADMIN_PASSWORD=ADMIN_PASSWORD:latest
+            ADMIN_USER_ID=ADMIN_USER_ID:latest
+            ADMIN_USERNAME=ADMIN_USERNAME:latest
+            ADMIN_WHATSAPP_PHONE=ADMIN_WHATSAPP_PHONE:latest
+            SCHEDULER_URL=SCHEDULER_URL:latest
+            SCHEDULER_API_KEY=SCHEDULER_API_KEY:latest
+            EMAILJS_SERVICE_ID=EMAILJS_SERVICE_ID:latest
+            EMAILJS_TEMPLATE_INVITE=EMAILJS_TEMPLATE_INVITE:latest
+            EMAILJS_TEMPLATE_WELCOME=EMAILJS_TEMPLATE_WELCOME:latest
+            EMAILJS_PUBLIC_KEY=EMAILJS_PUBLIC_KEY:latest
+            EMAILJS_PRIVATE_KEY=EMAILJS_PRIVATE_KEY:latest
+            COACHING_DEMO_KEY=COACHING_DEMO_KEY:latest
+            PUBLIC_URL=PUBLIC_URL:latest
+          env_vars: |
+            TELEGRAM_WEBHOOK_MODE=true
+            COACHING_LLM_MODEL=claude-haiku-4-5-20251001
+            COACHING_LLM_TEMPERATURE=0.7
+            SCHEDULER_TIMEZONE=Asia/Jerusalem
+            GCP_PROJECT_ID=${{ env.PROJECT_ID }}
+
+      - name: Print deployment URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.MAIN_SERVICE }} \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --format="value(status.url)")
+          echo "✅ Main app deployed to: $URL"
+          echo "APP_URL=$URL" >> $GITHUB_STEP_SUMMARY

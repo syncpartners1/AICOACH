@@ -50,12 +50,19 @@ class CoachingConfig(metaclass=Singleton):
         self.admin_password: str = os.getenv("ADMIN_PASSWORD", "")
         # Demo page — separate key so the main API key isn't exposed in the browser
         self.demo_key: str = os.getenv("COACHING_DEMO_KEY", "")
-        # Public URL of this service (used to build the demo page's API_BASE).
-        # RAILWAY_PUBLIC_DOMAIN is the bare domain, e.g. cnbot.up.railway.app
+        # Public URL of this service (used to build webhook URLs, the demo page's API_BASE, etc.)
+        # On GCP Cloud Run, set PUBLIC_URL to the Cloud Run service URL.
+        # On Railway, RAILWAY_PUBLIC_DOMAIN is auto-injected as a bare domain.
         _domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
         if _domain and not _domain.startswith("http"):
             _domain = f"https://{_domain}"
-        self.public_url: str = _domain or os.getenv("PUBLIC_URL", "")
+        self.public_url: str = os.getenv("PUBLIC_URL", "") or _domain
+        # GCP deployment settings
+        self.gcp_project_id: str = os.getenv("GCP_PROJECT_ID", "")
+        # Telegram bot mode: webhook (True, recommended for Cloud Run) or polling (False, for local dev)
+        self.telegram_webhook_mode: bool = (
+            os.getenv("TELEGRAM_WEBHOOK_MODE", "true").lower() == "true"
+        )
         # Scheduler (calendar booking service)
         self.scheduler_url: str = os.getenv("SCHEDULER_URL", "https://abn-sch.up.railway.app")
         self.scheduler_api_key: str = os.getenv("SCHEDULER_API_KEY", "")
