@@ -2200,7 +2200,7 @@ def chat_page(request: Request) -> Response:
 <h2>Your account is {user.account_status.value}.</h2>
 <p>Please contact your coach to reactivate.</p></body></html>""")
     coach = coaching_config.coach_name
-    scheduler_url = coaching_config.scheduler_url
+    scheduler_url = coaching_config.scheduler_url.strip() if coaching_config.scheduler_url else ""
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2349,6 +2349,11 @@ function toggleLang() {{
 function addMsg(text, who) {{
   const d = document.createElement('div');
   d.className = 'msg msg-' + who;
+  if (who === 'bot') {{
+    text = text.replace(/\[SESSION_SUMMARY_JSON\][\s\S]*?\[\/SESSION_SUMMARY_JSON\]/g, '')
+               .replace(/\[OKR_CHANGES_JSON\][\s\S]*?\[\/OKR_CHANGES_JSON\]/g, '')
+               .trim();
+  }}
   if (who === 'bot' && window.marked) {{
     d.innerHTML = marked.parse(text, {{ breaks: true, gfm: true }});
   }} else {{
