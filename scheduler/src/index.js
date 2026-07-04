@@ -83,10 +83,24 @@ app.get('/api/slots', requireApiKey, async (req, res, next) => {
   try {
     const { date, tz, duration = '60' } = req.query;
 
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({
         ok: false,
         error: 'Query param "date" is required and must be in YYYY-MM-DD format.',
+      });
+    }
+
+    if (tz !== undefined && typeof tz !== 'string') {
+      return res.status(400).json({
+        ok: false,
+        error: 'Query param "tz" must be a valid IANA timezone string.',
+      });
+    }
+
+    if (typeof duration !== 'string') {
+      return res.status(400).json({
+        ok: false,
+        error: 'Query param "duration" must be a positive integer (minutes).',
       });
     }
 
