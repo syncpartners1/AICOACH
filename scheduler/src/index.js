@@ -86,7 +86,21 @@ app.get('/api/slots', requireApiKey, async (req, res, next) => {
     if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({
         ok: false,
-        error: 'Query param "date" is required and must be in YYYY-MM-DD format.',
+        error: 'Query param "date" is required and must be a string in YYYY-MM-DD format.',
+      });
+    }
+
+    if (tz !== undefined && typeof tz !== 'string') {
+      return res.status(400).json({
+        ok: false,
+        error: 'Query param "tz" must be a string when provided.',
+      });
+    }
+
+    if (typeof duration !== 'string') {
+      return res.status(400).json({
+        ok: false,
+        error: 'Query param "duration" must be a positive integer (minutes).',
       });
     }
 
