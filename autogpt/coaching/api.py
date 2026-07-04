@@ -2349,6 +2349,11 @@ function toggleLang() {{
 function addMsg(text, who) {{
   const d = document.createElement('div');
   d.className = 'msg msg-' + who;
+  if (who === 'bot') {{
+    text = text.replace(/\[SESSION_SUMMARY_JSON\][\s\S]*?\[\/SESSION_SUMMARY_JSON\]/g, '')
+               .replace(/\[OKR_CHANGES_JSON\][\s\S]*?\[\/OKR_CHANGES_JSON\]/g, '')
+               .trim();
+  }}
   if (who === 'bot' && window.marked) {{
     d.innerHTML = marked.parse(text, {{ breaks: true, gfm: true }});
   }} else {{
