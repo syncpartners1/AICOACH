@@ -168,7 +168,6 @@ def render_dashboard(
             # Editable notes textarea + save button
             escaped_notes = s.coach_notes.replace('"', '&quot;').replace('\n', '&#10;')
             notes_html = f"""
-                notes_html = f"""
 <div style="margin-top:8px">
   <textarea id="notes_{s.session_id}"
     style="width:100%;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
