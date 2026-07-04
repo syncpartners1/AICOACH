@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from autogpt.coaching.auth import hash_password, verify_password
 from autogpt.coaching.config import coaching_config
@@ -374,8 +377,7 @@ def apply_okr_changes(user_id: str, changes: List[Dict[str, Any]]) -> None:
             elif action == "reactivate_kr":
                 set_kr_status(change["kr_id"], OKRStatus.ACTIVE)
         except Exception:
-            # Skip invalid changes rather than failing the whole session
-            pass
+            logger.exception("apply_okr_changes: failed action=%s change=%s for user=%s", action, change, user_id)
 
 
 # ── History ───────────────────────────────────────────────────────────────────
@@ -385,7 +387,7 @@ def get_past_sessions(user_id: str, limit: int = 5) -> List[PastSession]:
     db = _get_client()
     rows = (
         db.table("coaching_sessions")
-        .select("session_id,timestamp,alert_level,summary_for_coach")
+        .select("session_id,timestamp,alert_level,summary_for_coach,coach_notes,is_manual")
         .eq("user_id", user_id)
         .order("timestamp", desc=True)
         .limit(limit)
@@ -397,10 +399,46 @@ def get_past_sessions(user_id: str, limit: int = 5) -> List[PastSession]:
             session_id=r["session_id"],
             timestamp=r["timestamp"],
             alert_level=r["alert_level"],
-            summary_for_coach=r["summary_for_coach"],
+            summary_for_coach=r.get("summary_for_coach") or "",
+            coach_notes=r.get("coach_notes") or "",
+            is_manual=r.get("is_manual") or False,
         )
         for r in rows
     ]
+
+
+def update_session_notes(session_id: str, coach_notes: str) -> None:
+    """Update or add coach notes to an existing session record."""
+    db = _get_client()
+    db.table("coaching_sessions").update({"coach_notes": coach_notes}).eq("session_id", session_id).execute()
+
+
+def create_manual_session(
+    user_id: str,
+    session_date: str,
+    coach_notes: str = "",
+    summary_for_coach: str = "",
+) -> str:
+    """Create a manual coaching session record (in-person / video call) without a bot conversation."""
+    db = _get_client()
+    session_id = str(uuid.uuid4())
+    client_id = f"admin_manual_{user_id}"
+    _ensure_client_exists(db, client_id, "Admin Manual")
+    db.table("coaching_sessions").insert({
+        "session_id": session_id,
+        "user_id": user_id,
+        "client_id": client_id,
+        "timestamp": f"{session_date}T12:00:00",
+        "is_manual": True,
+        "coach_notes": coach_notes,
+        "summary_for_coach": summary_for_coach,
+        "alert_level": "green",
+        "alert_reason": "",
+        "focus_goal": "",
+        "mood_indicator": "",
+        "environmental_changes": "",
+    }).execute()
+    return session_id
 
 
 # ── Session save / load ───────────────────────────────────────────────────────
@@ -968,36 +1006,56 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
 def save_telegram_session(telegram_user_id: int, session) -> None:
     """Persist an active CoachingSession to Supabase so it survives restarts."""
     db = _get_client()
-    db.table("telegram_sessions").upsert({
-        "telegram_user_id": telegram_user_id,
-        "session_id": session.session_id,
-        "client_id": session.client_id,
-        "client_name": session.client_name,
-        "user_id": session.user_id,
-        "lang": session.lang,
-        "system_prompt": session._system_prompt,
-        "message_history": session.full_message_history,
-        "updated_at": datetime.utcnow().isoformat(),
-    }, on_conflict="telegram_user_id").execute()
+    try:
+        db.table("telegram_sessions").upsert({
+            "telegram_user_id": telegram_user_id,
+            "session_id": session.session_id,
+            "client_id": session.client_id,
+            "client_name": session.client_name,
+            "user_id": session.user_id,
+            "lang": session.lang,
+            "system_prompt": session._system_prompt,
+            "message_history": session.full_message_history,
+            "updated_at": datetime.utcnow().isoformat(),
+        }, on_conflict="telegram_user_id").execute()
+    except Exception as e:
+        # Gracefully handle missing table (PGRST205) or other DB hiccups
+        if "PGRST205" in str(e):
+            logger.warning("Active session persistence skipped: 'telegram_sessions' table missing.")
+        else:
+            logger.exception("Failed to persist telegram session for user %s", telegram_user_id)
 
 
 def load_telegram_session(telegram_user_id: int):
     """Load a persisted CoachingSession from Supabase, or return None if not found."""
     db = _get_client()
-    result = db.table("telegram_sessions").select("*").eq(
-        "telegram_user_id", telegram_user_id
-    ).execute()
-    if not result.data:
+    try:
+        result = db.table("telegram_sessions").select("*").eq(
+            "telegram_user_id", telegram_user_id
+        ).execute()
+        if not result.data:
+            return None
+        return result.data[0]
+    except Exception as e:
+        if "PGRST205" in str(e):
+            logger.warning("Active session restore skipped: 'telegram_sessions' table missing.")
+        else:
+            logger.exception("Failed to restore telegram session for user %s", telegram_user_id)
         return None
-    return result.data[0]
 
 
 def delete_telegram_session(telegram_user_id: int) -> None:
     """Remove a persisted session when it is finished or cancelled."""
     db = _get_client()
-    db.table("telegram_sessions").delete().eq(
-        "telegram_user_id", telegram_user_id
-    ).execute()
+    try:
+        db.table("telegram_sessions").delete().eq(
+            "telegram_user_id", telegram_user_id
+        ).execute()
+    except Exception as e:
+        if "PGRST205" in str(e):
+            pass # Table missing, nothing to delete
+        else:
+            logger.exception("Failed to delete telegram session for user %s", telegram_user_id)
 
 
 def get_latest_session_per_client() -> List[SessionSummary]:
@@ -1022,10 +1080,10 @@ def get_latest_session_per_client() -> List[SessionSummary]:
 
 def _navigation_status(avg_pct: float) -> NavigationStatus:
     if avg_pct >= 70:
-        return NavigationStatus.CLEAR
+        return NavigationStatus.STABLE
     if avg_pct >= 40:
-        return NavigationStatus.CHOPPY
-    return NavigationStatus.STORMY
+        return NavigationStatus.AT_RISK
+    return NavigationStatus.CRITICAL
 
 
 def get_client_statuses() -> List[ClientStatus]:
@@ -1093,3 +1151,65 @@ def get_latest_global_learning() -> Optional[dict]:
     if rows:
         return rows[0].get("insights")
     return None
+
+
+# ── Sales funnel leads ────────────────────────────────────────────────────────
+
+def upsert_funnel_lead(telegram_user_id: int, username: str = "") -> None:
+    """Create or refresh a funnel lead row (idempotent on re-entry)."""
+    db = _get_client()
+    db.table("funnel_leads").upsert(
+        {
+            "telegram_user_id": telegram_user_id,
+            "username": username,
+            "created_at": datetime.utcnow().isoformat(),
+        },
+        on_conflict="telegram_user_id",
+    ).execute()
+
+
+def update_funnel_answer(telegram_user_id: int, question: int, answer: str) -> None:
+    """Save a micro-assessment answer (question=1, 2, or 3)."""
+    db = _get_client()
+    db.table("funnel_leads").update({f"q{question}_answer": answer}).eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
+
+
+def mark_funnel_clicked(telegram_user_id: int) -> None:
+    """Record that this lead clicked the website link."""
+    db = _get_client()
+    db.table("funnel_leads").update({"link_clicked": True}).eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
+
+
+def get_unreminded_leads(cutoff_hours: int = 24) -> list:
+    """Return leads older than cutoff_hours who haven't clicked and haven't been reminded."""
+    db = _get_client()
+    cutoff = (datetime.utcnow() - timedelta(hours=cutoff_hours)).isoformat()
+    return (
+        db.table("funnel_leads")
+        .select("telegram_user_id,username")
+        .eq("link_clicked", False)
+        .eq("reminder_sent", False)
+        .lt("created_at", cutoff)
+        .execute()
+        .data or []
+    )
+
+
+def mark_funnel_reminded(telegram_user_id: int) -> None:
+    """Mark that the 24-hour follow-up reminder has been sent."""
+    db = _get_client()
+    db.table("funnel_leads").update({"reminder_sent": True}).eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()
+
+
+def mark_funnel_applied(telegram_user_id: int) -> None:
+    """Record that this lead submitted a coaching program application."""
+    db = _get_client()
+    db.table("funnel_leads").update({"applied": True}).eq(
+        "telegram_user_id", telegram_user_id
+    ).execute()

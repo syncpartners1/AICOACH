@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir \
     "urllib3>=2.0.0" \
     "charset-normalizer>=3.0.0" \
     "python-telegram-bot>=20.0" \
+    "APScheduler>=3.10.0" \
     "slowapi>=0.1.5"
 
 # Copy only what the coaching API needs

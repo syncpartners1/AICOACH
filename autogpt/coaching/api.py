@@ -85,8 +85,16 @@ from autogpt.coaching.storage import (
     upsert_objective,
     use_invite,
 )
-from autogpt.coaching.wix_qualify import WixFormPayload, compute_score, create_clickup_task, SCHEDULER_URL
-from autogpt.coaching.gmail_service import send_qualify_notification
+from autogpt.coaching.wix_qualify      import CoachingQualPayload, handle_coaching_qualify
+from autogpt.coaching.wix_consult_form import WixConsultFormPayload, handle_wix_consult_form
+from autogpt.coaching.bot_qualification import (
+    is_in_qualification,
+    start_qualification,
+    update_qualification,
+    should_start_qualification,
+)
+from autogpt.coaching.gmail_service import send_qualify_notification, send_consult_notification, send_lead_response, send_consult_lead_response
+from autogpt.coaching.wix_consult import ConsultPayload, create_consult_clickup_task
 
 # ── Telegram bot lifespan ─────────────────────────────────────────────────────
 
@@ -143,11 +151,16 @@ async def lifespan(app: FastAPI):
             logger.info("Telegram bot ready in webhook mode")
         else:
             # ── Polling mode (local development) ──────────────────────────────
-            from autogpt.coaching.telegram_bot import run_polling
-            telegram_task = asyncio.create_task(
-                run_polling(coaching_config.telegram_bot_token)
-            )
-            logger.info("Telegram bot started in polling mode")
+            async def _delayed_start():
+                await asyncio.sleep(10)
+                from autogpt.coaching.telegram_bot import run_polling
+                await run_polling(coaching_config.telegram_bot_token)
+
+            telegram_task = asyncio.create_task(_delayed_start())
+            logger.warning("🚀 Telegram bot startup scheduled (10s delay to avoid deployment conflict)")
+    else:
+        logger.warning("TELEGRAM_BOT_TOKEN is missing. Telegram bot will NOT be initialized.")
+
     yield
     # ── Shutdown ──────────────────────────────────────────────────────────────
     if coaching_config.telegram_bot_token and coaching_config.telegram_webhook_mode:
@@ -372,6 +385,13 @@ def google_oauth_start(
     return RedirectResponse(url=google_auth_url, status_code=302)
 
 
+def _oauth_error_redirect(redirect_to: str, code: str) -> RedirectResponse:
+    """For web-flow (local path), redirect errors to /login?error=code; for Wix append to redirect_to."""
+    if redirect_to.startswith("/"):
+        return RedirectResponse(url=f"/login?error={code}", status_code=302)
+    return RedirectResponse(url=f"{redirect_to}?error={code}", status_code=302)
+
+
 @app.get(
     "/auth/google/callback",
     summary="Google OAuth callback — exchanges code, creates/finds user, redirects to Wix",
@@ -394,7 +414,8 @@ def google_oauth_callback(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state parameter.")
 
     if error:
-        return RedirectResponse(url=f"{redirect_to}?error={error}", status_code=302)
+        logger.warning("Google OAuth returned error=%s (redirect_to=%s)", error, redirect_to)
+        return _oauth_error_redirect(redirect_to, error)
 
     # Exchange authorization code for tokens
     token_resp = http_requests.post(
@@ -409,7 +430,12 @@ def google_oauth_callback(
         timeout=10,
     )
     if token_resp.status_code != 200:
-        return RedirectResponse(url=f"{redirect_to}?error=token_exchange_failed", status_code=302)
+        logger.error(
+            "Google token exchange failed: HTTP %s — %s",
+            token_resp.status_code,
+            token_resp.text[:400],
+        )
+        return _oauth_error_redirect(redirect_to, "token_exchange_failed")
 
     access_token = token_resp.json().get("access_token")
 
@@ -420,7 +446,12 @@ def google_oauth_callback(
         timeout=10,
     )
     if userinfo_resp.status_code != 200:
-        return RedirectResponse(url=f"{redirect_to}?error=userinfo_failed", status_code=302)
+        logger.error(
+            "Google userinfo fetch failed: HTTP %s — %s",
+            userinfo_resp.status_code,
+            userinfo_resp.text[:200],
+        )
+        return _oauth_error_redirect(redirect_to, "userinfo_failed")
 
     userinfo = userinfo_resp.json()
     google_id = userinfo.get("sub")
@@ -428,20 +459,25 @@ def google_oauth_callback(
     email = userinfo.get("email", "")
 
     if not google_id or not email:
-        return RedirectResponse(url=f"{redirect_to}?error=incomplete_profile", status_code=302)
+        logger.error("Google userinfo missing sub/email: %s", userinfo)
+        return _oauth_error_redirect(redirect_to, "incomplete_profile")
 
     # Check whether this Google identity already has a phone number on file
-    from autogpt.coaching.storage import _get_client as _supa
-    db = _supa()
     is_web_flow = redirect_to.startswith("/")  # local path = web login, http = Wix
-    existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
-        "google_id", google_id
-    ).execute().data
-    if not existing:
-        # Also try by email
+    try:
+        from autogpt.coaching.storage import _get_client as _supa
+        db = _supa()
         existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
-            "email", email
+            "google_id", google_id
         ).execute().data
+        if not existing:
+            # Also try by email
+            existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
+                "email", email
+            ).execute().data
+    except Exception as db_exc:
+        logger.error("OAuth callback: DB lookup failed for google_id=%s: %s", google_id, db_exc)
+        return _oauth_error_redirect(redirect_to, "server_error")
 
     if existing and existing[0].get("phone_number"):
         # Phone already on file — complete sign-in without extra step
@@ -454,6 +490,9 @@ def google_oauth_callback(
             user = _UP(user_id=row["user_id"], name=row["name"],
                        phone_number=row["phone_number"],
                        account_status=AccountStatus(row.get("account_status", "active")))
+        except Exception as auth_exc:
+            logger.error("OAuth callback: google_auth failed: %s", auth_exc)
+            return _oauth_error_redirect(redirect_to, "server_error")
         if is_web_flow:
             acct = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
             dest = "/pending" if acct == "pending" else f"/dashboard/{user.user_id}"
@@ -594,6 +633,34 @@ def google_oauth_config(_: str = Depends(verify_api_key)) -> dict:
             "Google Cloud Console → APIs & Services → Credentials → "
             "your OAuth 2.0 Client ID → Authorized redirect URIs."
         ),
+    }
+
+
+@app.get("/auth/google/debug", include_in_schema=False)
+def google_oauth_debug(key: Optional[str] = Query(default=None)) -> dict:
+    """Diagnostic: returns exact OAuth params sent to Google. Pass API key as ?key=YOUR_KEY"""
+    configured = coaching_config.api_key
+    if not configured or key != configured:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid key.")
+    client_id = coaching_config.google_client_id
+    redirect_uri = coaching_config.google_redirect_uri
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "state": "DEBUG",
+        "prompt": "select_account",
+    }
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+    return {
+        "client_id": client_id or "(not set)",
+        "client_id_length": len(client_id),
+        "redirect_uri": redirect_uri or "(not set)",
+        "redirect_uri_length": len(redirect_uri),
+        "client_secret_set": bool(coaching_config.google_client_secret),
+        "full_auth_url": auth_url,
     }
 
 
@@ -807,19 +874,23 @@ def user_dashboard(
     api_key: Optional[str] = Query(default=None, alias="api_key"),
 ) -> HTMLResponse:
     """Personal progress dashboard for a coaching program user."""
-    # Accept: user session cookie, API key in query param, or API key in header
-    cookie_uid = _get_user_id_from_cookie(request)
-    if cookie_uid:
-        # Cookie auth: user can only view their own dashboard
-        if cookie_uid != user_id:
-            return RedirectResponse(url=f"/dashboard/{cookie_uid}", status_code=302)
-    elif api_key:
-        if coaching_config.api_key and api_key != coaching_config.api_key:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
+    # Accept: admin session cookie, user session cookie, API key in query param, or API key in header
+    is_admin_view = False
+    if _is_admin_authenticated(request):
+        is_admin_view = True  # admin can view any user's dashboard
     else:
-        header_key = request.headers.get("X-API-Key", "")
-        if not coaching_config.api_key or header_key != coaching_config.api_key:
-            return RedirectResponse(url=f"/login?next=/dashboard/{user_id}", status_code=302)
+        cookie_uid = _get_user_id_from_cookie(request)
+        if cookie_uid:
+            # Cookie auth: user can only view their own dashboard
+            if cookie_uid != user_id:
+                return RedirectResponse(url=f"/dashboard/{cookie_uid}", status_code=302)
+        elif api_key:
+            if coaching_config.api_key and api_key != coaching_config.api_key:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
+        else:
+            header_key = request.headers.get("X-API-Key", "")
+            if not coaching_config.api_key or header_key != coaching_config.api_key:
+                return RedirectResponse(url=f"/login?next=/dashboard/{user_id}", status_code=302)
 
     from datetime import date as _date
     from autogpt.coaching.dashboard_ui import render_dashboard
@@ -842,6 +913,7 @@ def user_dashboard(
         week_start=parsed_week,
         week_end=_week_end(parsed_week),
         language=user.language,
+        is_admin_view=is_admin_view,
     )
     return HTMLResponse(content=html)
 
@@ -1084,7 +1156,11 @@ def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLRe
 
     from autogpt.coaching.admin_ui import render_admin
 
-    all_users = get_all_users_progress()
+    try:
+        all_users = get_all_users_progress()
+    except Exception as exc:
+        logger.error("Admin dashboard: get_all_users_progress failed: %s", exc)
+        all_users = []
     pending_users = [u for u in all_users if u.account_status == AccountStatus.PENDING]
     users = [u for u in all_users if u.account_status != AccountStatus.PENDING]
     try:
@@ -1427,6 +1503,45 @@ def admin_approve_user(user_id: str, request: Request,
     return {"user_id": user_id, "account_status": "active"}
 
 
+# ── Admin: session notes & manual session records ────────────────────────────
+
+class _SessionNotesBody(BaseModel):
+    coach_notes: str
+
+
+class _ManualSessionBody(BaseModel):
+    session_date: str  # ISO date string e.g. "2026-04-05"
+    coach_notes: str = ""
+    summary_for_coach: str = ""
+
+
+@app.put("/admin/sessions/{session_id}/notes", summary="Admin: add/update coach notes on a session")
+def admin_update_session_notes(
+    session_id: str,
+    body: _SessionNotesBody,
+    _: None = Depends(verify_admin_or_api_key),
+) -> dict:
+    from autogpt.coaching.storage import update_session_notes
+    update_session_notes(session_id, body.coach_notes)
+    return {"ok": True, "session_id": session_id}
+
+
+@app.post("/admin/users/{user_id}/sessions", summary="Admin: create manual coaching session record")
+def admin_create_manual_session(
+    user_id: str,
+    body: _ManualSessionBody,
+    _: None = Depends(verify_admin_or_api_key),
+) -> dict:
+    from autogpt.coaching.storage import create_manual_session
+    session_id = create_manual_session(
+        user_id=user_id,
+        session_date=body.session_date,
+        coach_notes=body.coach_notes,
+        summary_for_coach=body.summary_for_coach,
+    )
+    return {"ok": True, "session_id": session_id}
+
+
 @app.post("/admin/analyze-transcripts", summary="Admin: analyse recent session transcripts and save coaching insights")
 def admin_analyze_transcripts(
     limit: int = Query(default=50, ge=1, le=200),
@@ -1674,7 +1789,10 @@ document.getElementById('phoneForm').addEventListener('submit', async function(e
 
 
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
-def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
+def login_page(
+    next: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+) -> HTMLResponse:
     """User-facing login page — sign in with Google (when configured)."""
     dest = next or "/dashboard"
     google_url = f"/auth/google/url?redirect_to={dest}"
@@ -1703,6 +1821,18 @@ def login_page(next: Optional[str] = Query(default=None)) -> HTMLResponse:
             '</div>'
         )
 
+    _ERROR_MESSAGES = {
+        "access_denied": "Sign-in was cancelled or access was denied by Google.",
+        "token_exchange_failed": "Authentication failed — please try again. If this persists, contact support.",
+        "userinfo_failed": "Could not retrieve your account info from Google. Please try again.",
+        "incomplete_profile": "Google did not return a valid account. Try a different Google account.",
+        "server_error": "A temporary server error occurred. Please try again in a moment.",
+    }
+    error_html = ""
+    if error:
+        msg = _ERROR_MESSAGES.get(error, f"Sign-in failed ({error}). Please try again.")
+        error_html = f'<div class="error-banner">{msg}</div>'
+
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1725,6 +1855,8 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
 .google-btn:hover{{background:#f9fafb;border-color:#9ca3af}}
 .notice{{background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;
          padding:16px;font-size:13px;color:#92400e;line-height:1.6;text-align:center}}
+.error-banner{{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
+              padding:12px 16px;border-radius:10px;margin-bottom:20px;text-align:center}}
 .divider{{text-align:center;color:#9ca3af;font-size:12px;margin:20px 0;
           display:flex;align-items:center;gap:8px}}
 .divider::before,.divider::after{{content:'';flex:1;height:1px;background:#e5e7eb}}
@@ -1743,7 +1875,7 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
   </div>
   <h1>Welcome back</h1>
   <p>Sign in to access your coaching dashboard and track your progress.</p>
-  {sign_in_block}
+  {error_html}{sign_in_block}
   <div class="divider">New to the program?</div>
   <div class="register-link"><a href="/register">Register here</a></div>
   <a href="/" class="back-link">← Back to home</a>
@@ -1920,12 +2052,19 @@ def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
 
 @app.get("/health", summary="Health check")
 def health() -> dict:
+    try:
+        from autogpt.coaching.storage import _get_client as _supa
+        _supa().table("user_profiles").select("user_id").limit(1).execute()
+        db_ok = True
+    except Exception:
+        db_ok = False
     return {
         "status": "ok",
         "service": "Change Navigator API",
         "version": "3.0.0",
         "features": ["coaching", "telegram", "web"],
         "telegram_mode": "webhook" if coaching_config.telegram_webhook_mode else "polling",
+        "db": "ok" if db_ok else "unavailable",
     }
 
 
@@ -1956,23 +2095,48 @@ async def telegram_webhook(request: Request) -> dict:
 
 
 
-@app.post("/wix-qualify", summary="Wix lead qualification webhook")
-async def wix_qualify_lead(payload: WixFormPayload, background_tasks: BackgroundTasks):
-    verdict = compute_score(payload)
-    clickup = create_clickup_task(payload, verdict)
+
+@app.post("/coaching-qualify")
+async def coaching_qualify_lead(payload: CoachingQualPayload, background_tasks: BackgroundTasks):
+    """
+    Coaching qualification webhook � Yes/No model.
+    Called by Wix Automation on /coaching-qualify form submit, and internally by the bot.
+    """
+    return await handle_coaching_qualify(payload, background_tasks)
+
+
+@app.post("/wix-consult-form")
+async def wix_consult_form_lead(payload: WixConsultFormPayload, background_tasks: BackgroundTasks):
+    """
+    Consulting & Workshops lead form handler.
+    Called by Wix Automation on /consulting-inquiry and /workshop-inquiry.
+    """
+    return await handle_wix_consult_form(payload, background_tasks)
+
+
+@app.post("/wix-qualify", summary="Wix lead qualification webhook (legacy)")
+async def wix_qualify_lead(payload: CoachingQualPayload, background_tasks: BackgroundTasks):
+    """
+    Called by Wix Automation on /coaching-qualify form submit.
+    """
+    return await handle_coaching_qualify(payload, background_tasks)
+
+
+@app.post("/wix-consult", summary="CM Readiness Diagnostic webhook")
+async def wix_consult_lead(payload: ConsultPayload, background_tasks: BackgroundTasks):
+    clickup = create_consult_clickup_task(payload)
     background_tasks.add_task(
-        send_qualify_notification,
-        lead_name=payload.q8_name,
-        lead_contact=payload.q9_contact,
-        lead_role=payload.q1_role,
-        readiness=payload.q6_readiness,
-        challenge=payload.q3_challenge,
-        timing=payload.q7_start_timing,
-        verdict=verdict,
+        send_consult_notification,
+        lead_name=payload.respondentName,
+        lead_org=payload.organizationName or "",
+        lead_email=payload.respondentEmail,
+        lead_role=payload.respondentRole or "",
+        form_type="consulting",
+        readiness_level=payload.readinessLevel,
+        total_score=payload.totalScore,
         clickup_url=clickup or "",
-        booking_url=SCHEDULER_URL,
     )
-    return {"status": "ok", "verdict": verdict, "clickup": clickup}
+    return {"status": "ok", "readiness": payload.readinessLevel, "clickup": clickup}
 
 
 # ── Demo endpoints (no API key — rate limited by IP) ─────────────────────────
@@ -2470,3 +2634,468 @@ def demo_end(
         logger.warning("Could not persist demo session %s to Supabase", session_id)
     del _demo_sessions[session_id]
     return summary
+
+
+# ── HTML Form Pages (iFrame-embeddable on Wix) ────────────────────────────────
+
+@app.get("/qualify-form", response_class=HTMLResponse, include_in_schema=False)
+def coaching_qualify_form() -> HTMLResponse:
+    """Self-contained coaching qualification form — embed as iFrame on Wix."""
+    html = r"""<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>שאלון מוכנות — Co-Navigator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#f8fafc;color:#1e293b;padding:24px 16px;font-size:15px;direction:rtl}
+h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px}
+.section{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
+  text-transform:uppercase;letter-spacing:.5px}
+label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+input[type=text],input[type=email],textarea{width:100%;padding:10px 12px;
+  border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
+  font-family:inherit;transition:border-color .2s}
+input:focus,textarea:focus{border-color:#1a2b4a}
+textarea{resize:vertical;min-height:70px}
+.field{margin-bottom:16px}
+.yn-wrap{display:flex;flex-direction:column;margin-bottom:12px}
+.yn-label{font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+.yn-opts{display:flex;gap:8px}
+.yn-btn{flex:1;padding:9px 4px;border:1.5px solid #cbd5e1;border-radius:8px;
+  font-size:14px;font-weight:600;cursor:pointer;background:#fff;color:#475569;
+  transition:all .15s;text-align:center}
+.yn-btn.active-yes{background:#dcfce7;border-color:#16a34a;color:#15803d}
+.yn-btn.active-no{background:#fee2e2;border-color:#dc2626;color:#b91c1c}
+.btn-submit{width:100%;padding:13px;background:#1a2b4a;color:#fff;border:none;
+  border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn-submit:hover{background:#243d6b}
+.btn-submit:disabled{background:#94a3b8;cursor:not-allowed}
+.thanks{display:none;text-align:center;padding:40px 20px;background:#fff;
+  border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.thanks h2{color:#16a34a;margin-bottom:12px}
+.thanks p{color:#475569;font-size:14px;line-height:1.6}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
+  padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+</style></head>
+<body>
+<h2>שאלון מוכנות — Co-Navigator</h2>
+<p class="sub">4 דקות. 7 שאלות. כדי שנוכל להכיר אותך לפני שיחת הגילוי.</p>
+<div id="form-wrap">
+  <div class="section">
+    <h3>הקשר</h3>
+    <div class="field">
+      <label>מה האתגר שאתה/את רוצה לעבוד עליו? *</label>
+      <textarea id="q1" placeholder="תאר/י בקצרה את האתגר המרכזי..."></textarea>
+    </div>
+    <div class="field">
+      <label>מה יגרום לתהליך הזה להיות הצלחה עבורך? *</label>
+      <textarea id="q2" placeholder="איזה תוצאה תגרום לך לומר שהשקעה הייתה שווה?"></textarea>
+    </div>
+  </div>
+  <div class="section">
+    <h3>שאלות מוכנות</h3>
+    <div class="yn-wrap">
+      <span class="yn-label">האתגר הזה הוא עדיפות אמיתית עבורך עכשיו?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q3',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q3',this,'no')">✗ לא</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">אתה/את מוכן/ה להתחייב לתהליך מובנה של 3-6 חודשים?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q4',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q4',this,'no')">✗ לא</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">תוכל/י להשלים משימות שבועיות באופן עקבי ובזמן?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q5',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q5',this,'no')">✗ לא</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">אתה/את מחפש/ת אימון אמיתי — לא רק ייעוץ וטיפים?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q6',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q6',this,'no')">✗ לא</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">המטרה שלך היא לבנות יכולת חדשה — לא רק פתרון מהיר?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q7',this,'yes')">✓ כן</div>
+        <div class="yn-btn" onclick="setYN('q7',this,'no')">✗ לא</div>
+      </div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>פרטי קשר</h3>
+    <div class="field"><label>שם מלא *</label><input type="text" id="q8" placeholder="שם פרטי ושם משפחה"></div>
+    <div class="field"><label>כתובת אימייל *</label><input type="email" id="q9" placeholder="your@email.com"></div>
+    <div class="field"><label>איך הגעת אלינו?</label><input type="text" id="q10" placeholder="LinkedIn, המלצה, גוגל..."></div>
+  </div>
+  <button class="btn-submit" id="submitBtn" onclick="submitForm()">שליחת השאלון ←</button>
+  <div class="err" id="errMsg"></div>
+</div>
+<div class="thanks" id="thanksMsg">
+  <h2>תודה! ✓</h2>
+  <p>השאלון התקבל.<br>עדי יחזור אליך תוך 24 שעות עם השלב הבא.</p>
+</div>
+<script>
+var answers={q3:'',q4:'',q5:'',q6:'',q7:''};
+function setYN(f,el,v){
+  answers[f]=v;
+  var o=el.parentElement.children;
+  o[0].className='yn-btn'+(v==='yes'?' active-yes':'');
+  o[1].className='yn-btn'+(v==='no'?' active-no':'');
+}
+function submitForm(){
+  var err=document.getElementById('errMsg');err.style.display='none';
+  var q1=document.getElementById('q1').value.trim();
+  var q2=document.getElementById('q2').value.trim();
+  var q8=document.getElementById('q8').value.trim();
+  var q9=document.getElementById('q9').value.trim();
+  if(!q1||!q2||!q8||!q9){err.textContent='יש למלא את כל השדות המסומנים ב-*';err.style.display='block';return;}
+  if(!q9.includes('@')){err.textContent='כתובת האימייל אינה תקינה';err.style.display='block';return;}
+  var u=Object.keys(answers).filter(function(k){return answers[k]==='';});
+  if(u.length>0){err.textContent='יש לענות על כל שאלות הכן/לא';err.style.display='block';return;}
+  var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='שולח...';
+  var payload={q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
+    q5_commit_tasks:answers.q5,q6_coaching:answers.q6,q7_capability:answers.q7,
+    q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
+  fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+  .then(function(r){
+    if(r.ok){
+      window.scrollTo(0,0);
+      document.getElementById('form-wrap').style.display='none';
+      document.getElementById('thanksMsg').style.display='block';
+    }
+    else{r.text().then(function(t){err.textContent='שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
+  }).catch(function(){err.textContent='בעיית תקשורת. נסה/י שוב.';err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});
+}
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)
+
+
+@app.get("/qualify-form-en", response_class=HTMLResponse, include_in_schema=False)
+def coaching_qualify_form_en() -> HTMLResponse:
+    """English version of the coaching qualification form — embed as iFrame on Wix."""
+    html = r"""<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coaching Program Readiness Evaluation</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#f8fafc;color:#1e293b;padding:24px 16px;font-size:15px}
+h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px}
+.section{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
+  text-transform:uppercase;letter-spacing:.5px}
+label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+input[type=text],input[type=email],textarea{width:100%;padding:10px 12px;
+  border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
+  font-family:inherit;transition:border-color .2s}
+input:focus,textarea:focus{border-color:#1a2b4a}
+textarea{resize:vertical;min-height:70px}
+.field{margin-bottom:16px}
+.yn-wrap{display:flex;flex-direction:column;margin-bottom:12px}
+.yn-label{font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+.yn-opts{display:flex;gap:8px}
+.yn-btn{flex:1;padding:9px 4px;border:1.5px solid #cbd5e1;border-radius:8px;
+  font-size:14px;font-weight:600;cursor:pointer;background:#fff;color:#475569;
+  transition:all .15s;text-align:center}
+.yn-btn.active-yes{background:#dcfce7;border-color:#16a34a;color:#15803d}
+.yn-btn.active-no{background:#fee2e2;border-color:#dc2626;color:#b91c1c}
+.btn-submit{width:100%;padding:13px;background:#1a2b4a;color:#fff;border:none;
+  border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn-submit:hover{background:#243d6b}
+.btn-submit:disabled{background:#94a3b8;cursor:not-allowed}
+.thanks{display:none;text-align:center;padding:40px 20px;background:#fff;
+  border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.thanks h2{color:#16a34a;margin-bottom:12px}
+.thanks p{color:#475569;font-size:14px;line-height:1.6}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
+  padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+</style></head>
+<body>
+<h2>Coaching Program Readiness Evaluation</h2>
+<p class="sub">4 minutes. 7 questions. So we can get to know you before the discovery call.</p>
+<div id="form-wrap">
+  <div class="section">
+    <h3>Context</h3>
+    <div class="field">
+      <label>What challenge do you want to work on? *</label>
+      <textarea id="q1" placeholder="Briefly describe your main challenge..."></textarea>
+    </div>
+    <div class="field">
+      <label>What would make this process a success for you? *</label>
+      <textarea id="q2" placeholder="What result would make the investment worth it?"></textarea>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Readiness Questions</h3>
+    <div class="yn-wrap">
+      <span class="yn-label">Is this challenge a real priority for you right now?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q3',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q3',this,'no')">No</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">Are you committed to a structured 3&ndash;6 month process?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q4',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q4',this,'no')">No</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">Can you consistently complete weekly tasks on time?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q5',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q5',this,'no')">No</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">Are you looking for real coaching &mdash; not just advice and tips?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q6',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q6',this,'no')">No</div>
+      </div>
+    </div>
+    <div class="yn-wrap">
+      <span class="yn-label">Is your goal to build a new capability &mdash; not just a quick fix?</span>
+      <div class="yn-opts">
+        <div class="yn-btn" onclick="setYN('q7',this,'yes')">Yes</div>
+        <div class="yn-btn" onclick="setYN('q7',this,'no')">No</div>
+      </div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Contact Details</h3>
+    <div class="field"><label>Full Name *</label><input type="text" id="q8" placeholder="First and last name"></div>
+    <div class="field"><label>Email Address *</label><input type="email" id="q9" placeholder="your@email.com"></div>
+    <div class="field"><label>How did you find us?</label><input type="text" id="q10" placeholder="LinkedIn, referral, Google..."></div>
+  </div>
+  <button class="btn-submit" id="submitBtn" onclick="submitForm()">Submit Questionnaire &rarr;</button>
+  <div class="err" id="errMsg"></div>
+</div>
+<div class="thanks" id="thanksMsg">
+  <h2>Thank you! &#10003;</h2>
+  <p>Your questionnaire has been received.<br>Adi will be in touch within 24 hours with the next step.</p>
+</div>
+<script>
+var answers={q3:'',q4:'',q5:'',q6:'',q7:''};
+function setYN(f,el,v){
+  answers[f]=v;
+  var o=el.parentElement.children;
+  o[0].className='yn-btn'+(v==='yes'?' active-yes':'');
+  o[1].className='yn-btn'+(v==='no'?' active-no':'');
+}
+function submitForm(){
+  var err=document.getElementById('errMsg');err.style.display='none';
+  var q1=document.getElementById('q1').value.trim();
+  var q2=document.getElementById('q2').value.trim();
+  var q8=document.getElementById('q8').value.trim();
+  var q9=document.getElementById('q9').value.trim();
+  if(!q1||!q2||!q8||!q9){err.textContent='Please fill in all required fields (*)';err.style.display='block';return;}
+  if(!q9.includes('@')){err.textContent='Please enter a valid email address';err.style.display='block';return;}
+  var u=Object.keys(answers).filter(function(k){return answers[k]==='';});
+  if(u.length>0){err.textContent='Please answer all Yes/No questions';err.style.display='block';return;}
+  var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='Submitting...';
+  var payload={q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
+    q5_commit_tasks:answers.q5,q6_coaching:answers.q6,q7_capability:answers.q7,
+    q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
+  fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+  .then(function(r){
+    if(r.ok){
+      window.scrollTo(0,0);
+      document.getElementById('form-wrap').style.display='none';
+      document.getElementById('thanksMsg').style.display='block';
+    }
+    else{r.text().then(function(t){err.textContent='Error: '+t;err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});}
+  }).catch(function(){err.textContent='Connection error. Please try again.';err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});
+}
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)
+
+
+@app.get("/consult-form", response_class=HTMLResponse, include_in_schema=False)
+def consulting_inquiry_form() -> HTMLResponse:
+    """Self-contained consulting/workshop inquiry form — embed as iFrame on Wix."""
+    html = r"""<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>שאלון מוכנות ארגונית — CM Evaluate</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#f8fafc;color:#1e293b;padding:24px 16px;font-size:15px;direction:rtl}
+h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px}
+.section{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
+  text-transform:uppercase;letter-spacing:.5px}
+label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:4px}
+input[type=text],input[type=email],select,textarea{width:100%;padding:10px 12px;
+  border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
+  font-family:inherit;transition:border-color .2s;background:#fff}
+input:focus,select:focus,textarea:focus{border-color:#1a2b4a}
+textarea{resize:vertical;min-height:60px}
+.field{margin-bottom:14px}
+.scale-wrap{margin-bottom:14px}
+.scale-label{font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
+.scale-hint{display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:4px}
+.scale-btns{display:flex;gap:4px}
+.sc-btn{flex:1;padding:8px 2px;border:1.5px solid #cbd5e1;border-radius:6px;
+  font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#64748b;text-align:center;transition:all .15s}
+.sc-btn.sel{background:#1a2b4a;border-color:#1a2b4a;color:#fff}
+.btn-submit{width:100%;padding:13px;background:#1a2b4a;color:#fff;border:none;
+  border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn-submit:hover{background:#243d6b}
+.btn-submit:disabled{background:#94a3b8;cursor:not-allowed}
+.thanks{display:none;text-align:center;padding:40px 20px;background:#fff;
+  border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.thanks h2{color:#16a34a;margin-bottom:12px}
+.thanks p{color:#475569;font-size:14px;line-height:1.6}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
+  padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+</style></head>
+<body>
+<h2>שאלון מוכנות ארגונית — CM Evaluate</h2>
+<p class="sub">עוזר לנו להבין את נקודת הפתיחה ולהתאים את הגישה הנכונה.</p>
+<div id="form-wrap">
+  <div class="section">
+    <h3>פרטים ראשוניים</h3>
+    <div class="field"><label>שם מלא *</label><input type="text" id="c1" placeholder="שם פרטי ושם משפחה"></div>
+    <div class="field"><label>אימייל *</label><input type="email" id="c2" placeholder="your@company.com"></div>
+    <div class="field"><label>שם הארגון *</label><input type="text" id="c3" placeholder="שם החברה"></div>
+    <div class="field"><label>תפקיד *</label><input type="text" id="c4" placeholder="כותרת תפקידך"></div>
+    <div class="field">
+      <label>סוג הפנייה *</label>
+      <select id="c12">
+        <option value="">בחר...</option>
+        <option value="consulting">ייעוץ ארגוני</option>
+        <option value="workshop">סדנה</option>
+      </select>
+    </div>
+  </div>
+  <div class="section">
+    <h3>א׳ — מוכנות ניהולית</h3>
+    <div class="scale-wrap"><div class="scale-label">תמיכת הנהלה בכירה בתהליך השינוי</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_a1"><div class="sc-btn" onclick="sc('a1',this,1)">1</div><div class="sc-btn" onclick="sc('a1',this,2)">2</div><div class="sc-btn" onclick="sc('a1',this,3)">3</div><div class="sc-btn" onclick="sc('a1',this,4)">4</div><div class="sc-btn" onclick="sc('a1',this,5)">5</div><div class="sc-btn" onclick="sc('a1',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">בהירות חזון השינוי</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_a2"><div class="sc-btn" onclick="sc('a2',this,1)">1</div><div class="sc-btn" onclick="sc('a2',this,2)">2</div><div class="sc-btn" onclick="sc('a2',this,3)">3</div><div class="sc-btn" onclick="sc('a2',this,4)">4</div><div class="sc-btn" onclick="sc('a2',this,5)">5</div><div class="sc-btn" onclick="sc('a2',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">נכונות להקצות משאבים (זמן, תקציב, אנשים)</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_a3"><div class="sc-btn" onclick="sc('a3',this,1)">1</div><div class="sc-btn" onclick="sc('a3',this,2)">2</div><div class="sc-btn" onclick="sc('a3',this,3)">3</div><div class="sc-btn" onclick="sc('a3',this,4)">4</div><div class="sc-btn" onclick="sc('a3',this,5)">5</div><div class="sc-btn" onclick="sc('a3',this,6)">6</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>ב׳ — קיבולת שינוי</h3>
+    <div class="scale-wrap"><div class="scale-label">מוכנות רגשית של הצוות לשינוי</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_b1"><div class="sc-btn" onclick="sc('b1',this,1)">1</div><div class="sc-btn" onclick="sc('b1',this,2)">2</div><div class="sc-btn" onclick="sc('b1',this,3)">3</div><div class="sc-btn" onclick="sc('b1',this,4)">4</div><div class="sc-btn" onclick="sc('b1',this,5)">5</div><div class="sc-btn" onclick="sc('b1',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">ניסיון קודם בתהליכי שינוי מוצלחים</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_b2"><div class="sc-btn" onclick="sc('b2',this,1)">1</div><div class="sc-btn" onclick="sc('b2',this,2)">2</div><div class="sc-btn" onclick="sc('b2',this,3)">3</div><div class="sc-btn" onclick="sc('b2',this,4)">4</div><div class="sc-btn" onclick="sc('b2',this,5)">5</div><div class="sc-btn" onclick="sc('b2',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">כמה זמן יש לך לבצע את השינוי</div>
+      <div class="scale-hint"><span>לחץ גבוה</span><span>זמן סביר</span></div>
+      <div class="scale-btns" id="s_b3"><div class="sc-btn" onclick="sc('b3',this,1)">1</div><div class="sc-btn" onclick="sc('b3',this,2)">2</div><div class="sc-btn" onclick="sc('b3',this,3)">3</div><div class="sc-btn" onclick="sc('b3',this,4)">4</div><div class="sc-btn" onclick="sc('b3',this,5)">5</div><div class="sc-btn" onclick="sc('b3',this,6)">6</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>ג׳ — מורכבות השינוי</h3>
+    <div class="scale-wrap"><div class="scale-label">מספר יחידות מושפעות</div>
+      <div class="scale-hint"><span>רבות</span><span>מעטות</span></div>
+      <div class="scale-btns" id="s_c1"><div class="sc-btn" onclick="sc('c1',this,1)">1</div><div class="sc-btn" onclick="sc('c1',this,2)">2</div><div class="sc-btn" onclick="sc('c1',this,3)">3</div><div class="sc-btn" onclick="sc('c1',this,4)">4</div><div class="sc-btn" onclick="sc('c1',this,5)">5</div><div class="sc-btn" onclick="sc('c1',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">מידת השינוי בתהליכים וכלים קיימים</div>
+      <div class="scale-hint"><span>שינוי מהותי</span><span>שינוי קטן</span></div>
+      <div class="scale-btns" id="s_c2"><div class="sc-btn" onclick="sc('c2',this,1)">1</div><div class="sc-btn" onclick="sc('c2',this,2)">2</div><div class="sc-btn" onclick="sc('c2',this,3)">3</div><div class="sc-btn" onclick="sc('c2',this,4)">4</div><div class="sc-btn" onclick="sc('c2',this,5)">5</div><div class="sc-btn" onclick="sc('c2',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">בהירות מה שצריך להשתנות</div>
+      <div class="scale-hint"><span>לא ברור</span><span>ברור מאוד</span></div>
+      <div class="scale-btns" id="s_c3"><div class="sc-btn" onclick="sc('c3',this,1)">1</div><div class="sc-btn" onclick="sc('c3',this,2)">2</div><div class="sc-btn" onclick="sc('c3',this,3)">3</div><div class="sc-btn" onclick="sc('c3',this,4)">4</div><div class="sc-btn" onclick="sc('c3',this,5)">5</div><div class="sc-btn" onclick="sc('c3',this,6)">6</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>ד׳ — מינוף ותוצאות</h3>
+    <div class="scale-wrap"><div class="scale-label">דחיפות עסקית לבצע את השינוי עכשיו</div>
+      <div class="scale-hint"><span>לא דחוף</span><span>קריטי</span></div>
+      <div class="scale-btns" id="s_d1"><div class="sc-btn" onclick="sc('d1',this,1)">1</div><div class="sc-btn" onclick="sc('d1',this,2)">2</div><div class="sc-btn" onclick="sc('d1',this,3)">3</div><div class="sc-btn" onclick="sc('d1',this,4)">4</div><div class="sc-btn" onclick="sc('d1',this,5)">5</div><div class="sc-btn" onclick="sc('d1',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">פוטנציאל התוצאות העסקיות אם השינוי יצליח</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_d2"><div class="sc-btn" onclick="sc('d2',this,1)">1</div><div class="sc-btn" onclick="sc('d2',this,2)">2</div><div class="sc-btn" onclick="sc('d2',this,3)">3</div><div class="sc-btn" onclick="sc('d2',this,4)">4</div><div class="sc-btn" onclick="sc('d2',this,5)">5</div><div class="sc-btn" onclick="sc('d2',this,6)">6</div></div>
+    </div>
+    <div class="scale-wrap"><div class="scale-label">נכונות למדוד תוצאות התהליך</div>
+      <div class="scale-hint"><span>נמוך</span><span>גבוה</span></div>
+      <div class="scale-btns" id="s_d3"><div class="sc-btn" onclick="sc('d3',this,1)">1</div><div class="sc-btn" onclick="sc('d3',this,2)">2</div><div class="sc-btn" onclick="sc('d3',this,3)">3</div><div class="sc-btn" onclick="sc('d3',this,4)">4</div><div class="sc-btn" onclick="sc('d3',this,5)">5</div><div class="sc-btn" onclick="sc('d3',this,6)">6</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>מידע נוסף</h3>
+    <div class="field"><label>תאר/י את אתגר השינוי המרכזי</label><textarea id="c9" placeholder="מה עומד על הפרק?"></textarea></div>
+    <div class="field"><label>איך הגעת אלינו?</label><input type="text" id="c13" placeholder="LinkedIn, המלצה, גוגל..."></div>
+  </div>
+  <button class="btn-submit" id="submitBtn" onclick="submitConsult()">שליחת השאלון ←</button>
+  <div class="err" id="errMsg"></div>
+</div>
+<div class="thanks" id="thanksMsg">
+  <h2>תודה! ✓</h2><p>השאלון התקבל.<br>עדי יחזור אליך תוך 24 שעות.</p>
+</div>
+<script>
+var S={a1:0,a2:0,a3:0,b1:0,b2:0,b3:0,c1:0,c2:0,c3:0,d1:0,d2:0,d3:0};
+function sc(k,el,v){S[k]=v;var b=el.parentElement.children;for(var i=0;i<b.length;i++)b[i].className='sc-btn'+(i+1<=v?' sel':'');}
+function submitConsult(){
+  var err=document.getElementById('errMsg');err.style.display='none';
+  var n=document.getElementById('c1').value.trim(),e=document.getElementById('c2').value.trim(),
+      o=document.getElementById('c3').value.trim(),r=document.getElementById('c4').value.trim(),
+      ft=document.getElementById('c12').value;
+  if(!n||!e||!o||!r||!ft){err.textContent='יש למלא את כל השדות המסומנים ב-*';err.style.display='block';return;}
+  if(!e.includes('@')){err.textContent='אימייל לא תקין';err.style.display='block';return;}
+  var u=Object.keys(S).filter(function(k){return S[k]===0;});
+  if(u.length>0){err.textContent='יש לדרג את כל השאלות ('+u.length+' ללא דירוג)';err.style.display='block';return;}
+  var total=Object.values(S).reduce(function(a,b){return a+b;},0);
+  var level=total>=52?'HIGH':total>=36?'MEDIUM':'LOW';
+  var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='שולח...';
+  var payload={c1_name:n,c2_email:e,c3_org:o,c4_role:r,
+    c5_decision_maker:'yes',c6_budget:'yes',
+    c7_urgency:S.d1>=4?'urgent':'medium',c8_org_size:'50',
+    c9_challenge:document.getElementById('c9').value.trim(),
+    c10_outcome:'',c11_prev_attempts:'',c12_form_type:ft,
+    c13_source:document.getElementById('c13').value.trim()};
+  fetch('/wix-consult-form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+  .then(function(r){
+    if(r.ok){
+      window.scrollTo(0,0);
+      document.getElementById('form-wrap').style.display='none';
+      document.getElementById('thanksMsg').style.display='block';
+    }
+    else{r.text().then(function(t){err.textContent='שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
+  }).catch(function(){err.textContent='בעיית תקשורת. נסה/י שוב.';err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});
+}
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)

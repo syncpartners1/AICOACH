@@ -31,7 +31,9 @@ Commands (admin — only for ADMIN_TELEGRAM_ID):
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
+import re
 from datetime import date, timedelta
 from typing import Dict, Optional
 
@@ -45,11 +47,86 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.error import Conflict
+from telegram.warnings import PTBUserWarning
+import warnings
+warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*per_message=False.*")
 
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.i18n import LANG_PROMPT, detect_lang, get_coach_name, t
+from autogpt.coaching.utils import markdown_to_html
 
 logger = logging.getLogger(__name__)
+
+# Filter out noisy "Conflict" tracebacks during deployment overlapping
+class ConflictFilter(logging.Filter):
+    def filter(self, record):
+        # Silence both the raw exception logs and the library's "Exception happened while polling" wrapper
+        msg = record.getMessage()
+        if "Conflict" in msg:
+            return False
+        if record.exc_info:
+            exc_text = str(record.exc_info[1])
+            if "Conflict" in exc_text:
+                return False
+        return True
+
+logging.getLogger("telegram").addFilter(ConflictFilter())
+logging.getLogger("telegram.ext").addFilter(ConflictFilter())
+
+_JSON_BLOCK_RE = re.compile(
+    r'\[(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\].*?\[/(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\]',
+    re.DOTALL,
+)
+
+
+def _strip_json_blocks(text: str) -> str:
+    """Remove internal JSON output blocks before sending a reply to the user."""
+    return _JSON_BLOCK_RE.sub("", text).strip()
+
+
+def _save_session_from_reply(tg_id: int, session, reply: str) -> None:
+    """Parse JSON blocks already in a chat reply and save to DB — no extra LLM call."""
+    try:
+        from autogpt.coaching.models import SessionSummary
+        from autogpt.coaching.storage import save_session
+        weekly_log, summary_text = session._parse_summary_json(reply)
+        okr_changes = session._parse_okr_changes(reply)
+        alert = session._compute_alerts(weekly_log)
+        summary = SessionSummary(
+            session_id=session.session_id,
+            client_id=session.client_id,
+            client_name=session.client_name,
+            user_id=session.user_id,
+            timestamp=session.timestamp,
+            weekly_log=weekly_log,
+            alerts=alert,
+            summary_for_coach=summary_text,
+            okr_changes=okr_changes,
+            raw_conversation=list(session.full_message_history),
+        )
+        save_session(summary)
+        logger.info("Auto-saved session from in-chat JSON block for tg_id=%s", tg_id)
+    except Exception:
+        logger.exception("Auto-save from JSON block failed for tg_id=%s", tg_id)
+
+
+async def _auto_finalize_session(bot, chat_id: int, tg_id: int, lang: str) -> None:
+    """Extract summary via LLM, save session to DB, and clean up. Used on timeout."""
+    session = _sessions.get(tg_id)
+    if not session:
+        return
+    try:
+        from autogpt.coaching.storage import delete_telegram_session, save_session
+        summary = session.extract_summary()
+        save_session(summary)
+        _sessions.pop(tg_id, None)
+        delete_telegram_session(tg_id)
+        logger.info("Auto-finalized session for tg_id=%s after inactivity", tg_id)
+    except Exception:
+        logger.exception("Auto-finalize failed for tg_id=%s", tg_id)
+        _sessions.pop(tg_id, None)
+
 
 # ── Conversation states ────────────────────────────────────────────────────────
 (
@@ -74,11 +151,17 @@ logger = logging.getLogger(__name__)
     CANCEL_SELECT,
 ) = range(19)
 
+# Sales funnel states (non-registered users)
+FUNNEL_Q1, FUNNEL_Q2, FUNNEL_Q3 = range(19, 22)
+
 # Active AI coaching sessions: telegram_user_id → CoachingSession (in-memory cache)
 _sessions: Dict[int, object] = {}
 
 # Reply forwarding map: forwarded_msg_id → original_telegram_user_id
 _forward_map: Dict[int, int] = {}
+
+# Inactivity timer tasks: telegram_user_id → asyncio.Task
+_inactivity_tasks: Dict[int, asyncio.Task] = {}
 
 
 def _get_or_restore_session(tg_id: int):
@@ -111,6 +194,38 @@ def _persist_session(tg_id: int) -> None:
         logger.exception("Failed to persist telegram session for user %s", tg_id)
 
 
+# ── Inactivity timer ──────────────────────────────────────────────────────────
+
+async def _inactivity_check(bot, chat_id: int, tg_id: int, lang: str) -> None:
+    """Send a reminder after 3 min, then auto-save + close after 5 min of no response."""
+    try:
+        await asyncio.sleep(180)  # 3 minutes
+        if tg_id in _sessions:
+            await bot.send_message(chat_id=chat_id, text=t(lang, "inactivity_reminder"))
+        await asyncio.sleep(120)  # 2 more minutes (5 total)
+        if tg_id in _sessions:
+            await bot.send_message(chat_id=chat_id, text=t(lang, "inactivity_timeout"))
+            await _auto_finalize_session(bot, chat_id, tg_id, lang)
+    except asyncio.CancelledError:
+        pass  # User responded — timer was cancelled cleanly
+
+
+def _start_inactivity_timer(bot, chat_id: int, tg_id: int, lang: str) -> None:
+    """Start (or restart) the inactivity timer for a CHATTING session."""
+    _cancel_inactivity_timer(tg_id)
+    loop = asyncio.get_event_loop()
+    _inactivity_tasks[tg_id] = loop.create_task(
+        _inactivity_check(bot, chat_id, tg_id, lang)
+    )
+
+
+def _cancel_inactivity_timer(tg_id: int) -> None:
+    """Cancel any pending inactivity timer for this user."""
+    task = _inactivity_tasks.pop(tg_id, None)
+    if task and not task.done():
+        task.cancel()
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _get_linked_user(telegram_user_id: int):
@@ -141,7 +256,7 @@ def _current_week_label(lang: str = "en") -> str:
     today = date.today()
     sunday = today - timedelta(days=(today.weekday() + 1) % 7)
     saturday = sunday + timedelta(days=6)
-    return f"{sunday.strftime('%d %b')} – {saturday.strftime('%d %b %Y')}"
+    return f"{sunday.strftime('%d-%m-%Y')} – {saturday.strftime('%d-%m-%Y')}"
 
 
 def _today_day_name(lang: str = "en") -> str:
@@ -161,7 +276,7 @@ def _check_active(user, lang: str = "en") -> Optional[str]:
     st = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
     if st == "pending":
         return (
-            "⏳ Your account is *pending approval* by the coach. "
+            "⏳ Your account is <b>pending approval</b> by the coach. "
             "You'll be notified once it's activated."
         )
     if st == "suspended":
@@ -196,21 +311,59 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if user:
         err = _check_active(user, lang)
         if err:
-            await update.message.reply_text(err, parse_mode="Markdown")
+            await update.message.reply_text(err, parse_mode="HTML")
             return ConversationHandler.END
         await update.message.reply_text(
-            t(lang, "welcome_back", name=user.name),
-            parse_mode="Markdown",
+            t(lang, "welcome_back", name=user.name) + "\n\n" +
+            t(lang, "ready_to_begin"),
+            parse_mode="HTML",
         )
-        await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
+        return ConversationHandler.END
+
+    # Non-registered users → sales funnel (strategic micro-assessment)
+    try:
+        from autogpt.coaching.storage import upsert_funnel_lead
+        upsert_funnel_lead(tg_id, update.effective_user.username or "")
+    except Exception:
+        logger.exception("Failed to upsert funnel lead for tg_id=%s", tg_id)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(t(lang, "funnel_btn_start"), callback_data="funnel_start"),
+    ]])
+    await update.message.reply_text(
+        t(lang, "funnel_welcome"),
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+    return FUNNEL_Q1
+
+
+async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle /new_session — start a new coaching session (registered users only)."""
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, "")
+
+    if not user:
+        await update.message.reply_text(
+            "🎯 Use /start for your Strategic Alignment Check.",
+        )
+        return ConversationHandler.END
+
+    if _get_or_restore_session(tg_id) is not None:
+        await update.message.reply_text(t(lang, "already_session"))
         return CHATTING
 
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🇬🇧 English", callback_data="lang:en"),
-        InlineKeyboardButton("🇮🇱 עברית",   callback_data="lang:he"),
-    ]])
-    await update.message.reply_text(LANG_PROMPT, reply_markup=keyboard, parse_mode="Markdown")
-    return WAITING_LANG
+    err = _check_active(user, lang)
+    if err:
+        await update.message.reply_text(err, parse_mode="HTML")
+        return ConversationHandler.END
+
+    esc_name = html.escape(user.name)
+    await update.message.reply_text(
+        t(lang, "welcome_back", name=esc_name), parse_mode="HTML"
+    )
+    await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
+    return CHATTING
 
 
 async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -221,10 +374,249 @@ async def receive_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["lang"] = lang
     await query.edit_message_text(
         t(lang, "welcome_new"),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return WAITING_NAME
 
+
+# ── Sales funnel (non-registered users) ───────────────────────────────────────
+
+_FUNNEL_WEBSITE_URL = "https://www.ben-nesher.com/coaching/coaching-qualify?source=tg_bot"
+_FUNNEL_WEBSITE_URL_REMINDER = "https://www.ben-nesher.com/coaching/coaching-qualify?source=tg_bot_reminder"
+
+
+async def funnel_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """User clicked 'Start Strategic Alignment Check' — ask Q1."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        t(lang, "funnel_q1_title") + "\n\n" + t(lang, "funnel_q1_desc"),
+        parse_mode="HTML",
+    )
+    return FUNNEL_Q1
+
+
+async def funnel_receive_q1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Collect Q1 answer, save, ask Q2."""
+    tg_id = update.effective_user.id
+    answer = update.message.text.strip()
+    context.user_data["funnel_q1"] = answer
+    try:
+        from autogpt.coaching.storage import update_funnel_answer
+        update_funnel_answer(tg_id, 1, answer)
+    except Exception:
+        logger.exception("Funnel: failed to save Q1 for tg_id=%s", tg_id)
+    await update.message.reply_text(
+        "🎯 <b>Noted.</b>\n\n" +
+        t(lang, "funnel_q2_title") + "\n\n" + t(lang, "funnel_q2_desc"),
+        parse_mode="HTML",
+    )
+    return FUNNEL_Q2
+
+
+async def funnel_receive_q2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Collect Q2 answer, save, ask Q3."""
+    tg_id = update.effective_user.id
+    answer = update.message.text.strip()
+    context.user_data["funnel_q2"] = answer
+    try:
+        from autogpt.coaching.storage import update_funnel_answer
+        update_funnel_answer(tg_id, 2, answer)
+    except Exception:
+        logger.exception("Funnel: failed to save Q2 for tg_id=%s", tg_id)
+    await update.message.reply_text(
+        "🎯 <b>Understood.</b>\n\n" +
+        t(lang, "funnel_q3_title") + "\n\n" + t(lang, "funnel_q3_desc"),
+        parse_mode="HTML",
+    )
+    return FUNNEL_Q3
+
+
+async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Collect Q3 answer, notify admin, send confirmation message with website button."""
+    tg_id = update.effective_user.id
+    answer = update.message.text.strip()
+    context.user_data["funnel_q3"] = answer
+    q1 = context.user_data.get("funnel_q1", "—")
+    q2 = context.user_data.get("funnel_q2", "—")
+    username = update.effective_user.username or str(tg_id)
+
+    try:
+        from autogpt.coaching.storage import update_funnel_answer
+        update_funnel_answer(tg_id, 3, answer)
+    except Exception:
+        logger.exception("Funnel: failed to save Q3 for tg_id=%s", tg_id)
+
+    # Notify admin
+    if coaching_config.admin_telegram_id:
+        try:
+            esc_name = html.escape(username)
+            esc_q1 = html.escape(q1)
+            esc_q2 = html.escape(q2)
+            esc_q3 = html.escape(answer)
+            await update.get_bot().send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=(
+                    f"🎯 <b>Strategic Alignment Check completed</b>\n\n"
+                    f"<b>Lead:</b> @{esc_name} (ID: {tg_id})\n\n"
+                    f"<b>Q1 — Team alignment:</b> {esc_q1}\n\n"
+                    f"<b>Q2 — Operations:</b> {esc_q2}\n\n"
+                    f"<b>Q3 — Main challenge:</b> {esc_q3}"
+                ),
+                parse_mode="HTML",
+            )
+        except Exception:
+            logger.exception("Funnel: failed to notify admin after Q3 for tg_id=%s", tg_id)
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "funnel_btn_assessment"), callback_data=f"funnel_link:{tg_id}")],
+        [InlineKeyboardButton(t(lang, "funnel_btn_apply"), callback_data=f"funnel_apply:{tg_id}")],
+    ])
+    await update.message.reply_text(
+        t(lang, "funnel_done_title") + "\n\n" + t(lang, "funnel_done_desc"),
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+    return ConversationHandler.END
+
+
+async def funnel_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """User clicked the website link button — record click and notify admin."""
+    query = update.callback_query
+    await query.answer("Opening the full assessment…")
+    try:
+        tg_id = int(query.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        tg_id = update.effective_user.id
+    username = update.effective_user.username or str(tg_id)
+
+    try:
+        from autogpt.coaching.storage import mark_funnel_clicked
+        mark_funnel_clicked(tg_id)
+    except Exception:
+        logger.exception("Funnel: failed to mark click for tg_id=%s", tg_id)
+
+    if coaching_config.admin_telegram_id:
+        try:
+            esc_name = html.escape(username)
+            await context.bot.send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=f"🔗 <b>Website link clicked</b>\n\n@{esc_name} (ID: {tg_id}) is heading to the full assessment.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            logger.exception("Funnel: failed to notify admin of click for tg_id=%s", tg_id)
+
+    # Remove the button, send the actual link
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    esc_url = html.escape(_FUNNEL_WEBSITE_URL)
+    await query.message.reply_text(
+        f"🎯 <b>Excellent!</b> Here's your link:\n\n"
+        f"🎯 <a href=\"{esc_url}\"><b>Complete Full Assessment</b></a>\n\n"
+        "Complete the assessment and Adi will be in touch within 24 hours with your Strategic Report. ",
+        parse_mode="HTML",
+    )
+
+
+async def funnel_apply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """User clicked 'Apply to Coaching Program' — show commitment declaration."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        tg_id = int(query.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        tg_id = update.effective_user.id
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "✅ I commit — send my application",
+            callback_data=f"funnel_commit:{tg_id}",
+        )
+    ]])
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        "🎯 <b>Ready to commit to your transformation?</b>\n\n"
+        "By applying, you are declaring that you are <b>ready to commit the time and effort</b> "
+        "required for real, lasting results.\n\n"
+        "This is a commitment to a significant strategic transformation.\n\n"
+        "<i>Confirm your commitment below to send your application to Adi:</i>",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+
+
+async def funnel_commit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """User confirmed their commitment — record application and notify admin."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        tg_id = int(query.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        tg_id = update.effective_user.id
+    username = update.effective_user.username or str(tg_id)
+
+    try:
+        from autogpt.coaching.storage import mark_funnel_applied
+        mark_funnel_applied(tg_id)
+    except Exception:
+        logger.exception("Funnel: failed to mark applied for tg_id=%s", tg_id)
+
+    if coaching_config.admin_telegram_id:
+        try:
+            esc_name = html.escape(username)
+            await query.get_bot().send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=(
+                    f"🚢 <b>New Coaching Application!</b>\n\n"
+                    f"<b>Lead:</b> @{esc_name} (ID: {tg_id})\n"
+                    f"Has completed the Strategic Alignment Check and declared their commitment."
+                ),
+                parse_mode="HTML",
+            )
+        except Exception:
+            logger.exception("Funnel: failed to notify admin of application for tg_id=%s", tg_id)
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        "🎯 <b>Application received.</b>\n\n"
+        "Adi will review your Strategic Alignment Check and be in touch to discuss your results.\n\n"
+        "<i>Looking forward to our next steps.</i>",
+        parse_mode="HTML",
+    )
+
+
+async def _send_funnel_reminders(app) -> None:
+    """Job: send 24-hour follow-up reminders to leads who haven't clicked."""
+    try:
+        from autogpt.coaching.storage import get_unreminded_leads, mark_funnel_reminded
+        leads = get_unreminded_leads(cutoff_hours=24)
+        for lead in leads:
+            try:
+                esc_url = html.escape(_FUNNEL_WEBSITE_URL_REMINDER)
+                await app.bot.send_message(
+                    chat_id=lead["telegram_user_id"],
+                    text=(
+                        "🎯 <b>Strategic change doesn't wait.</b>\n\n"
+                        "You started your Alignment Check but haven't completed the full assessment yet.\n\n"
+                        "Your personalised Strategic Report — and that free strategy call — are still waiting for you.\n\n"
+                        f"🎯 <a href=\"{esc_url}\">Complete the assessment now</a>"
+                    ),
+                    parse_mode="HTML",
+                )
+                mark_funnel_reminded(lead["telegram_user_id"])
+            except Exception:
+                logger.exception("Funnel reminder: failed to send to %s", lead.get("telegram_user_id"))
+    except Exception:
+        logger.exception("Funnel reminder job failed")
 
 
 async def _start_coaching_session(
@@ -251,8 +643,8 @@ async def _start_coaching_session(
     _sessions[tg_id] = session
     opening = session.open()
     _persist_session(tg_id)  # save immediately so restart doesn't lose the new session
-    await update.message.reply_text(opening)
-    await update.message.reply_text(t(lang, "session_tip"), parse_mode="Markdown")
+    await update.message.reply_text(markdown_to_html(opening), parse_mode="HTML")
+    await update.message.reply_text(t(lang, "session_tip"), parse_mode="HTML")
 
 
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -269,7 +661,7 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["lang"] = lang
     await update.message.reply_text(
         t(lang, "ask_phone"),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return WAITING_PHONE
 
@@ -306,15 +698,16 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                 logger.warning("Could not link telegram to existing user %s", existing.user_id)
             st = existing.account_status.value if hasattr(existing.account_status, "value") else str(existing.account_status)
             if st == "active":
+                esc_name = html.escape(existing.name)
                 await update.message.reply_text(
-                    t(lang, "linked_existing", name=existing.name),
-                    parse_mode="Markdown",
+                    t(lang, "linked_existing", name=esc_name),
+                    parse_mode="HTML",
                 )
                 await _start_coaching_session(update, context, tg_id,
                                               existing.user_id, existing.name, lang)
                 return CHATTING
             else:
-                await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
+                await update.message.reply_text(t(lang, "pending_registered"), parse_mode="HTML")
                 return ConversationHandler.END
 
         # New user — register as pending
@@ -336,23 +729,26 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             logger.warning("Could not link telegram_user_id for user %s — column may not exist in DB", user.user_id)
 
         context.user_data.clear()
-        await update.message.reply_text(t(lang, "pending_registered"), parse_mode="Markdown")
+        await update.message.reply_text(t(lang, "pending_registered"), parse_mode="HTML")
 
         # Notify admin
         if coaching_config.admin_telegram_id:
             try:
                 tg_username = update.effective_user.username or ""
                 tg_display = f"@{tg_username}" if tg_username else f"tg_id:{tg_id}"
+                esc_name = html.escape(name)
+                esc_phone = html.escape(phone)
+                esc_tg = html.escape(tg_display)
                 await update.get_bot().send_message(
                     chat_id=coaching_config.admin_telegram_id,
                     text=(
-                        f"🆕 *New registration pending approval*\n\n"
-                        f"*Name:* {name}\n"
-                        f"*Phone:* {phone}\n"
-                        f"*Telegram:* {tg_display}\n\n"
+                        f"🆕 <b>New registration pending approval</b>\n\n"
+                        f"<b>Name:</b> {esc_name}\n"
+                        f"<b>Phone:</b> {esc_phone}\n"
+                        f"<b>Telegram:</b> {esc_tg}\n\n"
                         f"Visit the admin dashboard to approve."
                     ),
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                 )
             except Exception:
                 pass
@@ -371,6 +767,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
+    _cancel_inactivity_timer(tg_id)  # user responded — cancel any pending reminder
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
     session = _get_or_restore_session(tg_id)
@@ -382,7 +779,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         reply = session.chat(update.message.text)
         _persist_session(tg_id)  # keep DB in sync after each turn
-        await update.message.reply_text(reply)
+        # When the LLM produces a session summary, auto-save to DB immediately
+        # (no extra LLM call — reuse the JSON already in the reply)
+        if "[SESSION_SUMMARY_JSON]" in reply:
+            _save_session_from_reply(tg_id, session, reply)
+        reply_clean = _strip_json_blocks(reply)
+        if reply_clean:
+            html_reply = markdown_to_html(reply_clean)
+            await update.message.reply_text(html_reply, parse_mode="HTML")
+        _start_inactivity_timer(context.bot, update.effective_chat.id, tg_id, lang)
     except Exception:
         logger.exception("Chat error for telegram user %s", tg_id)
         await update.message.reply_text(t(lang, "chat_error"))
@@ -403,9 +808,10 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         from autogpt.coaching.storage import delete_telegram_session, save_session
         summary = session.extract_summary()
         save_session(summary)
+        _cancel_inactivity_timer(tg_id)
         del _sessions[tg_id]
         delete_telegram_session(tg_id)  # clean up persisted session now it's finalised
-        await update.message.reply_text(_format_summary(summary), parse_mode="Markdown")
+        await update.message.reply_text(_format_summary(summary), parse_mode="HTML")
     except Exception:
         logger.exception("End session error for telegram user %s", tg_id)
         _sessions.pop(tg_id, None)
@@ -421,11 +827,11 @@ async def link_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = _lang(user, update.message.text or "")
     if user:
         await update.message.reply_text(
-            t(lang, "already_linked", name=user.name),
-            parse_mode="Markdown",
+            t(lang, "starting_navigator_log"),
+            parse_mode="HTML"
         )
         return ConversationHandler.END
-    await update.message.reply_text(t(lang, "ask_phone_link"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_phone_link"), parse_mode="HTML")
     return LINK_WAITING_PHONE
 
 
@@ -441,10 +847,14 @@ async def link_receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return LINK_WAITING_PHONE
         link_telegram(user.user_id, tg_id)
         # Persist detected language on fresh link
+        # Initial greeting for unlinked users
+        welcome = t(lang, "welcome_new")
+        await update.message.reply_text(welcome, parse_mode="HTML")
         linked_lang = _lang(user)
+        esc_name = html.escape(user.name)
         await update.message.reply_text(
-            t(linked_lang, "linked_ok", name=user.name),
-            parse_mode="Markdown",
+            t(linked_lang, "linked_ok", name=esc_name),
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Link error for tg user %s", tg_id)
@@ -481,7 +891,7 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await update.message.reply_text(
         t(lang, "plan_header", week=_current_week_label(lang)),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return await _ask_plan_activities(update, context)
 
@@ -496,7 +906,7 @@ async def _ask_plan_activities(update: Update, context: ContextTypes.DEFAULT_TYP
         t(lang, "plan_kr_prompt",
           idx=idx + 1, total=total, obj=obj_title,
           kr=kr.description, pct=kr.current_pct),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return PLAN_ACTIVITIES
 
@@ -507,7 +917,7 @@ async def plan_receive_activities(update: Update, context: ContextTypes.DEFAULT_
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"].setdefault(kr_id, {})["planned_activities"] = text
-    await update.message.reply_text(t(lang, "ask_progress"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_progress"), parse_mode="HTML")
     return PLAN_PROGRESS
 
 
@@ -517,7 +927,7 @@ async def plan_receive_progress(update: Update, context: ContextTypes.DEFAULT_TY
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["progress_update"] = text
-    await update.message.reply_text(t(lang, "ask_insights"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_insights"), parse_mode="HTML")
     return PLAN_INSIGHTS
 
 
@@ -527,7 +937,7 @@ async def plan_receive_insights(update: Update, context: ContextTypes.DEFAULT_TY
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["insights"] = text
-    await update.message.reply_text(t(lang, "ask_gaps"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_gaps"), parse_mode="HTML")
     return PLAN_GAPS
 
 
@@ -537,7 +947,7 @@ async def plan_receive_gaps(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     idx = context.user_data["plan_kr_index"]
     kr_id = context.user_data["plan_krs"][idx][1].kr_id
     context.user_data["plan_entries"][kr_id]["gaps"] = text
-    await update.message.reply_text(t(lang, "ask_corrections"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_corrections"), parse_mode="HTML")
     return PLAN_CORRECTIONS
 
 
@@ -572,7 +982,7 @@ async def _save_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await update.message.reply_text(
         t(lang, "plan_saved", count=saved),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     context.user_data.clear()
     return ConversationHandler.END
@@ -593,7 +1003,7 @@ async def highlight_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data["lang"] = lang
     await update.message.reply_text(
         t(lang, "ask_highlight", day=day_name),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return HIGHLIGHT_WAITING
 
@@ -614,7 +1024,7 @@ async def highlight_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         upsert_daily_highlight(user_id=user_id, day_of_week=DayOfWeek(day), highlight=text)
         await update.message.reply_text(
             t(lang, "highlight_saved", day=day_name),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Failed to save highlight for user %s", user_id)
@@ -639,29 +1049,29 @@ async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     kr_map = {a.kr_id: a for a in plan.kr_activities}
     hl_map = {h.day_of_week.value: h.highlight for h in plan.daily_highlights}
 
-    lines = [f"📋 *{t(lang, 'plan_header', week=_current_week_label(lang)).split(chr(10))[0][5:]}*\n"]
+    lines = [f"📋 <b>{html.escape(t(lang, 'plan_header', week=_current_week_label(lang)).split(chr(10))[0][5:])}</b>\n"]
     for obj in objectives:
-        lines.append(f"🎯 *{obj.title}*")
+        lines.append(f"🎯 <b>{html.escape(obj.title)}</b>")
         for kr in obj.key_results:
             act = kr_map.get(kr.kr_id)
             dot = "🟢" if kr.current_pct >= 70 else "🟡" if kr.current_pct >= 40 else "🔴"
-            lines.append(f"  {dot} *{kr.description}* — {kr.current_pct}%")
+            lines.append(f"  {dot} <b>{html.escape(kr.description)}</b> — {kr.current_pct}%")
             if act and act.planned_activities:
-                lines.append(f"    📌 {t(lang, 'db_field_planned')}: {act.planned_activities}")
+                lines.append(f"    📌 {t(lang, 'db_field_planned')}: {html.escape(act.planned_activities)}")
             if act and act.progress_update:
-                lines.append(f"    📊 {t(lang, 'db_field_progress')}: {act.progress_update}")
+                lines.append(f"    📊 {t(lang, 'db_field_progress')}: {html.escape(act.progress_update)}")
             if act and act.gaps:
-                lines.append(f"    ⚠️ {t(lang, 'db_field_gaps')}: {act.gaps}")
+                lines.append(f"    ⚠️ {t(lang, 'db_field_gaps')}: {html.escape(act.gaps)}")
         lines.append("")
 
     if hl_map:
-        lines.append(f"*{t(lang, 'db_section_highlights')}:*")
+        lines.append(f"<b>{t(lang, 'db_section_highlights')}:</b>")
         for day in ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]:
             if day in hl_map:
                 day_label = t(lang, f"db_day_{day}")
-                lines.append(f"  {day_label}: {hl_map[day]}")
+                lines.append(f"  {day_label}: {html.escape(hl_map[day])}")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 # ── /message — send message to coach ─────────────────────────────────────────
@@ -680,7 +1090,7 @@ async def msg_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     context.user_data["msg_user_name"] = user.name
     context.user_data["lang"] = lang
-    await update.message.reply_text(t(lang, "ask_message"), parse_mode="Markdown")
+    await update.message.reply_text(t(lang, "ask_message"), parse_mode="HTML")
     return MSG_WAITING
 
 
@@ -692,12 +1102,14 @@ async def msg_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await update.message.reply_text(t(lang, "msg_empty"))
         return MSG_WAITING
 
-    name = context.user_data.get("msg_user_name", "A user")
+    name = context.user_data.get("msg_user_name", "Unknown")
     try:
+        esc_name = html.escape(name)
+        esc_text = html.escape(text)
         forwarded = await context.bot.send_message(
             chat_id=coaching_config.admin_telegram_id,
-            text=t(lang, "admin_msg_fmt", name=name, tid=tg_id, text=text),
-            parse_mode="Markdown",
+            text=t(lang, "admin_msg_fmt", name=esc_name, tid=tg_id, text=esc_text),
+            parse_mode="HTML",
         )
         _forward_map[forwarded.message_id] = tg_id
         await update.message.reply_text(t(lang, "msg_sent"))
@@ -729,10 +1141,11 @@ async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     lang = _lang(recipient)
 
     try:
+        html_text = markdown_to_html(msg.text)
         await context.bot.send_message(
             chat_id=original_user_tg_id,
-            text=t(lang, "admin_reply_fmt", text=msg.text),
-            parse_mode="Markdown",
+            text=t(lang, "admin_reply_fmt", text=html_text),
+            parse_mode="HTML",
         )
         await msg.reply_text(t("en", "admin_reply_ok"))
     except Exception:
@@ -751,7 +1164,7 @@ async def suspend_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     st = user.account_status.value if hasattr(user.account_status, "value") else "active"
     if st == "archived":
-        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="Markdown")
+        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="HTML")
         return
     if st == "suspended":
         await update.message.reply_text(t(lang, "already_suspended"))
@@ -760,7 +1173,7 @@ async def suspend_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         from autogpt.coaching.storage import set_account_status
         from autogpt.coaching.models import AccountStatus
         set_account_status(user.user_id, AccountStatus.SUSPENDED, "User self-suspended via Telegram")
-        await update.message.reply_text(t(lang, "suspend_ok"), parse_mode="Markdown")
+        await update.message.reply_text(t(lang, "suspend_ok"), parse_mode="HTML")
     except Exception:
         logger.exception("Could not suspend user %s", user.user_id)
         await update.message.reply_text(t(lang, "suspend_error"))
@@ -777,7 +1190,7 @@ async def resume_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     st = user.account_status.value if hasattr(user.account_status, "value") else "active"
     if st == "archived":
-        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="Markdown")
+        await update.message.reply_text(t(lang, "archived_msg"), parse_mode="HTML")
         return
     if st == "active":
         await update.message.reply_text(t(lang, "already_active"))
@@ -786,9 +1199,10 @@ async def resume_self(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         from autogpt.coaching.storage import set_account_status
         from autogpt.coaching.models import AccountStatus
         set_account_status(user.user_id, AccountStatus.ACTIVE)
+        esc_name = html.escape(user.name)
         await update.message.reply_text(
-            t(lang, "resume_ok", name=user.name),
-            parse_mode="Markdown",
+            t(lang, "resume_ok", name=esc_name),
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Could not reactivate user %s", user.user_id)
@@ -816,7 +1230,7 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             logger.exception("Could not save language preference for user %s", user.user_id)
 
     msg_key = "lang_set_he" if new_lang == "he" else "lang_set_en"
-    await update.message.reply_text(t(new_lang, msg_key), parse_mode="Markdown")
+    await update.message.reply_text(t(new_lang, msg_key), parse_mode="HTML")
 
 
 # ── Admin commands ────────────────────────────────────────────────────────────
@@ -832,14 +1246,15 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("No users registered yet.")
         return
 
-    lines = ["👥 *Program Members*\n"]
+    lines = ["👥 <b>Program Members</b>\n"]
     for u in users:
         dot = "🟢" if u.avg_kr_pct >= 70 else "🟡" if u.avg_kr_pct >= 40 else "🔴"
-        contact = u.email or u.phone_number or "—"
+        contact = html.escape(u.email or u.phone_number or "—")
+        esc_name = html.escape(u.name)
         last = u.last_session.strftime("%d %b") if u.last_session else "never"
-        lines.append(f"{dot} *{u.name}* ({contact})\n"
+        lines.append(f"{dot} <b>{esc_name}</b> ({contact})\n"
                      f"   KR avg: {u.avg_kr_pct:.0f}% · {u.objectives_count} OKRs · last: {last}")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -865,26 +1280,31 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     plan = get_weekly_plan(user_id)
     sessions = get_past_sessions(user_id, limit=3)
 
-    lines = [f"📊 *Report — {user.name}*\n"]
+    esc_user_name = html.escape(user.name)
+    lines = [f"📊 <b>Report — {esc_user_name}</b>\n"]
     for obj in objectives:
-        lines.append(f"🎯 *{obj.title}*")
+        esc_obj_title = html.escape(obj.title)
+        lines.append(f"🎯 <b>{esc_obj_title}</b>")
         for kr in obj.key_results:
             dot = "🟢" if kr.current_pct >= 70 else "🟡" if kr.current_pct >= 40 else "🔴"
-            lines.append(f"  {dot} {kr.description}: {kr.current_pct}%")
+            esc_kr_desc = html.escape(kr.description)
+            lines.append(f"  {dot} {esc_kr_desc}: {kr.current_pct}%")
         lines.append("")
 
     if plan.daily_highlights:
-        lines.append("*This week's highlights:*")
+        lines.append("<b>This week's highlights:</b>")
         for h in plan.daily_highlights:
-            lines.append(f"  {h.day_of_week.value[:3].capitalize()}: {h.highlight}")
+            esc_hl = html.escape(h.highlight)
+            lines.append(f"  {h.day_of_week.value[:3].capitalize()}: {esc_hl}")
         lines.append("")
 
     if sessions:
-        lines.append("*Recent sessions:*")
+        lines.append("<b>Recent sessions:</b>")
         for s in sessions:
-            lines.append(f"  {s.timestamp[:10]} [{s.alert_level.upper()}]: {s.summary_for_coach[:80]}…")
+            html_summary = markdown_to_html(s.summary_for_coach[:80])
+            lines.append(f"  {s.timestamp[:10]} [{s.alert_level.upper()}]: {html_summary}…")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def admin_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -907,10 +1327,13 @@ async def admin_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         public_url=coaching_config.public_url,
     )
     url = invite.register_url or f"/register?token={invite.token}"
+    esc_name = html.escape(name) if name else ""
+    esc_url = html.escape(url)
+    esc_token = html.escape(invite.token)
     await update.message.reply_text(
-        f"✅ *Invite created*{' for ' + name if name else ''}!\n\n"
-        f"Registration link:\n`{url}`\n\nToken: `{invite.token}`",
-        parse_mode="Markdown",
+        f"✅ <b>Invite created</b>{ ' for ' + esc_name if esc_name else ''}!\n\n"
+        f"Registration link:\n<code>{esc_url}</code>\n\nToken: <code>{esc_token}</code>",
+        parse_mode="HTML",
     )
 
 
@@ -937,10 +1360,11 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     sent = 0
     for row in rows:
         try:
+            html_text = markdown_to_html(text)
             await context.bot.send_message(
                 chat_id=row["telegram_user_id"],
-                text=f"📢 *Message from Adi Ben Nesher:*\n\n{text}",
-                parse_mode="Markdown",
+                text=f"📢 <b>Message from Adi Ben Nesher:</b>\n\n{html_text}",
+                parse_mode="HTML",
             )
             sent += 1
         except Exception:
@@ -958,7 +1382,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     admin_extra = t(lang, "help_admin") if _is_admin(tg_id) else ""
     await update.message.reply_text(
         t(lang, "help_text") + admin_extra,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -966,6 +1390,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
+    _cancel_inactivity_timer(tg_id)
     _sessions.pop(tg_id, None)
     context.user_data.clear()
     await update.message.reply_text(t(lang, "cancelled"))
@@ -989,9 +1414,9 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         from autogpt.coaching.storage import get_user_objectives, get_past_sessions
         objectives = get_user_objectives(user.user_id)
         await update.message.reply_text(
-            f"✅ Synced! You have *{len(objectives)}* active objective(s). "
+            f"✅ Synced! You have <b>{len(objectives)}</b> active objective(s). "
             "Use /start to begin a fresh session with updated data.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Refresh failed for telegram user %s", tg_id)
@@ -1001,39 +1426,48 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 # ── Summary formatter ─────────────────────────────────────────────────────────
 
 def _format_summary(summary) -> str:
-    lines = [f"✅ *Session Summary — {summary.client_name}*\n"]
+    from autogpt.coaching.i18n import detect_lang
+    lang = detect_lang(summary.summary_for_coach or "")
+    esc_client = html.escape(summary.client_name)
+    lines = [t(lang, "summary_title", name=esc_client) + "\n"]
     log = summary.weekly_log
     if log:
         if log.focus_goal:
-            lines.append(f"🎯 *Focus:* {log.focus_goal}")
+            html_focus = markdown_to_html(log.focus_goal)
+            lines.append(f"{t(lang, 'summary_focus')} {html_focus}")
         if log.key_results:
-            lines.append("\n📊 *Key Results:*")
+            lines.append(f"\n{t(lang, 'summary_krs')}")
             for kr in log.key_results:
                 dot = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(kr.status_color, "⚪")
-                lines.append(f"  {dot} {kr.description}: {kr.status_pct}%")
+                html_kr_desc = markdown_to_html(kr.description)
+                lines.append(f"  {dot} {html_kr_desc}: {kr.status_pct}%")
         unresolved = [o for o in (log.obstacles or []) if not o.resolved]
         if unresolved:
-            lines.append("\n⚠️ *Open Obstacles:*")
+            lines.append(f"\n{t(lang, 'summary_obstacles')}")
             for o in unresolved:
-                lines.append(f"  • {o.description}")
+                html_obs = markdown_to_html(o.description)
+                lines.append(f"  • {html_obs}")
     if summary.alerts and summary.alerts.reason:
         dot = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(
             getattr(summary.alerts, "level", "green").value
             if hasattr(summary.alerts, "level") else "green", "⚪")
-        lines.append(f"\n{dot} *Alert:* {summary.alerts.reason}")
+        html_reason = markdown_to_html(summary.alerts.reason)
+        lines.append(f"\n{dot} <b>{t(lang, 'summary_alert')}</b> {html_reason}")
     if summary.summary_for_coach:
         excerpt = summary.summary_for_coach[:280]
-        lines.append(f"\n📝 *Coach Notes:* {excerpt}…")
+        html_excerpt = markdown_to_html(excerpt)
+        lines.append(f"\n{t(lang, 'summary_coach_notes')} {html_excerpt}…")
     if coaching_config.scheduler_url:
-        lines.append(f"\n📅 [Book your next session]({coaching_config.scheduler_url})")
+        esc_url = html.escape(coaching_config.scheduler_url)
+        lines.append(f"\n📅 <a href=\"{esc_url}\">Book your next session</a>")
     return "\n".join(lines)
 
 
 # ── Scheduling helpers ─────────────────────────────────────────────────────────
 
 _MEETING_TYPES = {
-    "intro":    {"label_key": "book_type_intro",    "subject": "Free 30-min Introduction & Evaluation", "duration": 30},
-    "coaching": {"label_key": "book_type_coaching", "subject": "Coaching Session",                      "duration": 60},
+    "intro":    {"label_key": "book_type_intro",    "subject": "Free 30-min Introduction & Evaluation",  "duration": 30},
+    "coaching": {"label_key": "book_type_coaching", "subject": "Coaching / Advisory Session (60 min)",   "duration": 60},
 }
 
 
@@ -1068,11 +1502,17 @@ async def book_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
 
     context.user_data["book_lang"] = lang
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "book_type_intro"),    callback_data="book_type:intro")],
-        [InlineKeyboardButton(t(lang, "book_type_coaching"), callback_data="book_type:coaching")],
-    ])
-    await update.message.reply_text(t(lang, "book_choose_type"), reply_markup=keyboard, parse_mode="Markdown")
+    if user:
+        # Registered users → paid 60-min session only
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "book_type_coaching"), callback_data="book_type:coaching")],
+        ])
+    else:
+        # Unregistered users → free intro only
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "book_type_intro"), callback_data="book_type:intro")],
+        ])
+    await update.message.reply_text(t(lang, "book_choose_type"), reply_markup=keyboard, parse_mode="HTML")
     return BOOK_TYPE
 
 
@@ -1089,7 +1529,7 @@ async def book_receive_type(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await query.edit_message_text(
         t(lang, "book_choose_date", type=label),
         reply_markup=_date_keyboard(),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return BOOK_DATE
 
@@ -1133,7 +1573,7 @@ async def book_receive_date(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.edit_message_text(
             t(lang, "book_no_slots", date=date_str),
             reply_markup=_date_keyboard(),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         return BOOK_DATE
 
@@ -1145,7 +1585,7 @@ async def book_receive_date(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await query.edit_message_text(
         t(lang, "book_choose_slot", date=date_str),
         reply_markup=keyboard,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return BOOK_SLOT
 
@@ -1167,7 +1607,7 @@ async def book_receive_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     email = _user_email(user) or context.user_data.get("book_email")
 
     if not email:
-        await query.edit_message_text(t(lang, "book_ask_email"), parse_mode="Markdown")
+        await query.edit_message_text(t(lang, "book_ask_email"), parse_mode="HTML")
         return BOOK_EMAIL
 
     context.user_data["book_email"] = email
@@ -1204,9 +1644,9 @@ async def _show_booking_confirm(msg_or_query, context, lang: str) -> int:
     ]])
 
     if hasattr(msg_or_query, "edit_message_text"):
-        await msg_or_query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        await msg_or_query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
     else:
-        await msg_or_query.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        await msg_or_query.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
     return BOOK_CONFIRM
 
 
@@ -1250,7 +1690,7 @@ async def book_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     if not result.get("ok"):
-        await query.edit_message_text(t(lang, "book_failed"), parse_mode="Markdown")
+        await query.edit_message_text(t(lang, "book_failed"), parse_mode="HTML")
         return ConversationHandler.END
 
     meet_link = result.get("meetLink") or ""
@@ -1263,7 +1703,7 @@ async def book_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         msg = t(lang, "book_confirmed_no_meet", subject=mt["subject"], start=start_fmt)
 
-    await query.edit_message_text(msg, parse_mode="Markdown")
+    await query.edit_message_text(msg, parse_mode="HTML")
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -1317,7 +1757,7 @@ async def _send_bookings(message, email: str, lang: str) -> None:
             lines.append(t(lang, "mybookings_item", subject=subject, start=start_raw, meet_link=meet_link))
         else:
             lines.append(t(lang, "mybookings_item_no_meet", subject=subject, start=start_raw))
-    await message.reply_text("".join(lines), parse_mode="Markdown")
+    await message.reply_text("".join(lines), parse_mode="HTML")
 
 
 # ── /cancelmeeting conversation ────────────────────────────────────────────────
@@ -1368,7 +1808,7 @@ async def _show_cancel_list(message, email: str, lang: str, context) -> int:
             start_raw = start_raw.replace("T", " ")[:16]
         rows.append([InlineKeyboardButton(f"{subject} — {start_raw}", callback_data=f"cancel_pick:{i}")])
     keyboard = InlineKeyboardMarkup(rows)
-    await message.reply_text(t(lang, "cancel_meeting_choose"), reply_markup=keyboard, parse_mode="Markdown")
+    await message.reply_text(t(lang, "cancel_meeting_choose"), reply_markup=keyboard, parse_mode="HTML")
     return CANCEL_SELECT
 
 
@@ -1411,22 +1851,45 @@ async def cancelmeeting_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
     if result.get("ok") is False:
-        await query.edit_message_text(t(lang, "cancel_meeting_failed"), parse_mode="Markdown")
+        await query.edit_message_text(t(lang, "cancel_meeting_failed"), parse_mode="HTML")
     else:
-        await query.edit_message_text(t(lang, "cancel_meeting_ok"), parse_mode="Markdown")
+        await query.edit_message_text(t(lang, "cancel_meeting_ok"), parse_mode="HTML")
 
     context.user_data.pop("cancel_bookings", None)
     return ConversationHandler.END
 
+#---global error handler ────────────────────────────────────────────────────────────
+async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log all handler exceptions and notify admin for immediate visibility."""
+    if isinstance(context.error, Conflict):
+        logger.warning("Telegram bot conflict: Another instance is already running. This is normal during re-deployment.")
+        return
+    logger.error("Unhandled exception in handler:", exc_info=context.error)
+    if coaching_config.admin_telegram_id:
+        try:
+            esc_error = html.escape(str(context.error))
+            await context.bot.send_message(
+                chat_id=coaching_config.admin_telegram_id,
+                text=f"⚠️ <b>Bot handler error:</b> <code>{esc_error}</code>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+
+
 
 # ── Bot builder ────────────────────────────────────────────────────────────────
 
-def _build_app(token: str) -> Application:
-    app = Application.builder().token(token).build()
 
+def _build_app(token: str) -> Application:
+    logger.info("Building Telegram application...")
+    app = Application.builder().token(token).build()
     conv = ConversationHandler(
+        per_message=False,
         entry_points=[
             CommandHandler("start", start),
+            CommandHandler("new_session", new_session_command),
             CommandHandler("link", link_start),
             CommandHandler("plan", plan_start),
             CommandHandler("highlight", highlight_start),
@@ -1435,6 +1898,17 @@ def _build_app(token: str) -> Application:
             CommandHandler("cancelmeeting", cancelmeeting_start),
         ],
         states={
+            # ── Sales funnel states ─────────────────────────────────────────
+            FUNNEL_Q1: [
+                CallbackQueryHandler(funnel_start_cb, pattern=r"^funnel_start$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, funnel_receive_q1),
+            ],
+            FUNNEL_Q2: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, funnel_receive_q2),
+            ],
+            FUNNEL_Q3: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, funnel_receive_q3),
+            ],
             WAITING_LANG: [
                 CallbackQueryHandler(receive_lang, pattern=r"^lang:"),
             ],
@@ -1517,6 +1991,11 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("refresh", refresh_command))
 
+    # Funnel: post-conversation callbacks (fire after ConversationHandler.END)
+    app.add_handler(CallbackQueryHandler(funnel_link_handler,   pattern=r"^funnel_link:"))
+    app.add_handler(CallbackQueryHandler(funnel_apply_handler,  pattern=r"^funnel_apply:"))
+    app.add_handler(CallbackQueryHandler(funnel_commit_handler, pattern=r"^funnel_commit:"))
+
     # Admin commands
     app.add_handler(CommandHandler("users", admin_users))
     app.add_handler(CommandHandler("report", admin_report))
@@ -1529,6 +2008,8 @@ def _build_app(token: str) -> Application:
         admin_reply_handler,
     ))
 
+    app.add_error_handler(_error_handler)
+
     return app
 
 
@@ -1536,12 +2017,78 @@ async def run_polling(token: str) -> None:
     """Start the bot in polling mode with automatic restart on errors."""
     retry_delay = 5
     while True:
-        application = _build_app(token)
         try:
+            from apscheduler.schedulers.asyncio import AsyncIOScheduler
+            application = _build_app(token)
+            scheduler = AsyncIOScheduler()
             await application.initialize()
+
+            # Clear any stale webhook so polling actually receives updates.
+            # Without this, if a webhook was ever set, Telegram routes all
+            # updates to the webhook URL and the polling bot sees nothing.
+            try:
+                logger.info("Clearing webhook...")
+                await asyncio.wait_for(application.bot.delete_webhook(drop_pending_updates=True), timeout=10)
+                logger.info("Webhook cleared — polling mode active")
+            except asyncio.TimeoutError:
+                logger.warning("Webhook delete timed out after 10s (continuing...)")
+            except Exception:
+                logger.exception("Failed to delete webhook (non-fatal, continuing)")
+
+            # Register command menu visible to users when they type /
+            # Isolated in its own try-except so a Telegram API error here
+            # cannot prevent the bot from starting polling.
+            try:
+                from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+                _user_commands = [
+                    BotCommand("start",       "Begin Strategic Alignment Check"),
+                    BotCommand("new_session", "Start a new coaching session"),
+                    BotCommand("done",        "End & save current session"),
+                    BotCommand("plan",        "Submit your weekly plan"),
+                    BotCommand("myplan",      "View your current week plan"),
+                    BotCommand("highlight",   "Log today's highlight"),
+                    BotCommand("book",        "Book a 1:1 session"),
+                    BotCommand("mybookings",  "View your bookings"),
+                    BotCommand("lang",        "Switch language (עב / EN)"),
+                    BotCommand("suspend",     "Pause the program"),
+                    BotCommand("resume",      "Resume the program"),
+                    BotCommand("help",        "Show help"),
+                    BotCommand("cancel",      "Cancel current action"),
+                ]
+                logger.info("Registering bot command menu...")
+                await asyncio.wait_for(application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault()), timeout=10)
+                if coaching_config.admin_telegram_id:
+                    await asyncio.wait_for(
+                        application.bot.set_my_commands(
+                            _user_commands + [
+                                BotCommand("users",     "List all participants"),
+                                BotCommand("report",    "Get user report"),
+                                BotCommand("invite",    "Create invite link"),
+                                BotCommand("broadcast", "Send broadcast message"),
+                            ],
+                            scope=BotCommandScopeChat(chat_id=coaching_config.admin_telegram_id),
+                        ),
+                        timeout=10
+                    )
+                logger.info("Bot command menu registered")
+            except asyncio.TimeoutError:
+                logger.warning("Bot command registration timed out after 10s (continuing...)")
+            except Exception:
+                logger.exception("Failed to register bot commands (non-fatal, continuing)")
+
             await application.start()
-            await application.updater.start_polling(drop_pending_updates=True)
-            logger.info("Telegram bot polling started")
+            await application.updater.start_polling()
+            # Schedule 24-hour funnel follow-up reminders (checked hourly)
+            scheduler.add_job(
+                _send_funnel_reminders,
+                "interval",
+                hours=1,
+                args=[application],
+                id="funnel_reminders",
+                replace_existing=True,
+            )
+            scheduler.start()
+            logger.info("Telegram bot polling started (APScheduler running)")
             retry_delay = 5  # reset on successful start
             while True:
                 await asyncio.sleep(3600)
@@ -1553,6 +2100,11 @@ async def run_polling(token: str) -> None:
             await asyncio.sleep(retry_delay)
             retry_delay = min(retry_delay * 2, 120)
         finally:
+            try:
+                if scheduler.running:
+                    scheduler.shutdown(wait=False)
+            except Exception:
+                pass
             try:
                 await application.updater.stop()
                 await application.stop()

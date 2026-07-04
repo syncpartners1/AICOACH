@@ -129,23 +129,24 @@ def _format_summary(summary, lang: str = "en") -> str:
     """Render a SessionSummary as a readable WhatsApp message."""
     wl = summary.weekly_log
     lines = [
-        t(lang, "wa_summary_title"),
-        t(lang, "wa_summary_focus", value=wl.focus_goal or "—"),
-        t(lang, "wa_summary_mood", value=wl.mood_indicator or "—"),
-        t(lang, "wa_summary_env", value=wl.environmental_changes or "—"),
+        t(lang, "wa_summary_title") if "wa_summary_title" in S_EN else t(lang, "summary_title", name=summary.client_name),
+        t(lang, "summary_focus", value=wl.focus_goal or "—"),
+        t(lang, "summary_mood", value=wl.mood_indicator or "—"),
+        t(lang, "summary_env", value=wl.environmental_changes or "—"),
     ]
     if wl.key_results:
-        lines.append(t(lang, "wa_summary_krs"))
+        lines.append(t(lang, "summary_krs"))
         for kr in wl.key_results:
             lines.append(f"  • {kr.description} — {kr.status_pct}%")
     unresolved = [o.description for o in wl.obstacles if not o.resolved]
     if unresolved:
-        lines.append(t(lang, "wa_summary_obstacles"))
+        lines.append(t(lang, "summary_obstacles"))
         for obs in unresolved:
             lines.append(f"  - {obs}")
+    level_str = summary.alerts.level.value.upper() if hasattr(summary.alerts.level, "value") else str(summary.alerts.level)
     lines += [
-        t(lang, "wa_summary_alert", level=summary.alerts.level.value.upper(), reason=summary.alerts.reason),
-        t(lang, "wa_summary_coach_note", note=summary.summary_for_coach),
+        t(lang, "summary_alert", level=level_str, reason=summary.alerts.reason),
+        t(lang, "summary_coach_notes", note=summary.summary_for_coach),
         "\n" + t(lang, "wa_session_saved_footer"),
     ]
     return "\n".join(lines)
@@ -239,7 +240,7 @@ def _handle_cancel(phone: str, lang: str) -> str:
 def _handle_message(phone: str, text: str, lang: str) -> str:
     session = _wa_sessions.get(phone)
     if session is None:
-        return t(lang, "wa_no_session_chat")
+        return t(lang, "wa_session_chat_prompt")
     try:
         return session.chat(text)
     except Exception as exc:

@@ -17,9 +17,9 @@ class AlertLevel(str, Enum):
 
 
 class NavigationStatus(str, Enum):
-    CLEAR = "clear"
-    CHOPPY = "choppy"
-    STORMY = "stormy"
+    STABLE = "stable"
+    AT_RISK = "at_risk"
+    CRITICAL = "critical"
 
 
 class OKRStatus(str, Enum):
@@ -229,6 +229,8 @@ class PastSession(BaseModel):
     timestamp: str
     alert_level: str
     summary_for_coach: str
+    coach_notes: str = ""
+    is_manual: bool = False
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────

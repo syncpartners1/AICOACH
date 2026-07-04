@@ -281,7 +281,8 @@ CREATE INDEX IF NOT EXISTS idx_coaching_learnings_scope_generated
 
 ALTER TABLE coaching_learnings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "service_role_all_coaching_learnings"
+DROP POLICY IF EXISTS "service_role_all_coaching_learnings" ON coaching_learnings;
+CREATE POLICY "service_role_all_coaching_learnings"
     ON coaching_learnings FOR ALL
     USING (auth.role() = 'service_role');
 
@@ -302,6 +303,37 @@ CREATE TABLE IF NOT EXISTS telegram_sessions (
 
 ALTER TABLE telegram_sessions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "service_role_all_telegram_sessions"
+DROP POLICY IF EXISTS "service_role_all_telegram_sessions" ON telegram_sessions;
+CREATE POLICY "service_role_all_telegram_sessions"
     ON telegram_sessions FOR ALL
     USING (auth.role() = 'service_role');
+
+-- M006: coach session notes and manual session records
+ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS coach_notes TEXT;
+ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT false;
+
+-- M007: sales funnel leads (non-registered Telegram prospects)
+CREATE TABLE IF NOT EXISTS funnel_leads (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  telegram_user_id BIGINT NOT NULL UNIQUE,
+  username         TEXT,
+  q1_answer        TEXT,
+  q2_answer        TEXT,
+  q3_answer        TEXT,
+  link_clicked     BOOLEAN NOT NULL DEFAULT false,
+  reminder_sent    BOOLEAN NOT NULL DEFAULT false,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_funnel_leads_tg ON funnel_leads(telegram_user_id);
+CREATE INDEX IF NOT EXISTS idx_funnel_leads_reminder ON funnel_leads(reminder_sent, link_clicked, created_at);
+
+ALTER TABLE funnel_leads ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "service_role_all_funnel_leads" ON funnel_leads;
+CREATE POLICY "service_role_all_funnel_leads"
+    ON funnel_leads FOR ALL
+    USING (auth.role() = 'service_role');
+
+-- M008: coaching program application tracking
+ALTER TABLE funnel_leads ADD COLUMN IF NOT EXISTS applied BOOLEAN DEFAULT false;
