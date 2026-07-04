@@ -32,14 +32,14 @@ def t(lang: str, key: str, **kwargs: object) -> str:
     """Return the translation for *key* in *lang*, falling back to English.
 
     Keyword arguments are interpolated with str.format().
-    Returns [key] if the key is missing from both lang and 'en'.
+    Returns key if the key is missing from both lang and 'en'.
     """
     bucket = _S.get(lang, _S["en"])
     text: str | None = bucket.get(key)
     if text is None:
         text = _S["en"].get(key)
     if text is None:
-        return f"[{key}]"
+        return key
     return text.format(**kwargs) if kwargs else text
 
 
