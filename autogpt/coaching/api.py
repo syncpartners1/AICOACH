@@ -95,6 +95,7 @@ from autogpt.coaching.bot_qualification import (
 )
 from autogpt.coaching.gmail_service import send_qualify_notification, send_consult_notification, send_lead_response, send_consult_lead_response
 from autogpt.coaching.wix_consult import ConsultPayload, create_consult_clickup_task
+from autogpt.coaching.budget_coach_ui import BUDGET_COACH_HTML, BUDGET_COACH_MANIFEST, BUDGET_COACH_SW
 
 # ── Telegram bot lifespan ─────────────────────────────────────────────────────
 
@@ -2639,6 +2640,24 @@ def demo_end(
         logger.warning("Could not persist demo session %s to Supabase", session_id)
     del _demo_sessions[session_id]
     return summary
+
+
+# ── Budget Coach (standalone PWA) ──────────────────────────────────────────────
+
+@app.get("/budget-coach", response_class=HTMLResponse, include_in_schema=False)
+def budget_coach_app() -> HTMLResponse:
+    """Self-contained personal budgeting PWA — data stays client-side only."""
+    return HTMLResponse(content=BUDGET_COACH_HTML)
+
+
+@app.get("/budget-coach/manifest.json", include_in_schema=False)
+def budget_coach_manifest() -> Response:
+    return Response(content=BUDGET_COACH_MANIFEST, media_type="application/manifest+json")
+
+
+@app.get("/budget-coach/sw.js", include_in_schema=False)
+def budget_coach_service_worker() -> Response:
+    return Response(content=BUDGET_COACH_SW, media_type="application/javascript")
 
 
 # ── HTML Form Pages (iFrame-embeddable on Wix) ────────────────────────────────
