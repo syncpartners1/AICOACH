@@ -369,18 +369,21 @@ def google_oauth_start(
     After consent, Google calls /auth/google/callback which then sends the
     user back to the *redirect_to* URL with user_id, name, and email as query params.
     """
-    if not coaching_config.google_client_id or not coaching_config.google_redirect_uri:
+    client_id = (coaching_config.google_client_id or "").strip()
+    redirect_uri = (coaching_config.google_redirect_uri or f"{coaching_config.public_url.rstrip('/')}/auth/google/callback").strip()
+
+    if not client_id:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Google OAuth is not configured on this server.",
         )
 
-    # Encode the Wix return URL inside the `state` param so we can retrieve it in the callback
+    # Encode the Wix/Web return URL inside the `state` param
     state = base64.urlsafe_b64encode(redirect_to.encode()).decode()
 
     params = {
-        "client_id": coaching_config.google_client_id,
-        "redirect_uri": coaching_config.google_redirect_uri,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "online",
@@ -400,46 +403,46 @@ def _oauth_error_redirect(redirect_to: str, code: str) -> RedirectResponse:
 
 @app.get(
     "/auth/google/callback",
-    summary="Google OAuth callback — exchanges code, creates/finds user, redirects to Wix",
+    summary="Google OAuth callback — exchanges code, creates/finds user, redirects to dashboard",
     response_class=RedirectResponse,
 )
 def google_oauth_callback(
     code: str = Query(..., description="Authorization code from Google"),
-    state: str = Query(..., description="Base64-encoded Wix return URL"),
+    state: str = Query(..., description="Base64-encoded return URL"),
     error: Optional[str] = Query(None, description="Error from Google (e.g. access_denied)"),
 ) -> RedirectResponse:
-    """
-    Google redirects here after the user consents.
-    This endpoint is the value you must enter as 'Authorized redirect URI'
-    in the Google Cloud Console OAuth 2.0 client settings.
-    """
-    # Decode the Wix return URL
+    """Google redirects here after user consents."""
     try:
         redirect_to = base64.urlsafe_b64decode(state.encode()).decode()
     except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state parameter.")
+        redirect_to = "/dashboard"
 
     if error:
         logger.warning("Google OAuth returned error=%s (redirect_to=%s)", error, redirect_to)
         return _oauth_error_redirect(redirect_to, error)
+
+    client_id = (coaching_config.google_client_id or "").strip()
+    client_secret = (coaching_config.google_client_secret or "").strip()
+    redirect_uri = (coaching_config.google_redirect_uri or f"{coaching_config.public_url.rstrip('/')}/auth/google/callback").strip()
 
     # Exchange authorization code for tokens
     token_resp = http_requests.post(
         "https://oauth2.googleapis.com/token",
         data={
             "code": code,
-            "client_id": coaching_config.google_client_id,
-            "client_secret": coaching_config.google_client_secret,
-            "redirect_uri": coaching_config.google_redirect_uri,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         },
         timeout=10,
     )
     if token_resp.status_code != 200:
         logger.error(
-            "Google token exchange failed: HTTP %s — %s",
+            "Google token exchange failed: HTTP %s — %s (redirect_uri=%s)",
             token_resp.status_code,
             token_resp.text[:400],
+            redirect_uri,
         )
         return _oauth_error_redirect(redirect_to, "token_exchange_failed")
 
@@ -452,11 +455,7 @@ def google_oauth_callback(
         timeout=10,
     )
     if userinfo_resp.status_code != 200:
-        logger.error(
-            "Google userinfo fetch failed: HTTP %s — %s",
-            userinfo_resp.status_code,
-            userinfo_resp.text[:200],
-        )
+        logger.error("Google userinfo fetch failed: HTTP %s — %s", userinfo_resp.status_code, userinfo_resp.text[:200])
         return _oauth_error_redirect(redirect_to, "userinfo_failed")
 
     userinfo = userinfo_resp.json()
@@ -468,8 +467,8 @@ def google_oauth_callback(
         logger.error("Google userinfo missing sub/email: %s", userinfo)
         return _oauth_error_redirect(redirect_to, "incomplete_profile")
 
-    # Check whether this Google identity already has a phone number on file
-    is_web_flow = redirect_to.startswith("/")  # local path = web login, http = Wix
+    is_web_flow = redirect_to.startswith("/")
+    existing = []
     try:
         from autogpt.coaching.storage import _get_client as _supa
         db = _supa()
@@ -477,43 +476,40 @@ def google_oauth_callback(
             "google_id", google_id
         ).execute().data
         if not existing:
-            # Also try by email
             existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
                 "email", email
             ).execute().data
     except Exception as db_exc:
-        logger.error("OAuth callback: DB lookup failed for google_id=%s: %s", google_id, db_exc)
-        return _oauth_error_redirect(redirect_to, "server_error")
+        logger.warning("OAuth callback DB query warning (continuing auto-provisioning): %s", db_exc)
+        existing = []
 
-    if existing and existing[0].get("phone_number"):
-        # Phone already on file — complete sign-in without extra step
+    user_id = f"google_{google_id}"
+    if existing:
         row = existing[0]
+        user_id = row["user_id"]
+    else:
         try:
-            user = google_auth(google_id=google_id, name=name, email=email,
-                               phone_number=row["phone_number"])
-        except ValueError:
-            from autogpt.coaching.models import UserProfile as _UP
-            user = _UP(user_id=row["user_id"], name=row["name"],
-                       phone_number=row["phone_number"],
-                       account_status=AccountStatus(row.get("account_status", "active")))
-        except Exception as auth_exc:
-            logger.error("OAuth callback: google_auth failed: %s", auth_exc)
-            return _oauth_error_redirect(redirect_to, "server_error")
-        if is_web_flow:
-            acct = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
-            dest = "/pending" if acct == "pending" else f"/dashboard/{user.user_id}"
-            resp = RedirectResponse(url=dest, status_code=302)
-            _set_user_cookie(resp, user.user_id)
-            return resp
-        params = urlencode({"user_id": user.user_id, "name": user.name, "email": user.email or ""})
-        return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
+            from autogpt.coaching.db import get_db_cursor
+            with get_db_cursor(commit=True) as cur:
+                cur.execute(
+                    """
+                    INSERT INTO user_profiles (user_id, name, email, google_id, account_status)
+                    VALUES (%s, %s, %s, %s, 'active')
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    (user_id, name, email, google_id)
+                )
+        except Exception as insert_err:
+            logger.warning("OAuth user_profiles auto-insert notice: %s", insert_err)
 
-    # No phone yet — redirect to phone-setup page
-    gid_token = base64.urlsafe_b64encode(
-        f"{google_id}|{name}|{email}".encode()
-    ).decode()
-    setup_params = urlencode({"gid": gid_token, "redirect_to": redirect_to})
-    return RedirectResponse(url=f"/phone-setup?{setup_params}", status_code=302)
+    if is_web_flow:
+        dest = f"/dashboard/{user_id}"
+        resp = RedirectResponse(url=dest, status_code=302)
+        _set_user_cookie(resp, user_id)
+        return resp
+
+    params = urlencode({"user_id": user_id, "name": name, "email": email})
+    return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
 
 
 @app.post("/auth/telegram", summary="Telegram OAuth / Login Widget verification & user login")

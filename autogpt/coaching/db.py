@@ -21,14 +21,14 @@ _pool: Optional[ThreadedConnectionPool] = None
 
 def get_db_url() -> str:
     """Get the active PostgreSQL connection URL."""
-    url = coaching_config.database_url or os.getenv("DATABASE_URL", "")
+    url = (coaching_config.database_url or os.getenv("DATABASE_URL", "")).strip()
     if not url and coaching_config.supabase_url:
         # Construct direct postgres URL from Supabase URL if database_url not set
         parsed = urlparse(coaching_config.supabase_url)
         project_ref = parsed.netloc.split('.')[0]
         password = coaching_config.supabase_service_key
         url = f"postgresql://postgres:{password}@db.{project_ref}.supabase.co:5432/postgres"
-    return url
+    return url.strip()
 
 
 def get_pool() -> ThreadedConnectionPool:
