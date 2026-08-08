@@ -5,6 +5,14 @@
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Compatibility stub for Supabase auth schema on GCP Cloud SQL
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE OR REPLACE FUNCTION auth.role() RETURNS text AS $$
+BEGIN
+    RETURN 'service_role';
+END;
+$$ LANGUAGE plpgsql;
+
 -- ============================================================
 -- 1. USER PROFILES
 -- Phone number is MANDATORY for every user regardless of sign-up method.

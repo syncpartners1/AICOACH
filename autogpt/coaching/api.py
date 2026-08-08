@@ -2115,7 +2115,8 @@ def health() -> dict:
         from autogpt.coaching.storage import _get_client as _supa
         _supa().table("user_profiles").select("user_id").limit(1).execute()
         db_ok = True
-    except Exception:
+    except Exception as exc:
+        logger.warning("Health check DB connection error: %s", exc)
         db_ok = False
     return {
         "status": "ok",
