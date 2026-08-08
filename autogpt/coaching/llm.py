@@ -16,16 +16,28 @@ def _get_client():
     global _client
     if _client is None:
         api_key = coaching_config.gemini_api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if api_key and ("placeholder" in api_key.lower() or len(api_key.strip()) < 10):
+            api_key = None
+
         try:
             from google import genai
-            _client = genai.Client(api_key=api_key)
-        except ImportError:
+            if api_key:
+                _client = genai.Client(api_key=api_key.strip())
+            else:
+                project_id = coaching_config.gcp_project_id or os.getenv("GCP_PROJECT_ID", "change-navigator-abn")
+                try:
+                    _client = genai.Client(vertexai=True, project=project_id, location="us-central1")
+                except Exception:
+                    _client = genai.Client()
+        except Exception as exc:
+            logger.warning("Could not initialize google.genai Client: %s", exc)
             try:
                 import google.generativeai as genai_legacy
                 if api_key:
-                    genai_legacy.configure(api_key=api_key)
+                    genai_legacy.configure(api_key=api_key.strip())
                 _client = genai_legacy
-            except ImportError:
+            except Exception as legacy_exc:
+                logger.error("Could not initialize legacy generativeai client: %s", legacy_exc)
                 _client = None
     return _client
 
