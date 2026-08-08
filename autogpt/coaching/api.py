@@ -334,7 +334,7 @@ def auth_login(req: LoginRequest, _: str = Depends(verify_api_key)) -> AuthRespo
     return AuthResponse(user_id=user.user_id, name=user.name, email=user.email)
 
 
-@app.post("/auth/google", response_model=AuthResponse,
+@app.post("/auth/google/token", response_model=AuthResponse,
           summary="Register or login via Google OAuth — phone_number is required")
 def auth_google(req: GoogleAuthRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
     try:
@@ -347,15 +347,20 @@ def auth_google(req: GoogleAuthRequest, _: str = Depends(verify_api_key)) -> Aut
 
 
 @app.get(
+    "/auth/google",
+    summary="Redirect the user's browser to Google's OAuth consent screen",
+    response_class=RedirectResponse,
+)
+@app.get(
     "/auth/google/url",
     summary="Redirect the user's browser to Google's OAuth consent screen",
     response_class=RedirectResponse,
 )
 def google_oauth_start(
     redirect_to: str = Query(
-        ...,
-        description="The Wix page URL to return the user to after authentication "
-                    "(e.g. https://yoursite.com/dashboard)",
+        "/dashboard",
+        description="The URL to return the user to after authentication "
+                    "(e.g. /dashboard or https://yoursite.com/dashboard)",
     ),
 ) -> RedirectResponse:
     """
