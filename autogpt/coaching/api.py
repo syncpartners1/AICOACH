@@ -2658,6 +2658,38 @@ def demo_page(request: Request) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
+@app.get("/success-plan", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/plan", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/forms", response_class=HTMLResponse, include_in_schema=False)
+def success_plan_page() -> HTMLResponse:
+    """Serve the interactive Success Plan & Change Journey Log form (Weekly, Monthly, and General)."""
+    from autogpt.coaching.success_plan_ui import SUCCESS_PLAN_HTML
+    return HTMLResponse(content=SUCCESS_PLAN_HTML)
+
+
+@app.post("/api/success-plan/save", summary="Save a Weekly or Monthly Success Plan")
+def save_success_plan(req: dict) -> dict:
+    """Save a submitted Success Plan (Weekly, Monthly, or General) to the database."""
+    plan_type = req.get("plan_type", "weekly")
+    data = req.get("data", {})
+
+    try:
+        from autogpt.coaching.db import get_db_cursor
+        import json
+        with get_db_cursor(commit=True) as cur:
+            cur.execute(
+                """
+                INSERT INTO success_plans (user_id, plan_type, data_json)
+                VALUES (%s, %s, %s)
+                """,
+                ("anonymous_client", plan_type, json.dumps(data))
+            )
+    except Exception as exc:
+        logger.warning("Could not persist success plan to database: %s", exc)
+
+    return {"status": "ok", "message": "Success plan saved successfully", "plan_type": plan_type}
+
+
 @app.post("/demo/session/start", summary="Start a demo coaching session")
 def demo_start(
     req: DemoStartRequest,

@@ -345,3 +345,20 @@ CREATE POLICY "service_role_all_funnel_leads"
 
 -- M008: coaching program application tracking
 ALTER TABLE funnel_leads ADD COLUMN IF NOT EXISTS applied BOOLEAN DEFAULT false;
+
+-- M009: Success Plans (Weekly and Monthly Change Navigator Forms)
+CREATE TABLE IF NOT EXISTS success_plans (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT,
+    client_name TEXT,
+    plan_type TEXT NOT NULL, -- 'weekly', 'monthly', 'general'
+    period_identifier TEXT,  -- e.g. "Week 32 (2026-08-08)" or "August 2026"
+    start_date DATE,
+    end_date DATE,
+    data_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_success_plans_user ON success_plans(user_id, plan_type);
+
