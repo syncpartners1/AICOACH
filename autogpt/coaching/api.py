@@ -2217,9 +2217,11 @@ _demo_sessions: Dict[str, CoachingSession] = {}
 
 def _check_demo_key(x_demo_key: str = Header(default="")) -> None:
     """Validate the demo key (injected into the demo page by the server)."""
-    if not coaching_config.demo_key:
+    expected = (coaching_config.demo_key or "").strip()
+    received = (x_demo_key or "").strip()
+    if not expected:
         return  # demo key not configured — open access (acceptable for demos)
-    if x_demo_key != coaching_config.demo_key:
+    if received != expected:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Invalid demo key.")
 
