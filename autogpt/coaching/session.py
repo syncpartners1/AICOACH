@@ -52,10 +52,10 @@ class CoachingSession:
         )
         if lang == "he":
             base_prompt += (
-                "\n\n---\n**LANGUAGE INSTRUCTION**: The user has selected Hebrew. "
-                "You MUST respond entirely in Hebrew (עברית) for all messages in this session, "
-                "including greetings, questions, and summaries. "
-                "Keep OKR/KR acronyms in English but explain them in Hebrew."
+                "\n\n---\n**LANGUAGE INSTRUCTION**: The user is communicating in Hebrew (עברית). "
+                "You MUST respond ENTIRELY in 100% natural, fluent Hebrew for all messages in this session. "
+                "Do NOT mix English terms or English acronyms (e.g. use 'יעדים אסטרטגיים', 'תוצאות מפתח', 'יומן ניווט שבועי' instead of 'OKR', 'Key Results', 'Weekly Log'). "
+                "Keep the conversation completely in native executive Hebrew without any English words."
             )
         # Inject latest coaching insights to continuously improve session quality.
         try:
@@ -99,6 +99,17 @@ class CoachingSession:
 
     def chat(self, user_message: str) -> str:
         """Send a user message and get the Navigator's reply."""
+        from autogpt.coaching.i18n import detect_lang
+        if detect_lang(user_message) == "he" and self.lang != "he":
+            self.lang = "he"
+            if "LANGUAGE INSTRUCTION" not in self._system_prompt:
+                self._system_prompt += (
+                    "\n\n---\n**LANGUAGE INSTRUCTION**: The user is communicating in Hebrew (עברית). "
+                    "You MUST respond ENTIRELY in 100% natural, fluent Hebrew for all messages in this session. "
+                    "Do NOT mix English terms or English acronyms (e.g. use 'יעדים אסטרטגיים', 'תוצאות מפתח', 'יומן ניווט שבועי' instead of 'OKR', 'Key Results', 'Weekly Log'). "
+                    "Keep the conversation completely in native executive Hebrew without any English words."
+                )
+
         self.full_message_history.append({"role": "user", "content": user_message})
 
         messages: List[Message] = [
