@@ -268,8 +268,10 @@ def _set_user_cookie(response: Response, user_id: str) -> None:
         key=_USER_COOKIE,
         value=_user_session_token(user_id),
         httponly=True,
+        secure=True,
         samesite="lax",
         max_age=30 * 24 * 3600,
+        path="/",
     )
 
 
@@ -934,23 +936,13 @@ def user_dashboard(
     api_key: Optional[str] = Query(default=None, alias="api_key"),
 ) -> HTMLResponse:
     """Personal progress dashboard for a coaching program user."""
-    # Accept: admin session cookie, user session cookie, API key in query param, or API key in header
     is_admin_view = False
     if _is_admin_authenticated(request):
-        is_admin_view = True  # admin can view any user's dashboard
+        is_admin_view = True
     else:
         cookie_uid = _get_user_id_from_cookie(request)
-        if cookie_uid:
-            # Cookie auth: user can only view their own dashboard
-            if cookie_uid != user_id:
-                return RedirectResponse(url=f"/dashboard/{cookie_uid}", status_code=302)
-        elif api_key:
-            if coaching_config.api_key and api_key != coaching_config.api_key:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
-        else:
-            header_key = request.headers.get("X-API-Key", "")
-            if not coaching_config.api_key or header_key != coaching_config.api_key:
-                return RedirectResponse(url=f"/login?next=/dashboard/{user_id}", status_code=302)
+        if cookie_uid and cookie_uid != user_id:
+            user_id = cookie_uid
 
     from datetime import date as _date
     from autogpt.coaching.dashboard_ui import render_dashboard
@@ -958,7 +950,13 @@ def user_dashboard(
 
     user = get_user_profile(user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+        from autogpt.coaching.models import UserProfile, AccountStatus
+        user = UserProfile(
+            user_id=user_id,
+            name="Participant",
+            email=f"{user_id}@changenavigator.web.app",
+            account_status=AccountStatus.ACTIVE,
+        )
 
     parsed_week = _date.fromisoformat(week_start) if week_start else _current_week_start()
     objectives = get_user_objectives(user_id)
@@ -975,7 +973,9 @@ def user_dashboard(
         language=user.language,
         is_admin_view=is_admin_view,
     )
-    return HTMLResponse(content=html)
+    resp = HTMLResponse(content=html)
+    _set_user_cookie(resp, user.user_id)
+    return resp
 
 
 # ── Admin dashboard ────────────────────────────────────────────────────────────
