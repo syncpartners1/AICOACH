@@ -210,21 +210,44 @@ async function startSession() {{
   }}
 }}
 
-function escHtml(s) {{
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}}
-
 function formatMsg(text) {{
-  // Strip internal JSON summary blocks the LLM embeds at session end
+  if (!text) return "";
   let s = text
     .replace(/\[SESSION_SUMMARY_JSON\][\s\S]*?\[\/SESSION_SUMMARY_JSON\]/g, '')
     .replace(/\[OKR_CHANGES_JSON\][\s\S]*?\[\/OKR_CHANGES_JSON\]/g, '')
     .trim();
-  // Escape HTML, then linkify URLs
-  return escHtml(s).replace(
-    /(https?:\/\/[^\s&<>"]+)/g,
+
+  // Convert markdown **bold** to <strong>
+  s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Convert markdown *italic* to <em>
+  s = s.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  // Convert markdown __underline__ to <u>
+  s = s.replace(/__(.*?)__/g, '<u>$1</u>');
+
+  // Linkify URLs
+  s = s.replace(
+    /(https?:\/\/[^\s&<>"']+)/g,
     '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;word-break:break-all">$1</a>'
   );
+
+  // Convert newlines to <br> if no HTML block elements are present
+  if (!/<(p|div|br|ol|ul|li|h[1-6])\b/i.test(s)) {{
+    s = s.replace(/\n/g, '<br>');
+  }}
+
+  // Sanitize dangerous elements (script/iframe/events) while retaining b, strong, i, em, u, a, br, p
+  const temp = document.createElement("div");
+  temp.innerHTML = s;
+  temp.querySelectorAll("script, iframe, object, embed, style, form").forEach(e => e.remove());
+  temp.querySelectorAll("*").forEach(el => {{
+    for (let i = el.attributes.length - 1; i >= 0; i--) {{
+      if (el.attributes[i].name.startsWith("on")) {{
+        el.removeAttribute(el.attributes[i].name);
+      }}
+    }}
+  }});
+
+  return temp.innerHTML;
 }}
 
 function addMsg(role, text) {{
