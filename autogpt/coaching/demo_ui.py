@@ -232,7 +232,7 @@ function formatMsg(text) {{
 
   // Convert newlines to <br> if no HTML block elements are present
   if (!/<(p|div|br|ol|ul|li|h[1-6])\b/i.test(s)) {{
-    s = s.replace(/\n/g, '<br>');
+    s = s.split('\\n').join('<br>');
   }}
 
   // Sanitize dangerous elements (script/iframe/events) while retaining b, strong, i, em, u, a, br, p
