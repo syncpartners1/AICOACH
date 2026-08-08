@@ -126,7 +126,7 @@ footer a{{color:#6b7280;text-decoration:none}}
   <div class="feat">
     <div class="feat-icon">🤖</div>
     <div class="feat-title">AI Coaching</div>
-    <div class="feat-desc">Claude-powered sessions tailored to your leadership challenges.</div>
+    <div class="feat-desc">Gemini 2.5 Flash-powered sessions tailored to your leadership challenges.</div>
   </div>
   <div class="feat">
     <div class="feat-icon">📊</div>

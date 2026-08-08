@@ -15,10 +15,12 @@ class CoachingConfig(metaclass=Singleton):
         self.alert_red_threshold: int = int(os.getenv("COACHING_ALERT_RED_THRESHOLD", "25"))
         self.alert_yellow_threshold: int = int(os.getenv("COACHING_ALERT_YELLOW_THRESHOLD", "40"))
         self.api_key: str = os.getenv("COACHING_API_KEY", "")
+        self.database_url: str = os.getenv("DATABASE_URL", "")
         self.supabase_url: str = os.getenv("SUPABASE_URL", "")
         self.supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
-        # Claude LLM settings
-        self.llm_model: str = os.getenv("COACHING_LLM_MODEL", "claude-haiku-4-5-20251001")
+        # Gemini LLM settings
+        self.gemini_api_key: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+        self.llm_model: str = os.getenv("COACHING_LLM_MODEL", "gemini-2.5-flash")
         self.llm_temperature: float = float(os.getenv("COACHING_LLM_TEMPERATURE", "0.7"))
         # Google OAuth (.strip() guards against copy-paste whitespace in Railway env vars)
         self.google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "").strip()
@@ -77,14 +79,12 @@ class CoachingConfig(metaclass=Singleton):
     def validate(self) -> None:
         """Raise if required env vars are missing."""
         missing = []
-        if not self.supabase_url:
-            missing.append("SUPABASE_URL")
-        if not self.supabase_service_key:
-            missing.append("SUPABASE_SERVICE_KEY")
+        if not self.database_url and not (self.supabase_url and self.supabase_service_key):
+            missing.append("DATABASE_URL (or SUPABASE_URL + SUPABASE_SERVICE_KEY)")
         if not self.api_key:
             missing.append("COACHING_API_KEY")
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            missing.append("ANTHROPIC_API_KEY")
+        if not self.gemini_api_key and not os.getenv("GCP_PROJECT_ID") and not os.getenv("K_SERVICE"):
+            missing.append("GEMINI_API_KEY (or GOOGLE_API_KEY)")
         if missing:
             raise EnvironmentError(
                 f"Missing required environment variables: {', '.join(missing)}"

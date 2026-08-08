@@ -53,8 +53,9 @@ deploy_main() {
         --timeout=300 \
         --service-account="main-app-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
         --set-secrets="\
-ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,\
+GEMINI_API_KEY=GEMINI_API_KEY:latest,\
 COACHING_API_KEY=COACHING_API_KEY:latest,\
+DATABASE_URL=DATABASE_URL:latest,\
 SUPABASE_URL=SUPABASE_URL:latest,\
 SUPABASE_SERVICE_KEY=SUPABASE_SERVICE_KEY:latest,\
 TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,\
@@ -83,20 +84,26 @@ EMAILJS_TEMPLATE_WELCOME=EMAILJS_TEMPLATE_WELCOME:latest,\
 EMAILJS_PUBLIC_KEY=EMAILJS_PUBLIC_KEY:latest,\
 EMAILJS_PRIVATE_KEY=EMAILJS_PRIVATE_KEY:latest,\
 COACHING_DEMO_KEY=COACHING_DEMO_KEY:latest" \
+        --add-cloudsql-instances="${PROJECT_ID}:${REGION}:change-navigator-db" \
         --set-env-vars="\
 TELEGRAM_WEBHOOK_MODE=true,\
-COACHING_LLM_MODEL=claude-haiku-4-5-20251001,\
+COACHING_LLM_MODEL=gemini-2.5-flash,\
 COACHING_LLM_TEMPERATURE=0.7,\
 SCHEDULER_TIMEZONE=Asia/Jerusalem,\
 GCP_PROJECT_ID=${PROJECT_ID}" \
         --project="${PROJECT_ID}"
+
+    # Ensure public unauthenticated access
+    gcloud run services add-iam-policy-binding change-navigator \
+        --member="allUsers" --role="roles/run.invoker" \
+        --region="${REGION}" --project="${PROJECT_ID}" --quiet 2>/dev/null || true
 
     # Get the deployed URL
     MAIN_URL=$(gcloud run services describe change-navigator \
         --region="${REGION}" --project="${PROJECT_ID}" \
         --format="value(status.url)")
     echo ""
-    echo "✅ Main app deployed: ${MAIN_URL}"
+    echo "✅ Main app deployed (Public Access Enabled): ${MAIN_URL}"
 
     # Update PUBLIC_URL secret so the app knows its own URL
     echo -n "${MAIN_URL}" | gcloud secrets versions add "PUBLIC_URL" \

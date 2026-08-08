@@ -49,7 +49,7 @@ def analyze_transcripts(transcripts: List[List[Dict[str, str]]]) -> Dict[str, An
         return {"error": "no transcripts provided"}
 
     from autogpt.coaching.config import coaching_config
-    import anthropic
+    from autogpt.coaching.llm import chat_completion
 
     # Build a compact text representation of all transcripts
     parts: List[str] = []
@@ -67,13 +67,8 @@ def analyze_transcripts(transcripts: List[List[Dict[str, str]]]) -> Dict[str, An
     prompt = _ANALYSIS_PROMPT + corpus
 
     try:
-        client = anthropic.Anthropic(api_key=coaching_config.anthropic_api_key)
-        response = client.messages.create(
-            model=coaching_config.llm_model,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = response.content[0].text.strip()
+        messages = [{"role": "user", "content": prompt}]
+        raw = chat_completion(messages, model=coaching_config.llm_model, temperature=0.2).strip()
         # Strip accidental markdown fences
         if raw.startswith("```"):
             raw = raw.split("```")[1]

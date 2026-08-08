@@ -6,7 +6,7 @@
     },
     "supabase": {
       "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=aakbytofflrctepuedyh",
+      "url": "https://mcp.supabase.com/mcp?project_ref=aakbytofflrctepuedyh&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching",
       "headers": {
         "Authorization": "Bearer ${SUPABASE_PAT}"
       }

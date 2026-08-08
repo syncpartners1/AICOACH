@@ -178,7 +178,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Change Navigator",
-    description="Executive change management coaching API — powered by Claude AI",
+    description="Executive change management coaching API — powered by Google Gemini 2.5 Flash",
     version="3.0.0",
     lifespan=lifespan,
 )
@@ -509,6 +509,64 @@ def google_oauth_callback(
     ).decode()
     setup_params = urlencode({"gid": gid_token, "redirect_to": redirect_to})
     return RedirectResponse(url=f"/phone-setup?{setup_params}", status_code=302)
+
+
+@app.post("/auth/telegram", summary="Telegram OAuth / Login Widget verification & user login")
+async def telegram_oauth_callback(payload: dict, response: Response) -> AuthResponse:
+    """Authenticate user via Telegram Login Widget or Web App.
+
+    Validates Telegram HMAC-SHA256 signature, creates or loads the user profile,
+    and issues an authentication session token.
+    """
+    bot_token = coaching_config.telegram_bot_token
+    if not bot_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telegram authentication is not configured on this server.",
+        )
+
+    from autogpt.coaching.telegram_auth import verify_telegram_auth
+    from autogpt.coaching.storage import telegram_oauth
+
+    # Verify signature if hash is present
+    if "hash" in payload:
+        if not verify_telegram_auth(payload, bot_token):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Telegram authentication payload.",
+            )
+
+    telegram_user_id = payload.get("id") or payload.get("user_id")
+    if not telegram_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing Telegram user ID.",
+        )
+
+    first_name = payload.get("first_name") or "Telegram User"
+    last_name = payload.get("last_name") or ""
+    full_name = f"{first_name} {last_name}".strip()
+
+    try:
+        user = telegram_oauth(
+            telegram_user_id=int(telegram_user_id),
+            name=full_name,
+            username=payload.get("username"),
+        )
+    except Exception as exc:
+        logger.error("Telegram OAuth DB error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not process Telegram login.",
+        )
+
+    _set_user_cookie(response, user.user_id)
+    return AuthResponse(
+        user_id=user.user_id,
+        name=user.name,
+        account_status=user.account_status,
+        language=user.language,
+    )
 
 
 @app.get("/phone-setup", response_class=HTMLResponse, include_in_schema=False)

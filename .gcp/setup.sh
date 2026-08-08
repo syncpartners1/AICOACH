@@ -62,6 +62,7 @@ gcloud services enable \
     cloudbuild.googleapis.com \
     iam.googleapis.com \
     iamcredentials.googleapis.com \
+    sqladmin.googleapis.com \
     --project="${PROJECT_ID}"
 echo "  → APIs enabled."
 
@@ -110,10 +111,15 @@ fi
 echo ""
 echo "[5/8] Assigning IAM roles..."
 
-# Main app: Secret Manager accessor
+# Main app: Secret Manager accessor + Cloud SQL Client
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${MAIN_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor" \
+    --condition=None --quiet
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${MAIN_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/cloudsql.client" \
     --condition=None --quiet
 
 # Scheduler: Secret Manager accessor
@@ -122,7 +128,7 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --role="roles/secretmanager.secretAccessor" \
     --condition=None --quiet
 
-# Cloud Build service account: Cloud Run deployer + Artifact Registry writer
+# Cloud Build service account: Cloud Run deployer + Artifact Registry writer + Cloud SQL client
 PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
 CLOUDBUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 
@@ -139,6 +145,11 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${CLOUDBUILD_SA}" \
     --role="roles/iam.serviceAccountUser" \
+    --condition=None --quiet
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${CLOUDBUILD_SA}" \
+    --role="roles/cloudsql.client" \
     --condition=None --quiet
 
 echo "  → IAM roles assigned."

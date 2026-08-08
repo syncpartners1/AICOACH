@@ -35,11 +35,18 @@ from autogpt.coaching.models import (
 )
 
 
-# ── Supabase client ───────────────────────────────────────────────────────────
+# ── Database client (GCP Cloud SQL / PostgreSQL or Supabase) ─────────────────
 
 def _get_client():
-    from supabase import create_client  # lazy import
-    return create_client(coaching_config.supabase_url, coaching_config.supabase_service_key)
+    if coaching_config.database_url or os.getenv("DATABASE_URL"):
+        from autogpt.coaching.db import PGClient
+        return PGClient()
+    if coaching_config.supabase_url and coaching_config.supabase_service_key:
+        from supabase import create_client  # lazy import
+        return create_client(coaching_config.supabase_url, coaching_config.supabase_service_key)
+    # Fall back to PGClient
+    from autogpt.coaching.db import PGClient
+    return PGClient()
 
 
 # ── User / Auth ───────────────────────────────────────────────────────────────
@@ -132,6 +139,31 @@ def google_auth(
             ).execute()
             row["phone_number"] = phone_number
         return _row_to_profile(row)
+
+
+def telegram_oauth(
+    telegram_user_id: int,
+    name: str,
+    username: Optional[str] = None,
+) -> UserProfile:
+    """Register or log in via Telegram OAuth.
+    Lookup order: telegram_user_id -> create new user profile."""
+    db = _get_client()
+    by_tid = db.table("user_profiles").select("*").eq("telegram_user_id", telegram_user_id).execute()
+    if by_tid.data:
+        return _row_to_profile(by_tid.data[0])
+
+    uid = str(uuid.uuid4())
+    dummy_phone = f"+tg{telegram_user_id}"
+    db.table("user_profiles").insert({
+        "user_id": uid,
+        "name": name,
+        "phone_number": dummy_phone,
+        "telegram_user_id": telegram_user_id,
+        "account_status": "active",
+        "language": "en",
+    }).execute()
+    return UserProfile(user_id=uid, name=name, phone_number=dummy_phone, telegram_user_id=telegram_user_id)
     # 2. Existing email — link Google identity
     by_email = db.table("user_profiles").select("*").eq("email", email).execute()
     if by_email.data:
