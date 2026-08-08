@@ -2649,7 +2649,7 @@ def demo_page(request: Request) -> HTMLResponse:
     # and cause all API calls to fail.
     html = DEMO_HTML.format(
         api_base="",
-        demo_key=coaching_config.demo_key,
+        demo_key=(coaching_config.demo_key or "").strip(),
         coach_name=coaching_config.coach_name,
         scheduler_url=coaching_config.scheduler_url,
     )
