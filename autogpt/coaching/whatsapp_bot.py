@@ -45,7 +45,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
 
 from autogpt.coaching.config import coaching_config
-from autogpt.coaching.i18n import detect_lang, t
+from autogpt.coaching.i18n import S_EN, detect_lang, t
 
 logger = logging.getLogger(__name__)
 
