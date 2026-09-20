@@ -165,12 +165,17 @@ jobs:
             EMAILJS_PRIVATE_KEY=EMAILJS_PRIVATE_KEY:latest
             COACHING_DEMO_KEY=COACHING_DEMO_KEY:latest
             PUBLIC_URL=PUBLIC_URL:latest
+            SMTP_PASSWORD=BREVO_SMTP_PASSWORD:latest
           env_vars: |
             TELEGRAM_WEBHOOK_MODE=true
             COACHING_LLM_MODEL=gemini-2.5-flash
             COACHING_LLM_TEMPERATURE=0.7
             SCHEDULER_TIMEZONE=Asia/Jerusalem
             GCP_PROJECT_ID=${{ env.PROJECT_ID }}
+            SMTP_HOST=smtp-relay.brevo.com
+            SMTP_PORT=587
+            SMTP_USER=ba2d39001@smtp-brevo.com
+            SMTP_FROM=office@changenavigator.co.il
 
       - name: Deploy Firebase Hosting (changenavigator.web.app)
         run: npx -y firebase-tools deploy --only hosting --project ${{ env.PROJECT_ID }}
