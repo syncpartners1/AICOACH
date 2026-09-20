@@ -1,6 +1,6 @@
 """Google Gemini LLM wrapper for the ABN Co-Navigator coaching module.
 
-Targets Gemini 3.5 Flash (``gemini-3.5-flash``) by default:
+Targets Gemini 2.5 Flash (``gemini-2.5-flash``) by default:
 
 - Thinking is controlled with ``thinking_level`` (minimal | low | medium | high)
   instead of the legacy numeric ``thinking_budget``. The two cannot be combined
@@ -28,7 +28,7 @@ from autogpt.coaching.config import coaching_config
 logger = logging.getLogger(__name__)
 
 #: Default production model.
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 
 #: Gemini 3.x models use thinking_level and reject sampling-parameter tuning.
 _GEMINI3_RE = re.compile(r"^gemini-3", re.IGNORECASE)

@@ -62,14 +62,14 @@ def reset_client(monkeypatch):
 # ── Model normalisation ───────────────────────────────────────────────────────
 
 class TestNormalizeModel:
-    def test_default_model_is_gemini_3_5_flash(self):
-        assert llm.DEFAULT_GEMINI_MODEL == "gemini-3.5-flash"
+    def test_default_model_is_gemini_2_5_flash(self):
+        assert llm.DEFAULT_GEMINI_MODEL == "gemini-2.5-flash"
 
     def test_claude_name_maps_to_default(self):
-        assert llm._normalize_model("claude-sonnet-4-6") == "gemini-3.5-flash"
+        assert llm._normalize_model("claude-sonnet-4-6") == "gemini-2.5-flash"
 
     def test_non_gemini_name_maps_to_default(self):
-        assert llm._normalize_model("gpt-4") == "gemini-3.5-flash"
+        assert llm._normalize_model("gpt-4") == "gemini-2.5-flash"
 
     def test_gemini_name_passes_through(self):
         assert llm._normalize_model("gemini-2.5-flash") == "gemini-2.5-flash"
