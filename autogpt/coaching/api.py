@@ -2666,7 +2666,7 @@ def success_plan_page() -> HTMLResponse:
 
 
 @app.post("/api/success-plan/save", summary="Save a Weekly or Monthly Success Plan")
-def save_success_plan(req: dict) -> dict:
+def save_success_plan(req: dict, _: str = Depends(verify_api_key)) -> dict:
     """Save a submitted Success Plan (Weekly, Monthly, or General) to the database."""
     plan_type = req.get("plan_type", "weekly")
     data = req.get("data", {})
@@ -2683,7 +2683,11 @@ def save_success_plan(req: dict) -> dict:
                 ("anonymous_client", plan_type, json.dumps(data))
             )
     except Exception as exc:
-        logger.warning("Could not persist success plan to database: %s", exc)
+        logger.exception("Could not persist success plan to database")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save success plan.",
+        ) from exc
 
     return {"status": "ok", "message": "Success plan saved successfully", "plan_type": plan_type}
 

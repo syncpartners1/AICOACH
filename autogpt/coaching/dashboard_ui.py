@@ -7,6 +7,7 @@ Supports English (en) and Hebrew (he) with full RTL layout for Hebrew.
 from __future__ import annotations
 
 from datetime import date
+import html
 from typing import List, Optional
 
 from autogpt.coaching.i18n import t
@@ -162,17 +163,17 @@ def render_dashboard(
             notes_html = (
                 f'<div style="margin-top:6px;font-size:12px;color:#1a2b4a;background:#e0e7ff22;'
                 f'border-left:2px solid #6366f1;padding:4px 8px;border-radius:0 4px 4px 0">'
-                f'📝 {s.coach_notes}</div>'
+                f'📝 {html.escape(s.coach_notes)}</div>'
             )
         if is_admin_view:
             # Editable notes textarea + save button
-            escaped_notes = s.coach_notes.replace('"', '&quot;').replace('\n', '&#10;')
+            escaped_notes = html.escape(s.coach_notes)
             notes_html = f"""
 <div style="margin-top:8px">
   <textarea id="notes_{s.session_id}"
     style="width:100%;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
            resize:vertical;min-height:56px;color:#374151"
-    placeholder="{t(lang, 'db_session_notes_placeholder')}">{s.coach_notes}</textarea>
+    placeholder="{t(lang, 'db_session_notes_placeholder')}">{escaped_notes}</textarea>
   <button onclick="saveNotes('{s.session_id}')"
     style="margin-top:4px;font-size:11px;background:#1a2b4a;color:#fff;border:none;
            padding:4px 12px;border-radius:6px;cursor:pointer">💾 {t(lang, 'db_btn_save_session')}</button>
