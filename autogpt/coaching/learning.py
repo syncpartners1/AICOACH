@@ -68,7 +68,7 @@ def analyze_transcripts(transcripts: List[List[Dict[str, str]]]) -> Dict[str, An
 
     try:
         messages = [{"role": "user", "content": prompt}]
-        raw = chat_completion(messages, model=coaching_config.llm_model, temperature=0.2).strip()
+        raw = chat_completion(messages, model=coaching_config.llm_model, temperature=0.2, thinking_level="low").strip()
         # Strip accidental markdown fences
         if raw.startswith("```"):
             raw = raw.split("```")[1]

@@ -20,7 +20,9 @@ class CoachingConfig(metaclass=Singleton):
         self.supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
         # Gemini LLM settings
         self.gemini_api_key: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
-        self.llm_model: str = os.getenv("COACHING_LLM_MODEL", "gemini-2.5-flash")
+        self.llm_model: str = os.getenv("COACHING_LLM_MODEL", "gemini-3.5-flash")
+        # Gemini 3.x thinking effort: minimal | low | medium (default) | high
+        self.llm_thinking_level: str = os.getenv("COACHING_LLM_THINKING_LEVEL", "medium")
         self.llm_temperature: float = float(os.getenv("COACHING_LLM_TEMPERATURE", "0.7"))
         # Google OAuth (.strip() guards against copy-paste whitespace in Railway env vars)
         self.google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "").strip()
