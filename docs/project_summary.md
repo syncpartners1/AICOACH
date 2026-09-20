@@ -114,7 +114,7 @@ The AI coach operates with a nautical-leader persona and applies ADKAR/PROSCI ch
 | Component | Technology |
 |---|---|
 | Backend API | FastAPI (Python), deployed on Railway |
-| AI | Anthropic Claude (claude-sonnet-4-6) |
+| AI | Google Gemini (gemini-3.5-flash) |
 | Database | Supabase (PostgreSQL) with Row Level Security |
 | Telegram Bot | python-telegram-bot (async) |
 | WhatsApp Bot | Meta WhatsApp Cloud API |

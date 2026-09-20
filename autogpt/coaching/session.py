@@ -116,13 +116,19 @@ class CoachingSession:
             {"role": "system", "content": self._system_prompt},
         ] + self.full_message_history
 
-        from autogpt.coaching.llm import chat_completion
-        reply = chat_completion(
+        from autogpt.coaching.llm import chat_completion_with_metadata
+        result = chat_completion_with_metadata(
             messages=messages,
             model=coaching_config.llm_model,
             temperature=coaching_config.llm_temperature,
         )
-        self.full_message_history.append({"role": "assistant", "content": reply})
+        reply = result.text
+        assistant_message = {"role": "assistant", "content": reply}
+        if result.thought_signature:
+            # Preserve the Gemini 3.x thought signature (base64) so the next
+            # turn replays the model's reasoning context with the history.
+            assistant_message["thought_signature"] = result.thought_signature
+        self.full_message_history.append(assistant_message)
         return reply
 
     def extract_summary(self) -> SessionSummary:
@@ -139,6 +145,7 @@ class CoachingSession:
             messages=extraction_messages,
             model=coaching_config.llm_model,
             temperature=0.0,
+            thinking_level="low",  # structured extraction: fast, low-effort thinking
         )
 
         weekly_log, summary_text = self._parse_summary_json(raw)
