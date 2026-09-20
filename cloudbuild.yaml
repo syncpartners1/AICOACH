@@ -53,7 +53,7 @@ steps:
       - '--image=me-west1-docker.pkg.dev/$PROJECT_ID/change-navigator-docker/scheduler:$COMMIT_SHA'
       - '--region=me-west1'
       - '--platform=managed'
-      - '--no-allow-unauthenticated'
+      - '--allow-unauthenticated'
       - '--memory=256Mi'
       - '--cpu=1'
       - '--min-instances=0'

@@ -87,7 +87,7 @@ jobs:
             --image=${{ env.REGISTRY }}/scheduler:${{ needs.build-and-push.outputs.image-tag }} \
             --region=${{ env.REGION }} \
             --platform=managed \
-            --no-allow-unauthenticated \
+            --allow-unauthenticated \
             --memory=256Mi \
             --cpu=1 \
             --min-instances=0 \
