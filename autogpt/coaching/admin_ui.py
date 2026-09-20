@@ -133,7 +133,6 @@ def render_admin(
     for inv in pending_invites:
         reg_url = inv.register_url or f"{public_url}/register?token={inv.token}"
         who = inv.name or inv.email or inv.phone or "—"
-        has_email = "true" if inv.email else "false"
         invite_rows += f"""
 <tr>
   <td style="padding:8px 12px;font-size:13px">{who}</td>

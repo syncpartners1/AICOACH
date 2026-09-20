@@ -36,7 +36,6 @@ from autogpt.coaching.models import (
     AccountStatus,
     AuthResponse,
     CoachDashboard,
-    CompleteGoogleSignupRequest,
     DailyHighlightRequest,
     GoogleAuthRequest,
     Invite,
@@ -46,7 +45,6 @@ from autogpt.coaching.models import (
     LoginRequest,
     Objective,
     ObjectiveRequest,
-    OKRStatus,
     PastSession,
     PhoneRegisterRequest,
     RegisterRequest,
@@ -78,7 +76,6 @@ from autogpt.coaching.storage import (
     set_account_status,
     set_kr_status,
     set_objective_status,
-    set_user_language,
     upsert_daily_highlight,
     upsert_kr_activity,
     upsert_master_kr,
@@ -87,13 +84,7 @@ from autogpt.coaching.storage import (
 )
 from autogpt.coaching.wix_qualify      import CoachingQualPayload, handle_coaching_qualify
 from autogpt.coaching.wix_consult_form import WixConsultFormPayload, handle_wix_consult_form
-from autogpt.coaching.bot_qualification import (
-    is_in_qualification,
-    start_qualification,
-    update_qualification,
-    should_start_qualification,
-)
-from autogpt.coaching.gmail_service import send_qualify_notification, send_consult_notification, send_lead_response, send_consult_lead_response
+from autogpt.coaching.gmail_service import send_consult_notification
 from autogpt.coaching.wix_consult import ConsultPayload, create_consult_clickup_task
 from autogpt.coaching.budget_coach_ui import BUDGET_COACH_HTML, BUDGET_COACH_MANIFEST, BUDGET_COACH_SW
 
@@ -2225,7 +2216,7 @@ def _check_demo_key(x_demo_key: str = Header(default="")) -> None:
 
 
 def _check_demo_rate(request: Request) -> None:
-    global _demo_date, _demo_counts
+    global _demo_date
     today = date.today()
     if today != _demo_date:
         _demo_date = today
@@ -2264,7 +2255,6 @@ def chat_page(request: Request) -> Response:
 <title>Account Inactive</title></head><body style="font-family:sans-serif;text-align:center;padding:60px">
 <h2>Your account is {user.account_status.value}.</h2>
 <p>Please contact your coach to reactivate.</p></body></html>""")
-    coach = coaching_config.coach_name
     scheduler_url = coaching_config.scheduler_url.strip() if coaching_config.scheduler_url else ""
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>

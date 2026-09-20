@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 

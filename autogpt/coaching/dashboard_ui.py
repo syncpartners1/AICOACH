@@ -7,12 +7,10 @@ Supports English (en) and Hebrew (he) with full RTL layout for Hebrew.
 from __future__ import annotations
 
 from datetime import date
-from typing import List, Optional
+from typing import List
 
 from autogpt.coaching.i18n import t
 from autogpt.coaching.models import (
-    DailyHighlight,
-    DayOfWeek,
     KRActivity,
     Objective,
     PastSession,
@@ -166,7 +164,6 @@ def render_dashboard(
             )
         if is_admin_view:
             # Editable notes textarea + save button
-            escaped_notes = s.coach_notes.replace('"', '&quot;').replace('\n', '&#10;')
             notes_html = f"""
 <div style="margin-top:8px">
   <textarea id="notes_{s.session_id}"
