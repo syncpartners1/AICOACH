@@ -136,7 +136,7 @@ deploy_scheduler() {
         --image="${REGISTRY}/scheduler:${TAG}" \
         --region="${REGION}" \
         --platform=managed \
-        --no-allow-unauthenticated \
+        --allow-unauthenticated \
         --memory=256Mi \
         --cpu=1 \
         --min-instances=0 \
