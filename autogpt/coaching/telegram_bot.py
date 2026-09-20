@@ -53,7 +53,7 @@ import warnings
 warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*per_message=False.*")
 
 from autogpt.coaching.config import coaching_config
-from autogpt.coaching.i18n import LANG_PROMPT, detect_lang, get_coach_name, t
+from autogpt.coaching.i18n import detect_lang, t
 from autogpt.coaching.utils import markdown_to_html
 
 logger = logging.getLogger(__name__)
@@ -652,7 +652,6 @@ async def _start_coaching_session(
 
 
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    tg_id = update.effective_user.id
     name = update.message.text.strip()
     # Use the language chosen at the start of registration; fall back to text detection
     lang = context.user_data.get("lang") or detect_lang(name)
@@ -956,7 +955,6 @@ async def plan_receive_gaps(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def plan_receive_corrections(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", "en")
     text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
     idx = context.user_data["plan_kr_index"]
     krs = context.user_data["plan_krs"]
@@ -1405,7 +1403,6 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Reload objectives and account status from the database."""
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
-    lang = _lang(user)
 
     if not user:
         await update.message.reply_text(
@@ -1415,7 +1412,7 @@ async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     # Reload fresh profile from DB
     try:
-        from autogpt.coaching.storage import get_user_objectives, get_past_sessions
+        from autogpt.coaching.storage import get_user_objectives
         objectives = get_user_objectives(user.user_id)
         await update.message.reply_text(
             f"✅ Synced! You have <b>{len(objectives)}</b> active objective(s). "
@@ -1573,7 +1570,6 @@ async def book_receive_date(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
 
     if not slots:
-        label = _MEETING_TYPES[mtype]["label_key"]
         await query.edit_message_text(
             t(lang, "book_no_slots", date=date_str),
             reply_markup=_date_keyboard(),
@@ -1715,7 +1711,6 @@ async def book_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 # ── /mybookings command ────────────────────────────────────────────────────────
 
 async def mybookings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    import asyncio
     tg_id = update.effective_user.id
     user  = _get_linked_user(tg_id)
     lang  = _lang(user, update.message.text or "")
@@ -1767,7 +1762,6 @@ async def _send_bookings(message, email: str, lang: str) -> None:
 # ── /cancelmeeting conversation ────────────────────────────────────────────────
 
 async def cancelmeeting_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    import asyncio
     tg_id = update.effective_user.id
     user  = _get_linked_user(tg_id)
     lang  = _lang(user, update.message.text or "")

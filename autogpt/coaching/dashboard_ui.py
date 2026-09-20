@@ -8,12 +8,10 @@ from __future__ import annotations
 
 from datetime import date
 import html
-from typing import List, Optional
+from typing import List
 
 from autogpt.coaching.i18n import t
 from autogpt.coaching.models import (
-    DailyHighlight,
-    DayOfWeek,
     KRActivity,
     Objective,
     PastSession,

@@ -10,7 +10,6 @@ import logging
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
-from autogpt.coaching.gmail_service import send_consult_notification, send_consult_lead_response
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,6 @@ def compute_consult_score(p: WixConsultFormPayload) -> str:
     """
     # Decision-maker status
     is_decision_maker = "מחליט" in p.c11_decision or "decision" in p.c11_decision.lower()
-    is_influencer     = "משפיע" in p.c11_decision
 
     # Timeline urgency
     is_urgent = any(t in p.c9_timeline for t in ["3 חודשים", "מיידי", "עכשיו"])

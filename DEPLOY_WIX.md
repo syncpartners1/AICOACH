@@ -11,12 +11,11 @@ The system has two parts:
 
 ## Step 1 — Deploy the Backend API
 
-### Option A: Railway (recommended, ~2 min)
+### Option A: Google Cloud Run
 
-1. Go to [railway.app](https://railway.app) and create a new project from GitHub.
-2. Select this repository.
-3. Railway auto-detects `railway.toml` and uses `Dockerfile.coaching`.
-4. Add these **environment variables** in the Railway dashboard:
+1. Deploy the coaching service with the repository's root `Dockerfile` and GCP deployment configuration.
+2. Configure the required secrets in GCP Secret Manager.
+3. Add these **environment variables** to the Cloud Run service:
 
    | Variable | Value |
    |----------|-------|
