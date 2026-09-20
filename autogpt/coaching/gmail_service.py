@@ -6,10 +6,11 @@ from email.mime.multipart import MIMEMultipart
 
 logger = logging.getLogger(__name__)
 
-SMTP_HOST = "smtp.office365.com"
-SMTP_PORT = 587
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.office365.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "office@ben-nesher.com")
 SMTP_PASS = os.getenv("SMTP_PASSWORD")
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
 BOOKING_URL = os.getenv("SCHEDULER_URL", "https://abn-sch.up.railway.app")
 
 
@@ -51,7 +52,7 @@ Outcome:    {outcome}
 ClickUp:    {clickup_url or 'FAILED — check logs'}
 """
     msg = MIMEMultipart()
-    msg["From"]    = SMTP_USER
+    msg["From"]    = SMTP_FROM
     msg["To"]      = "abn@ben-nesher.com"
     msg["Subject"] = f"[Coaching {verdict}] New lead — {lead_name}"
     msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -109,7 +110,7 @@ def send_lead_response(lead_name: str, lead_email: str, verdict: str) -> None:
 054-758-6022 | www.ben-nesher.com
 """
     msg = MIMEMultipart()
-    msg["From"]    = SMTP_USER
+    msg["From"]    = SMTP_FROM
     msg["To"]      = lead_email
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -148,7 +149,7 @@ Email:      {lead_email}
 ClickUp:    {clickup_url or 'FAILED — check logs'}
 """
     msg = MIMEMultipart()
-    msg["From"]    = SMTP_USER
+    msg["From"]    = SMTP_FROM
     msg["To"]      = "abn@ben-nesher.com"
     msg["Subject"] = f"[{type_label} {readiness_level}] New lead — {lead_name} / {lead_org}"
     msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -213,7 +214,7 @@ def send_consult_lead_response(
 054-758-6022 | www.ben-nesher.com
 """
     msg = MIMEMultipart()
-    msg["From"]    = SMTP_USER
+    msg["From"]    = SMTP_FROM
     msg["To"]      = lead_email
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
