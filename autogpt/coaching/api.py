@@ -941,7 +941,9 @@ def user_dashboard(
         is_admin_view = True
     else:
         cookie_uid = _get_user_id_from_cookie(request)
-        if cookie_uid and cookie_uid != user_id:
+        if not cookie_uid:
+            return RedirectResponse(url="/login", status_code=302)
+        if cookie_uid != user_id:
             user_id = cookie_uid
 
     from datetime import date as _date
