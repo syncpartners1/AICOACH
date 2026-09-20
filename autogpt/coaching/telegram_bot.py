@@ -387,6 +387,7 @@ _FUNNEL_WEBSITE_URL_REMINDER = "https://www.ben-nesher.com/coaching/coaching-qua
 
 async def funnel_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """User clicked 'Start Strategic Alignment Check' — ask Q1."""
+    lang = context.user_data.get("lang", "en")
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
@@ -398,6 +399,7 @@ async def funnel_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def funnel_receive_q1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Collect Q1 answer, save, ask Q2."""
+    lang = context.user_data.get("lang", "en")
     tg_id = update.effective_user.id
     answer = update.message.text.strip()
     context.user_data["funnel_q1"] = answer
@@ -416,6 +418,7 @@ async def funnel_receive_q1(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def funnel_receive_q2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Collect Q2 answer, save, ask Q3."""
+    lang = context.user_data.get("lang", "en")
     tg_id = update.effective_user.id
     answer = update.message.text.strip()
     context.user_data["funnel_q2"] = answer
@@ -434,6 +437,7 @@ async def funnel_receive_q2(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def funnel_receive_q3(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Collect Q3 answer, notify admin, send confirmation message with website button."""
+    lang = context.user_data.get("lang", "en")
     tg_id = update.effective_user.id
     answer = update.message.text.strip()
     context.user_data["funnel_q3"] = answer

@@ -70,7 +70,7 @@ class CoachingConfig(metaclass=Singleton):
         self.emailjs_service_id: str = os.getenv("EMAILJS_SERVICE_ID", "service_a85ap2g")
         self.emailjs_template_invite: str = os.getenv("EMAILJS_TEMPLATE_INVITE", "CNAPP_Invite")
         self.emailjs_template_welcome: str = os.getenv("EMAILJS_TEMPLATE_WELCOME", "CNAPP_Welcome")
-        self.emailjs_public_key: str = os.getenv("EMAILJS_PUBLIC_KEY", "nxguxr-WfLhUpXOhn")
+        self.emailjs_public_key: str = os.getenv("EMAILJS_PUBLIC_KEY", "")
         self.emailjs_private_key: str = os.getenv("EMAILJS_PRIVATE_KEY", "")
 
     def validate(self) -> None:
