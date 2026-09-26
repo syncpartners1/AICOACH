@@ -411,6 +411,16 @@ def apply_okr_changes(user_id: str, changes: List[Dict[str, Any]]) -> None:
             logger.exception("apply_okr_changes: failed action=%s change=%s for user=%s", action, change, user_id)
 
 
+def _as_datetime(value: str | datetime) -> datetime:
+    """Accept timestamps returned as strings or native PostgreSQL datetimes."""
+    return value if isinstance(value, datetime) else datetime.fromisoformat(value)
+
+
+def _as_date(value: str | date) -> date:
+    """Accept dates returned as strings or native PostgreSQL dates."""
+    return value if isinstance(value, date) else date.fromisoformat(value)
+
+
 # ── History ───────────────────────────────────────────────────────────────────
 
 def get_past_sessions(user_id: str, limit: int = 5) -> List[PastSession]:
@@ -428,7 +438,7 @@ def get_past_sessions(user_id: str, limit: int = 5) -> List[PastSession]:
     return [
         PastSession(
             session_id=r["session_id"],
-            timestamp=r["timestamp"],
+            timestamp=r["timestamp"].isoformat() if isinstance(r["timestamp"], datetime) else r["timestamp"],
             alert_level=r["alert_level"],
             summary_for_coach=r.get("summary_for_coach") or "",
             coach_notes=r.get("coach_notes") or "",
@@ -570,7 +580,7 @@ def load_session(session_id: str) -> Optional[SessionSummary]:
     obstacles = [
         Obstacle(
             description=r["description"],
-            reported_at=datetime.fromisoformat(r["reported_at"]) if r.get("reported_at") else None,
+            reported_at=_as_datetime(r["reported_at"]) if r.get("reported_at") else None,
             resolved=r["resolved"],
         )
         for r in obs_rows
@@ -586,7 +596,7 @@ def load_session(session_id: str) -> Optional[SessionSummary]:
         client_id=row["client_id"],
         client_name=client_name,
         user_id=row.get("user_id"),
-        timestamp=datetime.fromisoformat(row["timestamp"]),
+        timestamp=_as_datetime(row["timestamp"]),
         weekly_log=WeeklyLog(
             focus_goal=row.get("focus_goal", ""),
             key_results=key_results,
@@ -784,7 +794,7 @@ def get_weekly_plan(user_id: str, week_start: Optional[date] = None) -> WeeklyPl
         DailyHighlight(
             highlight_id=r["highlight_id"],
             user_id=r["user_id"],
-            week_start=date.fromisoformat(r["week_start"]),
+            week_start=_as_date(r["week_start"]),
             day_of_week=DayOfWeek(r["day_of_week"]),
             highlight=r.get("highlight", ""),
         )
@@ -903,9 +913,9 @@ def get_invite(token: str) -> Optional[Invite]:
         phone=r.get("phone"),
         note=r.get("note"),
         language=r.get("language") or "en",
-        used_at=datetime.fromisoformat(r["used_at"]) if r.get("used_at") else None,
-        created_at=datetime.fromisoformat(r["created_at"]) if r.get("created_at") else None,
-        expires_at=datetime.fromisoformat(r["expires_at"]) if r.get("expires_at") else None,
+        used_at=_as_datetime(r["used_at"]) if r.get("used_at") else None,
+        created_at=_as_datetime(r["created_at"]) if r.get("created_at") else None,
+        expires_at=_as_datetime(r["expires_at"]) if r.get("expires_at") else None,
     )
 
 
@@ -924,9 +934,9 @@ def get_invite_by_id(invite_id: str) -> Optional["Invite"]:
         phone=r.get("phone"),
         note=r.get("note"),
         language=r.get("language") or "en",
-        used_at=datetime.fromisoformat(r["used_at"]) if r.get("used_at") else None,
-        created_at=datetime.fromisoformat(r["created_at"]) if r.get("created_at") else None,
-        expires_at=datetime.fromisoformat(r["expires_at"]) if r.get("expires_at") else None,
+        used_at=_as_datetime(r["used_at"]) if r.get("used_at") else None,
+        created_at=_as_datetime(r["created_at"]) if r.get("created_at") else None,
+        expires_at=_as_datetime(r["expires_at"]) if r.get("expires_at") else None,
     )
 
 
@@ -1007,7 +1017,7 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
             .execute()
             .data
         )
-        last_session_dt = datetime.fromisoformat(last_sess[0]["timestamp"]) if last_sess else None
+        last_session_dt = _as_datetime(last_sess[0]["timestamp"]) if last_sess else None
         # Last weekly plan
         last_plan = (
             db.table("weekly_plans")
@@ -1018,7 +1028,7 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
             .execute()
             .data
         )
-        last_plan_date = date.fromisoformat(last_plan[0]["week_start"]) if last_plan else None
+        last_plan_date = _as_date(last_plan[0]["week_start"]) if last_plan else None
         summaries.append(UserProgressSummary(
             user_id=uid,
             name=u["name"],
