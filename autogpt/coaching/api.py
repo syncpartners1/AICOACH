@@ -174,6 +174,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Internal bridge for the consolidated Telegram bot (scheduler-google → coaching engine)
+from autogpt.coaching.bridge import router as _bridge_router  # noqa: E402
+
+app.include_router(_bridge_router)
+
 # ── Rate limiting (slowapi) ───────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
