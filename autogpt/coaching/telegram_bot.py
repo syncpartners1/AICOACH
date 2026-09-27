@@ -32,6 +32,7 @@ Commands (admin — only for ADMIN_TELEGRAM_ID):
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager, suppress
 import html
 import logging
 import re
@@ -121,7 +122,8 @@ async def _auto_finalize_session(bot, chat_id: int, tg_id: int, lang: str) -> No
         return
     try:
         from autogpt.coaching.storage import delete_telegram_session, save_session
-        summary = session.extract_summary()
+        async with _typing_while(bot, chat_id):
+            summary = await asyncio.to_thread(session.extract_summary)
         save_session(summary)
         _sessions.pop(tg_id, None)
         delete_telegram_session(tg_id)
@@ -195,6 +197,28 @@ def _persist_session(tg_id: int) -> None:
         save_telegram_session(tg_id, session)
     except Exception:
         logger.exception("Failed to persist telegram session for user %s", tg_id)
+
+
+# ── Long-running model calls ─────────────────────────────────────────────────
+
+@asynccontextmanager
+async def _typing_while(bot, chat_id: int):
+    """Keep Telegram's short-lived typing indicator on while a model call runs."""
+    async def pulse():
+        while True:
+            try:
+                await bot.send_chat_action(chat_id=chat_id, action="typing")
+            except Exception:
+                logger.warning("Could not send typing action to chat %s", chat_id, exc_info=True)
+            await asyncio.sleep(4)
+
+    task = asyncio.create_task(pulse())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
 
 # ── Inactivity timer ──────────────────────────────────────────────────────────
@@ -649,7 +673,8 @@ async def _start_coaching_session(
         program=get_coaching_program(user_id) if user_id else None,
     )
     _sessions[tg_id] = session
-    opening = session.open()
+    async with _typing_while(context.bot, update.effective_chat.id):
+        opening = await asyncio.to_thread(session.open)
     _persist_session(tg_id)  # save immediately so restart doesn't lose the new session
     await update.message.reply_text(markdown_to_html(opening), parse_mode="HTML")
     await update.message.reply_text(t(lang, "session_tip"), parse_mode="HTML")
@@ -782,9 +807,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(t(lang, "no_active_session"))
         return ConversationHandler.END
 
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
-        reply = session.chat(update.message.text)
+        async with _typing_while(context.bot, update.effective_chat.id):
+            reply = await asyncio.to_thread(session.chat, update.message.text)
         _persist_session(tg_id)  # keep DB in sync after each turn
         # When the LLM produces a session summary, auto-save to DB immediately
         # (no extra LLM call — reuse the JSON already in the reply)
@@ -813,7 +838,8 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(t(lang, "wrapping_up"))
     try:
         from autogpt.coaching.storage import delete_telegram_session, save_session
-        summary = session.extract_summary()
+        async with _typing_while(context.bot, update.effective_chat.id):
+            summary = await asyncio.to_thread(session.extract_summary)
         save_session(summary)
         _cancel_inactivity_timer(tg_id)
         del _sessions[tg_id]
