@@ -53,3 +53,17 @@ def test_admin_view_route_accepts_fresh_user_without_okr_or_session(monkeypatch)
     assert response.status_code == 200
     assert "Fresh" in response.text
     assert 'id="new_sess_date"' in response.text
+
+
+def test_save_notes_button_passes_itself_not_global_event():
+    """Regression (2026-09-27): saveNotes read the ambient `event` global after
+    an await, when Chrome has cleared it - TypeError at event.target and the
+    save appeared to fail. The handler must receive the button explicitly."""
+    user, week, plan = _empty_dashboard()
+    sessions = [
+        PastSession(session_id="s1", timestamp="2026-09-26T12:00:00", alert_level="green", summary_for_coach="Note"),
+    ]
+    page = render_dashboard(user, [], plan, sessions, week, week + timedelta(days=6), is_admin_view=True)
+    assert "saveNotes('s1', this)" in page
+    assert "async function saveNotes(sessionId, btn)" in page
+    assert "event.target" not in page
