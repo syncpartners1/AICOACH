@@ -120,6 +120,7 @@ class PGTableQuery:
         self.where_clauses: List[str] = []
         self.params: Dict[str, Any] = {}
         self.insert_data: Any = None
+        self.conflict_col: Optional[str] = None
         self.update_data: Any = None
         self.order_clause: Optional[str] = None
         self.limit_val: Optional[int] = None
@@ -139,9 +140,22 @@ class PGTableQuery:
         self.insert_data = data
         return self
 
-    def upsert(self, data) -> PGTableQuery:
+    def upsert(self, data, on_conflict: Optional[str] = None) -> PGTableQuery:
+        """Match PostgREST's on_conflict for the unique keys used by storage.
+
+        Never interpolate an arbitrary caller-supplied SQL identifier.
+        """
+        unique_keys = {
+            "clients": "client_id",
+            "coaching_sessions": "session_id",
+            "telegram_sessions": "telegram_user_id",
+            "funnel_leads": "telegram_user_id",
+        }
+        if on_conflict is not None and unique_keys.get(self.table_name) != on_conflict:
+            raise ValueError(f"Unsupported conflict key for {self.table_name}")
         self.op = "UPSERT"
         self.insert_data = data
+        self.conflict_col = on_conflict
         return self
 
     def update(self, data) -> PGTableQuery:
@@ -246,13 +260,17 @@ class PGTableQuery:
                         "user_profiles": "user_id",
                         "objectives": "objective_id",
                         "user_key_results": "kr_id",
-                        "clients": "id",
-                        "coaching_sessions": "id",
+                        "clients": "client_id",
+                        "coaching_sessions": "session_id",
+                        "telegram_sessions": "telegram_user_id",
+                        "funnel_leads": "telegram_user_id",
                         "weekly_kr_activities": "activity_id",
                         "daily_highlights": "highlight_id",
                         "coaching_learnings": "learning_id",
                     }
-                    pk = pk_map.get(self.table_name, "id")
+                    pk = self.conflict_col or pk_map.get(self.table_name, "id")
+                    if pk not in cols:
+                        raise ValueError(f"Upsert key {pk!r} missing from {self.table_name} payload")
                     update_assigns = ", ".join([f"{c} = EXCLUDED.{c}" for c in cols if c != pk])
                     conflict_str = f" ON CONFLICT ({pk}) DO UPDATE SET {update_assigns}" if update_assigns else f" ON CONFLICT ({pk}) DO NOTHING"
 
