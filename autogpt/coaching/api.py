@@ -125,22 +125,29 @@ async def lifespan(app: FastAPI):
         if coaching_config.telegram_webhook_mode:
             # ── Webhook mode (production / Cloud Run) ──────────────────────────
             # The bot receives updates via POST /telegram/webhook.
-            # We register the webhook URL with Telegram at startup.
-            if coaching_config.public_url:
-                _register_telegram_webhook(
-                    coaching_config.telegram_bot_token,
-                    coaching_config.public_url,
-                )
-            else:
-                logger.warning(
-                    "TELEGRAM_WEBHOOK_MODE=true but PUBLIC_URL is not set — "
-                    "webhook will NOT be registered. Set PUBLIC_URL to the Cloud Run URL."
-                )
-            # Initialize the bot application so handlers are ready to dispatch
+            # Initialize before registering a webhook so a deleted bot cannot
+            # take down the web app or change Telegram's delivery destination.
+            from telegram.error import InvalidToken
             from autogpt.coaching.telegram_bot import get_application
-            app.state.telegram_app = await get_application(coaching_config.telegram_bot_token)
-            await app.state.telegram_app.initialize()
-            logger.info("Telegram bot ready in webhook mode")
+            app.state.telegram_app = None
+            try:
+                telegram_app = await get_application(coaching_config.telegram_bot_token)
+                await telegram_app.initialize()
+            except InvalidToken:
+                logger.error("Telegram bot token rejected; continuing without the legacy bot")
+            else:
+                app.state.telegram_app = telegram_app
+                if coaching_config.public_url:
+                    _register_telegram_webhook(
+                        coaching_config.telegram_bot_token,
+                        coaching_config.public_url,
+                    )
+                else:
+                    logger.warning(
+                        "TELEGRAM_WEBHOOK_MODE=true but PUBLIC_URL is not set — "
+                        "webhook will NOT be registered. Set PUBLIC_URL to the Cloud Run URL."
+                    )
+                logger.info("Telegram bot ready in webhook mode")
         else:
             # ── Polling mode (local development) ──────────────────────────────
             async def _delayed_start():
@@ -156,9 +163,10 @@ async def lifespan(app: FastAPI):
     yield
     # ── Shutdown ──────────────────────────────────────────────────────────────
     if coaching_config.telegram_bot_token and coaching_config.telegram_webhook_mode:
-        if hasattr(app.state, "telegram_app"):
-            await app.state.telegram_app.shutdown()
-        _delete_telegram_webhook(coaching_config.telegram_bot_token)
+        telegram_app = getattr(app.state, "telegram_app", None)
+        if telegram_app is not None:
+            await telegram_app.shutdown()
+            _delete_telegram_webhook(coaching_config.telegram_bot_token)
     if telegram_task:
         telegram_task.cancel()
         try:
