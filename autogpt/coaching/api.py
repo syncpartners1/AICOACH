@@ -249,7 +249,11 @@ def verify_admin_or_api_key(request: Request) -> None:
 
 # ── User session cookie ───────────────────────────────────────────────────────
 
-_USER_COOKIE = "user_session"
+# Firebase Hosting forwards only __session to Cloud Run. The value is
+# role-specific: admin is an HMAC digest; a participant is user_id:HMAC.
+# Logging into one role replaces the other role's session in this browser.
+_USER_COOKIE = "__session"
+_LEGACY_USER_COOKIE = "user_session"
 
 
 def _user_session_token(user_id: str) -> str:
@@ -260,7 +264,11 @@ def _user_session_token(user_id: str) -> str:
 
 def _get_user_id_from_cookie(request: Request) -> Optional[str]:
     cookie = request.cookies.get(_USER_COOKIE, "")
-    if not cookie or ":" not in cookie:
+    if not cookie:
+        # Existing direct Cloud Run sessions can be upgraded on their next
+        # authenticated dashboard visit. Firebase never forwards this cookie.
+        cookie = request.cookies.get(_LEGACY_USER_COOKIE, "")
+    if ":" not in cookie:
         return None
     parts = cookie.split(":", 1)
     user_id = parts[0]
@@ -280,6 +288,8 @@ def _set_user_cookie(response: Response, user_id: str) -> None:
         max_age=30 * 24 * 3600,
         path="/",
     )
+    # Clear an old direct-host session so admin login/logout cannot reveal it.
+    response.delete_cookie(_LEGACY_USER_COOKIE, path="/")
 
 
 # ── In-memory active session store ───────────────────────────────────────────
@@ -983,14 +993,15 @@ def user_dashboard(
         is_admin_view=is_admin_view,
     )
     resp = HTMLResponse(content=html)
-    _set_user_cookie(resp, user.user_id)
+    if not is_admin_view:
+        _set_user_cookie(resp, user.user_id)
     return resp
 
 
 # ── Admin dashboard ────────────────────────────────────────────────────────────
 
-# Firebase Hosting forwards only this cookie to the rewritten Cloud Run app.
-_ADMIN_COOKIE = "__session"
+# Shared cookie name, disjoint role-specific value (see _USER_COOKIE above).
+_ADMIN_COOKIE = _USER_COOKIE
 
 # In-memory OTP store: phone → (otp, expires_at)
 _otp_store: Dict[str, tuple] = {}
@@ -1281,13 +1292,16 @@ def admin_login(username: str = Form(...), password: str = Form(...)) -> Respons
         )
     resp = RedirectResponse(url="/admin", status_code=303)
     _set_admin_cookie(resp)
+    resp.delete_cookie(_LEGACY_USER_COOKIE, path="/")
     return resp
 
 
 @app.get("/admin/logout", include_in_schema=False)
-def admin_logout() -> Response:
+def admin_logout(request: Request) -> Response:
     resp = RedirectResponse(url="/admin", status_code=303)
-    resp.delete_cookie(_ADMIN_COOKIE)
+    if _is_admin_authenticated(request):
+        resp.delete_cookie(_ADMIN_COOKIE, path="/")
+    resp.delete_cookie(_LEGACY_USER_COOKIE, path="/")
     return resp
 
 
@@ -1343,6 +1357,7 @@ def admin_auth_facebook(body: _FbTokenRequest) -> JSONResponse:
 
     resp = JSONResponse({"ok": True})
     _set_admin_cookie(resp)
+    resp.delete_cookie(_LEGACY_USER_COOKIE, path="/")
     return resp
 
 
@@ -1376,6 +1391,7 @@ def admin_wa_verify(body: _WaVerifyRequest) -> JSONResponse:
     _otp_store.pop(phone, None)
     resp = JSONResponse({"ok": True})
     _set_admin_cookie(resp)
+    resp.delete_cookie(_LEGACY_USER_COOKIE, path="/")
     return resp
 
 
@@ -1993,9 +2009,11 @@ p{{color:#6b7280;font-size:14px;line-height:1.6}}
 
 
 @app.get("/user/logout", include_in_schema=False)
-def user_logout() -> Response:
+def user_logout(request: Request) -> Response:
     resp = RedirectResponse(url="/login", status_code=303)
-    resp.delete_cookie(_USER_COOKIE)
+    if _get_user_id_from_cookie(request):
+        resp.delete_cookie(_USER_COOKIE, path="/")
+        resp.delete_cookie(_LEGACY_USER_COOKIE, path="/")
     return resp
 
 
