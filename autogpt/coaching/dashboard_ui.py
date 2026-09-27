@@ -177,22 +177,22 @@ def render_dashboard(
            padding:4px 12px;border-radius:6px;cursor:pointer">💾 {t(lang, 'db_btn_save_session')}</button>
 </div>"""
         session_date_str = s.timestamp[:10]
-    try:
-        from datetime import datetime
-        session_date_str = datetime.strptime(s.timestamp[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
-    except Exception:
-        pass
-    sess_html += f"""
-<div style="border-{('right' if is_rtl else 'left')}:3px solid {dot_color};padding:8px 14px;
-            margin-bottom:10px;background:#f9fafb;border-radius:0 8px 8px 0">
-  <div style="font-size:12px;font-weight:600;color:#374151">{session_date_str}
-    <span style="margin-left:8px;padding:1px 7px;border-radius:10px;font-size:11px;
-                 background:{dot_color}22;color:{dot_color}">{s.alert_level.upper()}</span>
-    {session_type_badge}
-  </div>
-  <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.5">{excerpt}</div>
-  {notes_html}
-</div>"""
+        try:
+            from datetime import datetime
+            session_date_str = datetime.strptime(s.timestamp[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
+        except Exception:
+            pass
+        sess_html += f"""
+    <div style="border-{('right' if is_rtl else 'left')}:3px solid {dot_color};padding:8px 14px;
+                margin-bottom:10px;background:#f9fafb;border-radius:0 8px 8px 0">
+      <div style="font-size:12px;font-weight:600;color:#374151">{session_date_str}
+        <span style="margin-left:8px;padding:1px 7px;border-radius:10px;font-size:11px;
+                     background:{dot_color}22;color:{dot_color}">{s.alert_level.upper()}</span>
+        {session_type_badge}
+      </div>
+      <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.5">{excerpt}</div>
+      {notes_html}
+    </div>"""
     if not sess_html:
         sess_html = f'<p style="color:#9ca3af;font-size:13px">{t(lang, "db_no_sessions")}</p>'
 
