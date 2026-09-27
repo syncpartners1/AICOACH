@@ -77,7 +77,7 @@ class TestRenderTemplate:
         "to_name": "Jane",
         "to_email": "jane@realmail.com",
         "coach_name": "Adi",
-        "program_name": "ABN Consulting AI Co-Navigator",
+        "program_name": "Change Navigator",
         "register_url": "https://app.example-site.com/register?token=abc123",
         "invite_note": "",
         "expires_at": "",
@@ -124,15 +124,74 @@ class TestSendInviteEmail:
         msg = _sent_message(smtp_instance)
         assert msg["To"] == "jane@realmail.com"
         assert msg["From"] == "office@changenavigator.co.il"
-        assert "ABN Consulting AI Co-Navigator" in str(msg["Subject"])
+        assert "Change Navigator" in str(msg["Subject"])
         parts = {p.get_content_type(): p.get_payload(decode=True).decode("utf-8")
                  for p in msg.get_payload()}
         assert "text/html" in parts and "text/plain" in parts
         assert "https://app.example-site.com/register?token=abc" in parts["text/html"]
         assert "See you there" in parts["text/html"]
-        # Change Navigator signature rides the plain-text part
-        assert "054-7586022" in parts["text/plain"]
-        assert "meet.changenavigator.co.il" in parts["text/plain"]
+        # Change Navigator signature rides the plain-text part (exact standing text)
+        assert "עדי בן נשר" in parts["text/plain"]
+        assert "מאמן לניווט שינויים" in parts["text/plain"]
+        assert "אישי | כלכלי | עסקי" in parts["text/plain"]
+
+    def test_hebrew_invite_uses_rtl_template_and_subject(self, monkeypatch):
+        smtp_instance = _patch_smtp(monkeypatch)
+        ok = send_invite_email(
+            to_email="kobi@realmail.com",
+            to_name="Kobi",
+            register_url="https://app.example-site.com/register?token=abc",
+            coach_name="עדי בן נשר",
+            language="he",
+        )
+        assert ok is True
+        msg = _sent_message(smtp_instance)
+        assert "הזמנה אישית אל Change Navigator" in str(msg["Subject"])
+        parts = {p.get_content_type(): p.get_payload(decode=True).decode("utf-8")
+                 for p in msg.get_payload()}
+        html_part = parts["text/html"]
+        assert 'lang="he"' in html_part and 'dir="rtl"' in html_part
+        assert "הוזמנת" in html_part  # Hebrew headline rendered
+        assert "You're invited!" not in html_part  # English template NOT used
+        # Plain part derives from the Hebrew HTML, signature stays appended
+        assert "שלום Kobi" in parts["text/plain"]
+        assert "לנווט בנחישות אל היעד" in html_part  # motto tagline
+        # Exact standing signature in the HTML part too (regression: was old coach_name block)
+        assert "<strong>עדי בן נשר</strong><br/>" in html_part
+        assert "מאמן לניווט שינויים" in html_part
+        assert "אישי | כלכלי | עסקי" in html_part
+        assert "ABN Consulting · תכנית AI Co-Navigator" not in html_part  # old sign-off gone
+
+    def test_default_language_is_english(self, monkeypatch):
+        smtp_instance = _patch_smtp(monkeypatch)
+        ok = send_invite_email(
+            to_email="jane@realmail.com",
+            to_name="Jane",
+            register_url="https://app.example-site.com/register?token=abc",
+            coach_name="Adi",
+        )
+        assert ok is True
+        msg = _sent_message(smtp_instance)
+        assert "Private Invitation to" in str(msg["Subject"])
+        parts = {p.get_content_type(): p.get_payload(decode=True).decode("utf-8")
+                 for p in msg.get_payload()}
+        assert 'lang="en"' in parts["text/html"]
+
+    def test_unknown_language_falls_back_to_english(self, monkeypatch):
+        smtp_instance = _patch_smtp(monkeypatch)
+        ok = send_invite_email(
+            to_email="jane@realmail.com",
+            to_name="Jane",
+            register_url="https://app.example-site.com/register?token=abc",
+            coach_name="Adi",
+            language="fr",
+        )
+        assert ok is True
+        msg = _sent_message(smtp_instance)
+        assert "Private Invitation to" in str(msg["Subject"])
+        parts = {p.get_content_type(): p.get_payload(decode=True).decode("utf-8")
+                 for p in msg.get_payload()}
+        assert 'lang="en"' in parts["text/html"]
 
     def test_empty_name_uses_fallback(self, monkeypatch):
         smtp_instance = _patch_smtp(monkeypatch)
