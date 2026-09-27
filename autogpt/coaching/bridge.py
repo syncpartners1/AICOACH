@@ -154,7 +154,7 @@ def start_session(req: SessionRequest, _: str = Depends(verify_bridge_secret)) -
         return {"ok": True, "already_active": True, "message": None}
 
     from autogpt.coaching.session import CoachingSession
-    from autogpt.coaching.storage import get_user_objectives, get_past_sessions
+    from autogpt.coaching.storage import get_user_objectives, get_past_sessions, get_coaching_program
 
     session = CoachingSession(
         client_id=f"telegram_{req.telegram_id}",
@@ -162,6 +162,7 @@ def start_session(req: SessionRequest, _: str = Depends(verify_bridge_secret)) -
         user_id=user.user_id,
         objectives=get_user_objectives(user.user_id),
         past_sessions=get_past_sessions(user.user_id, limit=3),
+        program=get_coaching_program(user.user_id),
         lang=user.language or "he",
     )
     tb._sessions[req.telegram_id] = session

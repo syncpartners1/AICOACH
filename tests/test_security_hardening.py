@@ -4,14 +4,14 @@ from datetime import datetime
 from fastapi.testclient import TestClient
 
 
-def test_success_plan_save_requires_api_key():
+def test_success_plan_save_requires_user_login():
     from autogpt.coaching.api import app, coaching_config
     coaching_config.api_key = "test-api-key"
     response = TestClient(app).post(
         "/api/success-plan/save",
         json={"plan_type": "weekly", "data": {}},
     )
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_dashboard_escapes_coach_notes():

@@ -362,3 +362,16 @@ CREATE TABLE IF NOT EXISTS success_plans (
 
 CREATE INDEX IF NOT EXISTS idx_success_plans_user ON success_plans(user_id, plan_type);
 
+
+-- M010: coach-controlled program phase and participant-owned success plan.
+-- No financial documents or sensitive raw account data are stored here.
+CREATE TABLE IF NOT EXISTS coaching_programs (
+    user_id UUID PRIMARY KEY REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+    program_type TEXT NOT NULL DEFAULT 'base' CHECK (program_type IN ('base', 'base_financial')),
+    phase TEXT NOT NULL DEFAULT 'unassigned',
+    plan_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE coaching_programs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS service_only ON coaching_programs;
+CREATE POLICY service_only ON coaching_programs USING (auth.role() = 'service_role');

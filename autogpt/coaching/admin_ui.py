@@ -95,6 +95,9 @@ def render_admin(
   <td style="padding:10px 12px;white-space:nowrap">
     <a href="{dashboard_url}" style="font-size:12px;color:#1a2b4a;background:#e0e7ff;
        padding:3px 10px;border-radius:12px;text-decoration:none;margin-right:6px">{t(lang, "admin_btn_view")}</a>
+    <a href="/admin/users/{u.user_id}/program/manage" style="display:inline-block;font-size:12px;
+       color:#1a2b4a;background:#d1fae5;padding:3px 10px;border-radius:12px;
+       text-decoration:none;margin:4px 6px">ניהול תוכנית</a>
     {actions}
   </td>
 </tr>"""

@@ -482,6 +482,46 @@ def create_manual_session(
     return session_id
 
 
+# ── Coach-controlled program and participant success plan ────────────────────
+
+PROGRAM_PHASES = ("unassigned", "qmark", *(f"meeting_{n}" for n in range(1, 11)), "ongoing")
+
+
+def get_coaching_program(user_id: str) -> dict:
+    """Read only; no implicit assignment or phase progression."""
+    rows = (_get_client().table("coaching_programs").select("*")
+            .eq("user_id", user_id).limit(1).execute().data or [])
+    return rows[0] if rows else {"user_id": user_id, "program_type": "base",
+                                 "phase": "unassigned", "plan_json": {}}
+
+
+def set_coaching_program(user_id: str, program_type: str, phase: str) -> dict:
+    """Coach-only metadata update; preserve the participant's current plan."""
+    if program_type not in ("base", "base_financial") or phase not in PROGRAM_PHASES:
+        raise ValueError("Invalid program type or phase")
+    db = _get_client()
+    rows = db.table("coaching_programs").select("user_id").eq("user_id", user_id).execute().data or []
+    payload = {"program_type": program_type, "phase": phase,
+               "updated_at": datetime.utcnow().isoformat()}
+    if rows:
+        db.table("coaching_programs").update(payload).eq("user_id", user_id).execute()
+    else:
+        db.table("coaching_programs").insert({"user_id": user_id, **payload}).execute()
+    return get_coaching_program(user_id)
+
+
+def save_coaching_plan(user_id: str, plan: dict) -> dict:
+    """Participant-owned plan; never update program type or coach-set phase."""
+    db = _get_client()
+    rows = db.table("coaching_programs").select("user_id").eq("user_id", user_id).execute().data or []
+    payload = {"plan_json": plan, "updated_at": datetime.utcnow().isoformat()}
+    if rows:
+        db.table("coaching_programs").update(payload).eq("user_id", user_id).execute()
+    else:
+        db.table("coaching_programs").insert({"user_id": user_id, **payload}).execute()
+    return get_coaching_program(user_id)
+
+
 # ── Session save / load ───────────────────────────────────────────────────────
 
 def _ensure_client_exists(db, client_id: str, client_name: str) -> None:
@@ -543,6 +583,15 @@ def save_session(summary: SessionSummary) -> None:
     # Apply OKR mutations requested during the session
     if summary.okr_changes and summary.user_id:
         apply_okr_changes(summary.user_id, summary.okr_changes)
+    if summary.success_plan_changes and summary.user_id:
+        current = get_coaching_program(summary.user_id).get("plan_json") or {}
+        if isinstance(current, str):
+            current = json.loads(current)
+        if not isinstance(current, dict):
+            current = {}
+        # Merge only fields the participant explicitly confirmed in the session.
+        save_coaching_plan(summary.user_id, {**current, **summary.success_plan_changes})
+
 
 
 def load_session(session_id: str) -> Optional[SessionSummary]:
