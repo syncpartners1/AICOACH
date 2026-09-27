@@ -453,7 +453,7 @@ textarea {
       <div class="meta-grid">
         <div class="field-group">
           <label>לשבוע מספר:</label>
-          <input type="text" name="week_number" placeholder="לדוגמה: שבוע 32" required>
+          <input type="text" name="week_number" placeholder="לדוגמה: שבוע 32">
         </div>
         <div class="field-group">
           <label>תאריך התחלה:</label>
@@ -855,12 +855,28 @@ async function savePlan(e) {
     if (res.ok) {
       showToast('תוכנית ההצלחה נשמרה בהצלחה! 💾');
     } else {
-      showToast('התוכנית נשמרה מקומית במכשיר 👍');
+      showToast('השמירה נכשלה. הנתונים לא נשמרו; יש להתחבר ולנסות שוב.');
     }
   } catch (err) {
-    showToast('התוכנית נשמרה מקומית במכשיר 👍');
+    showToast('השמירה נכשלה. הנתונים לא נשמרו; יש להתחבר ולנסות שוב.');
   }
 }
+
+async function loadSavedPlan() {
+  try {
+    const res = await fetch('/api/success-plan');
+    if (!res.ok) return;
+    const data = (await res.json()).data || {};
+    const form = document.getElementById('successPlanForm');
+    for (const fields of [data.general_form || {}, data.weekly_form || {}, data.monthly_form || {}]) {
+      for (const [name, value] of Object.entries(fields)) {
+      const element = form.elements.namedItem(name);
+      if (element && typeof value === 'string') element.value = value;
+      }
+    }
+  } catch (_) { /* Print-only mode when the user is offline. */ }
+}
+loadSavedPlan();
 
 function showToast(msg) {
   const t = document.getElementById('toast');

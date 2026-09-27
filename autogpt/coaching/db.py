@@ -267,6 +267,7 @@ class PGTableQuery:
                         "weekly_kr_activities": "activity_id",
                         "daily_highlights": "highlight_id",
                         "coaching_learnings": "learning_id",
+                        "coaching_programs": "user_id",
                     }
                     pk = self.conflict_col or pk_map.get(self.table_name, "id")
                     if pk not in cols:

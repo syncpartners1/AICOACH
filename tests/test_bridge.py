@@ -137,6 +137,7 @@ class TestSessionFlow(unittest.TestCase):
              patch("autogpt.coaching.telegram_bot._get_or_restore_session", return_value=None), \
              patch("autogpt.coaching.storage.get_user_objectives", return_value=[]), \
              patch("autogpt.coaching.storage.get_past_sessions", return_value=[]), \
+             patch("autogpt.coaching.storage.get_coaching_program", return_value={}), \
              patch("autogpt.coaching.session.CoachingSession", return_value=fake_session), \
              patch("autogpt.coaching.telegram_bot._persist_session"):
             r = _client().post("/internal/telegram/session/start",

@@ -64,6 +64,9 @@ from autogpt.coaching.storage import (
     get_invite,
     get_invite_by_id,
     get_past_sessions,
+    get_coaching_program,
+    save_coaching_plan,
+    set_coaching_program,
     get_user_objectives,
     get_user_profile,
     get_weekly_plan,
@@ -2060,6 +2063,7 @@ def start_session(
         user_id=req.user_id,
         objectives=objectives,
         past_sessions=past_sessions,
+        program=get_coaching_program(req.user_id) if req.user_id else None,
     )
     _active_sessions[session.session_id] = session
 
@@ -2559,6 +2563,7 @@ def user_session_start(request: Request, req: UserSessionStartRequest) -> dict:
         user_id=user_id,
         objectives=objectives,
         past_sessions=past_sessions,
+        program=get_coaching_program(user_id),
         lang=req.lang if req.lang in ("en", "he") else "en",
     )
     _active_sessions[session.session_id] = session
@@ -2571,9 +2576,12 @@ def user_session_start(request: Request, req: UserSessionStartRequest) -> dict:
           summary="Send message in a user web session (cookie auth)")
 @limiter.limit("30/minute")
 def user_session_message(request: Request, session_id: str, req: MessageRequest) -> dict:
-    if not _get_user_id_from_cookie(request):
+    user_id = _get_user_id_from_cookie(request)
+    if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
     session = _active_sessions.get(session_id)
+    if session and session.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your session.")
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2587,9 +2595,12 @@ def user_session_message(request: Request, session_id: str, req: MessageRequest)
 @app.post("/user/session/{session_id}/end", response_model=SessionSummary,
           summary="End a user web session and save summary (cookie auth)")
 def user_session_end(session_id: str, request: Request) -> SessionSummary:
-    if not _get_user_id_from_cookie(request):
+    user_id = _get_user_id_from_cookie(request)
+    if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
     session = _active_sessions.get(session_id)
+    if session and session.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your session.")
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2668,30 +2679,83 @@ def success_plan_page() -> HTMLResponse:
     return HTMLResponse(content=SUCCESS_PLAN_HTML)
 
 
-@app.post("/api/success-plan/save", summary="Save a Weekly or Monthly Success Plan")
-def save_success_plan(req: dict, _: str = Depends(verify_api_key)) -> dict:
-    """Save a submitted Success Plan (Weekly, Monthly, or General) to the database."""
-    plan_type = req.get("plan_type", "weekly")
-    data = req.get("data", {})
+class ProgramUpdate(BaseModel):
+    program_type: str
+    phase: str
 
+
+@app.get("/admin/users/{user_id}/program/manage", response_class=HTMLResponse,
+         include_in_schema=False)
+def admin_program_screen(user_id: str, request: Request) -> HTMLResponse:
+    if not _is_admin_authenticated(request):
+        raise HTTPException(status_code=403, detail="Admin login required.")
+    user = get_user_profile(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    from autogpt.coaching.admin_program_ui import render_program_editor
+    return HTMLResponse(render_program_editor(user, get_coaching_program(user_id)))
+
+
+@app.get("/admin/users/{user_id}/program", summary="Coach: view program and success plan")
+def admin_get_program(user_id: str, _: None = Depends(verify_admin_or_api_key)) -> dict:
+    if not get_user_profile(user_id):
+        raise HTTPException(status_code=404, detail="User not found.")
+    return get_coaching_program(user_id)
+
+
+@app.put("/admin/users/{user_id}/program", summary="Coach: set program and current phase")
+def admin_set_program(user_id: str, body: ProgramUpdate,
+                      _: None = Depends(verify_admin_or_api_key)) -> dict:
+    if not get_user_profile(user_id):
+        raise HTTPException(status_code=404, detail="User not found.")
     try:
-        from autogpt.coaching.db import get_db_cursor
-        import json
-        with get_db_cursor(commit=True) as cur:
-            cur.execute(
-                """
-                INSERT INTO success_plans (user_id, plan_type, data_json)
-                VALUES (%s, %s, %s)
-                """,
-                ("anonymous_client", plan_type, json.dumps(data))
-            )
-    except Exception as exc:
-        logger.exception("Could not persist success plan to database")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not save success plan.",
-        ) from exc
+        return set_coaching_program(user_id, body.program_type, body.phase)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+
+@app.get("/api/success-plan", summary="Load participant's success plan")
+def load_success_plan(request: Request) -> dict:
+    user_id = _get_user_id_from_cookie(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    return {"data": get_coaching_program(user_id).get("plan_json") or {}}
+
+
+@app.post("/api/success-plan/save", summary="Save participant's success plan")
+def save_success_plan(req: dict, request: Request) -> dict:
+    user_id = _get_user_id_from_cookie(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    plan_type = req.get("plan_type")
+    if plan_type not in ("weekly", "monthly", "general"):
+        raise HTTPException(status_code=422, detail="Invalid plan type.")
+    fields = req.get("data")
+    if not isinstance(fields, dict):
+        raise HTTPException(status_code=422, detail="Invalid plan.")
+    prefix = {"weekly": "w_", "monthly": "m_", "general": "g_"}[plan_type]
+    # Weekly and monthly fields include an unprefixed date/period in the form.
+    auxiliary = {"weekly": {"week_number", "weekly_start_date", "weekly_end_date"},
+                 "monthly": {"month_name", "monthly_start_date", "monthly_end_date", "monthly_focus"},
+                 "general": set()}[plan_type]
+    if any(not isinstance(k, str) or (not k.startswith(prefix) and k not in auxiliary)
+           for k in fields):
+        raise HTTPException(status_code=422, detail="Invalid plan fields.")
+    allowed = fields
+    if len(allowed) > 100 or any(not isinstance(v, str) or len(v) > 1000 for v in allowed.values()):
+        raise HTTPException(status_code=422, detail="Invalid plan fields.")
+    previous = get_coaching_program(user_id).get("plan_json") or {}
+    if isinstance(previous, str):
+        previous = json.loads(previous)
+    if not isinstance(previous, dict):
+        previous = {}
+    merged = {**previous, f"{plan_type}_form": allowed}
+    if plan_type == "general":
+        merged.update({"leading_value": allowed.get("g_leading_value", ""),
+                       "general_goal": allowed.get("g_general_objective", ""),
+                       "near_goals": [allowed.get(f"g_near_obj_{n}", "") for n in range(1, 4)],
+                       "weekly_actions": [allowed.get(f"g_act_plan_{n}", "") for n in range(1, 4)]})
+    save_coaching_plan(user_id, merged)
     return {"status": "ok", "message": "Success plan saved successfully", "plan_type": plan_type}
 
 

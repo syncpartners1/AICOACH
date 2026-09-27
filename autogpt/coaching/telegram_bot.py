@@ -75,7 +75,7 @@ logging.getLogger("telegram").addFilter(ConflictFilter())
 logging.getLogger("telegram.ext").addFilter(ConflictFilter())
 
 _JSON_BLOCK_RE = re.compile(
-    r'\[(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\].*?\[/(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON)\]',
+    r'\[(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON|SUCCESS_PLAN_JSON)\].*?\[/(?:SESSION_SUMMARY_JSON|OKR_CHANGES_JSON|SUCCESS_PLAN_JSON)\]',
     re.DOTALL,
 )
 
@@ -92,6 +92,7 @@ def _save_session_from_reply(tg_id: int, session, reply: str) -> None:
         from autogpt.coaching.storage import save_session
         weekly_log, summary_text = session._parse_summary_json(reply)
         okr_changes = session._parse_okr_changes(reply)
+        plan_changes = session._parse_success_plan_changes(reply)
         alert = session._compute_alerts(weekly_log)
         summary = SessionSummary(
             session_id=session.session_id,
@@ -103,6 +104,7 @@ def _save_session_from_reply(tg_id: int, session, reply: str) -> None:
             alerts=alert,
             summary_for_coach=summary_text,
             okr_changes=okr_changes,
+            success_plan_changes=plan_changes,
             raw_conversation=list(session.full_message_history),
         )
         save_session(summary)
@@ -632,7 +634,7 @@ async def _start_coaching_session(
     lang: str = "en",
 ) -> None:
     from autogpt.coaching.session import CoachingSession
-    from autogpt.coaching.storage import get_user_objectives, get_past_sessions
+    from autogpt.coaching.storage import get_user_objectives, get_past_sessions, get_coaching_program
 
     objectives = get_user_objectives(user_id) if user_id else []
     past_sessions = get_past_sessions(user_id, limit=3) if user_id else []
@@ -643,6 +645,7 @@ async def _start_coaching_session(
         user_id=user_id,
         objectives=objectives,
         past_sessions=past_sessions,
+        program=get_coaching_program(user_id) if user_id else None,
     )
     _sessions[tg_id] = session
     opening = session.open()

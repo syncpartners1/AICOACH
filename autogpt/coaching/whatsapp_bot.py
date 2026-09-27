@@ -194,9 +194,17 @@ def _handle_start(phone: str, sender_name: str, lang: str) -> str:
     except Exception as exc:
         logger.warning("Could not load context for user_id=%s: %s", client_id, exc)
 
+    from autogpt.coaching.storage import get_coaching_program
+    try:
+        program = get_coaching_program(client_id)
+    except Exception as exc:
+        logger.warning("Could not load coaching program for user_id=%s: %s", client_id, exc)
+        return t(lang, "start_failed")
     session = CoachingSession(
         client_id=client_id,
         client_name=display_name,
+        user_id=client_id,
+        program=program,
         objectives=objectives,
         past_sessions=past_sessions,
         lang=user.language or lang,

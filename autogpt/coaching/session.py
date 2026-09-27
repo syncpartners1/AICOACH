@@ -34,6 +34,7 @@ class CoachingSession:
         user_id: Optional[str] = None,
         objectives: Optional[List[Objective]] = None,
         past_sessions: Optional[List[PastSession]] = None,
+        program: Optional[Dict[str, Any]] = None,
         lang: str = "en",
     ) -> None:
         self.session_id: str = str(uuid.uuid4())
@@ -49,6 +50,7 @@ class CoachingSession:
             scheduler_url=coaching_config.scheduler_url,
             objectives=objectives,
             past_sessions=past_sessions,
+            program=program,
         )
         if lang == "he":
             base_prompt += (
@@ -162,6 +164,7 @@ class CoachingSession:
             alerts=alert,
             summary_for_coach=summary_text,
             okr_changes=okr_changes,
+            success_plan_changes=self._parse_success_plan_changes(raw),
             raw_conversation=list(self.full_message_history),
         )
 
@@ -222,6 +225,31 @@ class CoachingSession:
             return data.get("okr_changes", [])
         except (json.JSONDecodeError, AttributeError):
             return []
+
+    def _parse_success_plan_changes(self, raw: str) -> Dict[str, Any]:
+        """Only a confirmed session's explicit JSON block can update plan fields."""
+        match = re.search(r"\[SUCCESS_PLAN_JSON\](.*?)\[/SUCCESS_PLAN_JSON\]", raw, re.DOTALL)
+        if not match:
+            return {}
+        try:
+            data = json.loads(match.group(1))
+        except (ValueError, TypeError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        confirmed = any(m.get("role") == "user" and m.get("content", "").strip().lower()
+                        in ("כן", "מאשר", "מאשרת", "yes", "confirm", "save")
+                        for m in self.full_message_history[-2:])
+        if not confirmed:
+            return {}
+        # Never let a model write coach-controlled program phase or track.
+        allowed = ("leading_value", "general_goal", "near_goals", "weekly_actions",
+                   "last_success", "last_obstacle", "last_helpful_tool")
+        return {key: value for key, value in data.items()
+                if key in allowed and ((isinstance(value, str) and len(value) <= 1000)
+                                       or (isinstance(value, list) and len(value) <= 10
+                                           and all(isinstance(item, str) and len(item) <= 1000
+                                                   for item in value)))}
 
     def _compute_alerts(self, weekly_log: WeeklyLog) -> Alert:
         avg = weekly_log.avg_kr_pct()
