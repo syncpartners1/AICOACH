@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>You're invited to {{program_name}}</title>
+  <title>הוזמנת אל {{program_name}}</title>
   <style>
     /* Reset */
     body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
@@ -75,8 +75,8 @@
     /* Personal note card */
     .note-card {
       background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
-      border-left: 4px solid #1a2b4a;
-      border-radius: 0 10px 10px 0;
+      border-right: 4px solid #1a2b4a;
+      border-radius: 10px 0 0 10px;
       padding: 16px 20px;
       margin: 24px 0;
     }
@@ -151,7 +151,7 @@
     .feature-list li {
       font-size: 13.5px;
       color: #374151;
-      padding: 8px 0 8px 28px;
+      padding: 8px 28px 8px 0;
       position: relative;
       border-bottom: 1px solid #f3f4f6;
       line-height: 1.5;
@@ -164,7 +164,7 @@
     .feature-list li::before {
       content: "✓";
       position: absolute;
-      left: 0;
+      right: 0;
       color: #1a2b4a;
       font-weight: 800;
       font-size: 14px;
@@ -236,7 +236,7 @@
                   <td style="width:48px;height:48px;background:rgba(255,255,255,0.15);border-radius:12px;text-align:center;vertical-align:middle;font-size:24px;">
                     🧭
                   </td>
-                  <td style="padding-left:12px;vertical-align:middle;">
+                  <td style="padding-right:12px;vertical-align:middle;">
                     <div style="color:#ffffff;font-size:15px;font-weight:700;line-height:1.3;">Change Navigator</div>
 
                   </td>
@@ -247,10 +247,13 @@
           <tr>
             <td align="center">
               <h1 style="color:#ffffff;font-size:26px;font-weight:800;margin:0;line-height:1.2;">
-                You're invited! 🎉
+                הוזמנת! 🎉
               </h1>
               <p style="color:rgba(255,255,255,0.75);font-size:14px;margin:8px 0 0;">
-                Join the {{program_name}}
+                הצטרפות אל {{program_name}}
+              </p>
+              <p style="color:rgba(255,255,255,0.6);font-size:12px;font-style:italic;margin:10px 0 0;">
+                לא ניתן לשלוט ברוח ובזרמי הים, אבל ניתן לשלוט במפרשים ולנווט בנחישות אל היעד
               </p>
             </td>
           </tr>
@@ -260,12 +263,12 @@
       <!-- Body -->
       <div class="body-content">
 
-        <p class="greeting">Hi {{to_name}},</p>
+        <p class="greeting">שלום {{to_name}},</p>
 
         <p class="body-text">
-          <strong>{{coach_name}}</strong> has personally invited you to join the
-          <strong>{{program_name}}</strong> — an AI-powered coaching program designed
-          to help you set meaningful goals and achieve them with clarity and confidence.
+          <strong>{{coach_name}}</strong> מזמין אותך אישית להצטרף אל
+          <strong>{{program_name}}</strong> — תכנית אימון מבוססת-AI שנועדה
+          לעזור לך לקבוע מטרות משמעותיות ולהשיג אותן בבהירות ובביטחון.
         </p>
 
         <!-- Personal note from coach (shown only when invite_note is set) -->
@@ -277,25 +280,25 @@
 
         <!-- What to expect -->
         <p class="body-text" style="font-weight:700;color:#1a2b4a;margin-bottom:4px;">
-          What you'll get access to:
+          מה מחכה לך:
         </p>
         <ul class="feature-list">
-          <li>AI-powered weekly check-ins tailored to your goals</li>
-          <li>OKR tracking to keep your objectives clear and measurable</li>
-          <li>Real-time alerts to catch obstacles before they slow you down</li>
-          <li>Direct access to your coach via Telegram</li>
-          <li>A private dashboard to review your progress anytime</li>
+          <li>צ'ק-אינים שבועיים מבוססי-AI, מותאמים למטרות שלך</li>
+          <li>מעקב OKR ששומר על היעדים ברורים ומדידים</li>
+          <li>התראות בזמן אמת לזיהוי מכשולים לפני שהם מאטים אותך</li>
+          <li>גישה ישירה למאמן בטלגרם</li>
+          <li>דשבורד אישי לצפייה בהתקדמות בכל זמן</li>
         </ul>
 
         <!-- CTA -->
         <div class="cta-wrapper">
-          <a href="{{register_url}}" class="cta-button">Accept Invitation</a>
+          <a href="{{register_url}}" class="cta-button">לאישור ההזמנה</a>
         </div>
 
         <!-- Fallback plain-text link for email clients that block buttons -->
         <div class="link-fallback">
           <p>
-            Button not working? Copy and paste this link into your browser:<br/>
+            הכפתור לא עובד? מעתיקים את הקישור הזה לדפדפן:<br/>
             <a href="{{register_url}}">{{register_url}}</a>
           </p>
         </div>
@@ -303,7 +306,7 @@
         <!-- Expiry -->
         {{#if expires_at}}
         <div class="expiry-note">
-          <p>This invitation expires on <strong>{{expires_at}}</strong>.</p>
+          <p>ההזמנה בתוקף עד <strong>{{expires_at}}</strong>.</p>
         </div>
         {{/if}}
 
@@ -311,9 +314,10 @@
 
         <!-- Sign off -->
         <p class="sign-off">
-          Looking forward to working with you,<br/>
-          <strong>{{coach_name}}</strong><br/>
-          Change Navigator
+          מצפה לעבוד יחד,<br/>
+          <strong>עדי בן נשר</strong><br/>
+          מאמן לניווט שינויים<br/>
+          אישי | כלכלי | עסקי
         </p>
 
       </div>
@@ -321,10 +325,10 @@
       <!-- Footer -->
       <div class="footer">
         <p>
-          This invitation was sent to <a href="mailto:{{to_email}}">{{to_email}}</a>
-          by {{coach_name}} via the Change Navigator program.<br/>
-          If you did not expect this email, you can safely ignore it.<br/>
-          &copy; 2026 Adi Ben-Nesher. All rights reserved.
+          ההזמנה נשלחה אל <a href="mailto:{{to_email}}">{{to_email}}</a>
+          על ידי {{coach_name}} במסגרת תכנית Change Navigator.<br/>
+          אם לא ציפית למייל הזה, אפשר פשוט להתעלם ממנו.<br/>
+          &copy; 2026 עדי בן נשר. כל הזכויות שמורות.
         </p>
       </div>
 
