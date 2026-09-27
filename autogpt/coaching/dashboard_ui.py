@@ -193,7 +193,7 @@ def render_dashboard(
     style="width:100%;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
            resize:vertical;min-height:56px;color:#374151"
     placeholder="{t(lang, 'db_session_notes_placeholder')}">{escaped_notes}</textarea>
-  <button onclick="saveNotes('{s.session_id}')"
+  <button onclick="saveNotes('{s.session_id}', this)"
     style="margin-top:4px;font-size:11px;background:#1a2b4a;color:#fff;border:none;
            padding:4px 12px;border-radius:6px;cursor:pointer">💾 {t(lang, 'db_btn_save_session')}</button>
 </div>"""
@@ -372,8 +372,9 @@ async function setStatus(action) {{
   if (res.ok) location.reload();
   else alert('Could not update status. Please try again.');
 }}
-async function saveNotes(sessionId) {{
+async function saveNotes(sessionId, btn) {{
   const notes = document.getElementById('notes_' + sessionId).value;
+  const originalLabel = btn.textContent;
   const res = await fetch('/admin/sessions/' + sessionId + '/notes', {{
     method: 'PUT',
     headers: {{'Content-Type':'application/json'}},
@@ -381,9 +382,8 @@ async function saveNotes(sessionId) {{
     body: JSON.stringify({{coach_notes: notes}}),
   }});
   if (res.ok) {{
-    const btn = event.target;
     btn.textContent = '✅ Saved';
-    setTimeout(() => {{ btn.textContent = '💾 Save Notes'; }}, 2000);
+    setTimeout(() => {{ btn.textContent = originalLabel; }}, 2000);
   }} else {{
     alert('Failed to save notes. Please try again.');
   }}
