@@ -27,7 +27,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from autogpt.coaching.config import coaching_config
-from autogpt.coaching.email_service import send_invite_email
+from autogpt.coaching.email_service import send_invite_email, validate_recipient_address
 from autogpt.coaching.i18n import get_coach_name
 
 logger = logging.getLogger(__name__)
@@ -1424,6 +1424,12 @@ def admin_set_user_status(
 
 @app.post("/admin/invites", response_model=Invite, summary="Create a program invite link (admin)")
 def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(verify_admin_or_api_key)) -> Invite:
+    # Reject reserved example/test recipient domains before creating anything
+    if req.send_email and req.email:
+        try:
+            validate_recipient_address(req.email)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     # invited_by is a UUID FK — only set it when a valid user_id is configured
     admin_uid = coaching_config.admin_user_id if coaching_config.admin_user_id else None
     lang = req.language if req.language in ("en", "he") else "en"
@@ -1446,28 +1452,21 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
             req.email,
             register_url,
         )
-    if (
-        req.send_email
-        and req.email
-        and coaching_config.emailjs_service_id
-        and coaching_config.emailjs_template_invite
-        and register_url.startswith("http")
-    ):
+    if req.send_email and req.email and register_url.startswith("http"):
         expires_str = ""
         if invite.expires_at:
             expires_str = invite.expires_at.strftime("%B %d, %Y")
-        invite.email_sent = send_invite_email(
-            to_email=req.email,
-            to_name=req.name or "",
-            register_url=register_url,
-            coach_name=get_coach_name(lang),
-            invite_note=req.note,
-            expires_at=expires_str,
-            service_id=coaching_config.emailjs_service_id,
-            template_id=coaching_config.emailjs_template_invite,
-            public_key=coaching_config.emailjs_public_key,
-            private_key=coaching_config.emailjs_private_key,
-        )
+        try:
+            invite.email_sent = send_invite_email(
+                to_email=req.email,
+                to_name=req.name or "",
+                register_url=register_url,
+                coach_name=get_coach_name(lang),
+                invite_note=req.note,
+                expires_at=expires_str,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     return invite
 
@@ -1508,11 +1507,10 @@ def admin_resend_invite(invite_id: str, _: None = Depends(verify_admin_or_api_ke
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="PUBLIC_URL is not configured; cannot build invite link.",
         )
-    if not (coaching_config.emailjs_service_id and coaching_config.emailjs_template_invite):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="EmailJS is not configured.",
-        )
+    try:
+        validate_recipient_address(inv.email)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     expires_str = inv.expires_at.strftime("%B %d, %Y") if inv.expires_at else ""
     ok = send_invite_email(
@@ -1522,13 +1520,12 @@ def admin_resend_invite(invite_id: str, _: None = Depends(verify_admin_or_api_ke
         coach_name=get_coach_name(lang),
         invite_note=inv.note,
         expires_at=expires_str,
-        service_id=coaching_config.emailjs_service_id,
-        template_id=coaching_config.emailjs_template_invite,
-        public_key=coaching_config.emailjs_public_key,
-        private_key=coaching_config.emailjs_private_key,
     )
     if not ok:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="EmailJS failed to send.")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Email send failed - check SMTP configuration and logs.",
+        )
     return {"ok": True, "email": inv.email}
 
 

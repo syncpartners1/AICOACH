@@ -68,12 +68,6 @@ class CoachingConfig(metaclass=Singleton):
         self.scheduler_url: str = os.getenv("SCHEDULER_URL", "https://change-navigator-scheduler-972564781508.me-west1.run.app")
         self.scheduler_api_key: str = os.getenv("SCHEDULER_API_KEY", "")
         self.scheduler_timezone: str = os.getenv("SCHEDULER_TIMEZONE", "Asia/Jerusalem")
-        # EmailJS (server-side REST API)
-        self.emailjs_service_id: str = os.getenv("EMAILJS_SERVICE_ID", "service_a85ap2g")
-        self.emailjs_template_invite: str = os.getenv("EMAILJS_TEMPLATE_INVITE", "CNAPP_Invite")
-        self.emailjs_template_welcome: str = os.getenv("EMAILJS_TEMPLATE_WELCOME", "CNAPP_Welcome")
-        self.emailjs_public_key: str = os.getenv("EMAILJS_PUBLIC_KEY", "")
-        self.emailjs_private_key: str = os.getenv("EMAILJS_PRIVATE_KEY", "")
 
     def validate(self) -> None:
         """Raise if required env vars are missing."""

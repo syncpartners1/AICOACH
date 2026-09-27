@@ -152,13 +152,32 @@ def test_invite_creation_reports_email_failure_without_claiming_sent():
     try:
         invite = Invite(invite_id="i1", token="t1", register_url="https://app.changenavigator.co.il/register?token=t1")
         with patch("autogpt.coaching.api.create_invite", return_value=invite), \
-             patch("autogpt.coaching.api.send_invite_email", return_value=False) as send, \
-             patch.object(coaching_config, "emailjs_service_id", "svc"), \
-             patch.object(coaching_config, "emailjs_template_invite", "tmpl"):
-            response = TestClient(app).post("/admin/invites", json={"email": "a@example.com", "send_email": True})
+             patch("autogpt.coaching.api.send_invite_email", return_value=False) as send:
+            response = TestClient(app).post("/admin/invites", json={"email": "a@realmail-test.com", "send_email": True})
         assert response.status_code == 200
         assert response.json()["email_sent"] is False
         send.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_invite_creation_rejects_reserved_example_domain():
+    """Regression for 2026-09-27: invites must not go to test@example.com."""
+    from autogpt.coaching.api import app, verify_admin_or_api_key
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+
+    app.dependency_overrides[verify_admin_or_api_key] = lambda: None
+    try:
+        with patch("autogpt.coaching.api.create_invite") as create, \
+             patch("autogpt.coaching.api.send_invite_email") as send:
+            response = TestClient(app).post(
+                "/admin/invites", json={"email": "test@example.com", "send_email": True}
+            )
+        assert response.status_code == 400
+        assert "reserved example/test domain" in response.json()["detail"]
+        create.assert_not_called()
+        send.assert_not_called()
     finally:
         app.dependency_overrides.clear()
 
