@@ -2021,6 +2021,51 @@ def _build_app(token: str) -> Application:
     return app
 
 
+async def register_command_menu(application: Application) -> None:
+    """Register the command menu in both webhook and polling modes; never block startup."""
+    # Register command menu visible to users when they type /
+    # A Telegram API error must not prevent webhook or polling startup.
+    try:
+        from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+        _user_commands = [
+            BotCommand("start",       "Begin Strategic Alignment Check"),
+            BotCommand("new_session", "Start a new coaching session"),
+            BotCommand("done",        "End & save current session"),
+            BotCommand("plan",        "Submit your weekly plan"),
+            BotCommand("weekly",      "Report weekly tasks and progress"),
+            BotCommand("myplan",      "View your current week plan"),
+            BotCommand("highlight",   "Log today's highlight"),
+            BotCommand("book",        "Book a 1:1 session"),
+            BotCommand("mybookings",  "View your bookings"),
+            BotCommand("lang",        "Switch language (עב / EN)"),
+            BotCommand("suspend",     "Pause the program"),
+            BotCommand("resume",      "Resume the program"),
+            BotCommand("help",        "Show help"),
+            BotCommand("cancel",      "Cancel current action"),
+        ]
+        logger.info("Registering bot command menu...")
+        await asyncio.wait_for(application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault()), timeout=10)
+        if coaching_config.admin_telegram_id:
+            await asyncio.wait_for(
+                application.bot.set_my_commands(
+                    _user_commands + [
+                        BotCommand("users",     "List all participants"),
+                        BotCommand("report",    "Get user report"),
+                        BotCommand("invite",    "Create invite link"),
+                        BotCommand("broadcast", "Send broadcast message"),
+                    ],
+                    scope=BotCommandScopeChat(chat_id=coaching_config.admin_telegram_id),
+                ),
+                timeout=10
+            )
+        logger.info("Bot command menu registered")
+    except asyncio.TimeoutError:
+        logger.warning("Bot command registration timed out after 10s (continuing...)")
+    except Exception:
+        logger.exception("Failed to register bot commands (non-fatal, continuing)")
+
+
+
 async def run_polling(token: str) -> None:
     """Start the bot in polling mode with automatic restart on errors."""
     retry_delay = 5
@@ -2043,47 +2088,7 @@ async def run_polling(token: str) -> None:
             except Exception:
                 logger.exception("Failed to delete webhook (non-fatal, continuing)")
 
-            # Register command menu visible to users when they type /
-            # Isolated in its own try-except so a Telegram API error here
-            # cannot prevent the bot from starting polling.
-            try:
-                from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
-                _user_commands = [
-                    BotCommand("start",       "Begin Strategic Alignment Check"),
-                    BotCommand("new_session", "Start a new coaching session"),
-                    BotCommand("done",        "End & save current session"),
-                    BotCommand("plan",        "Submit your weekly plan"),
-                    BotCommand("weekly",      "Report weekly tasks and progress"),
-                    BotCommand("myplan",      "View your current week plan"),
-                    BotCommand("highlight",   "Log today's highlight"),
-                    BotCommand("book",        "Book a 1:1 session"),
-                    BotCommand("mybookings",  "View your bookings"),
-                    BotCommand("lang",        "Switch language (עב / EN)"),
-                    BotCommand("suspend",     "Pause the program"),
-                    BotCommand("resume",      "Resume the program"),
-                    BotCommand("help",        "Show help"),
-                    BotCommand("cancel",      "Cancel current action"),
-                ]
-                logger.info("Registering bot command menu...")
-                await asyncio.wait_for(application.bot.set_my_commands(_user_commands, scope=BotCommandScopeDefault()), timeout=10)
-                if coaching_config.admin_telegram_id:
-                    await asyncio.wait_for(
-                        application.bot.set_my_commands(
-                            _user_commands + [
-                                BotCommand("users",     "List all participants"),
-                                BotCommand("report",    "Get user report"),
-                                BotCommand("invite",    "Create invite link"),
-                                BotCommand("broadcast", "Send broadcast message"),
-                            ],
-                            scope=BotCommandScopeChat(chat_id=coaching_config.admin_telegram_id),
-                        ),
-                        timeout=10
-                    )
-                logger.info("Bot command menu registered")
-            except asyncio.TimeoutError:
-                logger.warning("Bot command registration timed out after 10s (continuing...)")
-            except Exception:
-                logger.exception("Failed to register bot commands (non-fatal, continuing)")
+            await register_command_menu(application)
 
             await application.start()
             await application.updater.start_polling()
