@@ -309,6 +309,11 @@ def upsert_objective(
             "user_id": user_id,
             "title": title,
             "description": description,
+            # Explicit status: do not rely on the column default - a table
+            # created without it would store NULL, and NULL != 'archived'
+            # filters the row out of every dashboard query.
+            "status": OKRStatus.ACTIVE.value,
+            "updated_at": now,
         }).execute()
     return Objective(objective_id=objective_id, user_id=user_id, title=title, description=description)
 
@@ -346,6 +351,9 @@ def upsert_master_kr(
             "user_id": user_id,
             "description": description,
             "current_pct": current_pct,
+            # Same NULL-status hazard as objectives - set it explicitly.
+            "status": OKRStatus.ACTIVE.value,
+            "updated_at": now,
         }).execute()
     return MasterKeyResult(kr_id=kr_id, objective_id=objective_id, description=description, current_pct=current_pct)
 
@@ -363,11 +371,15 @@ def set_kr_status(kr_id: str, status: OKRStatus) -> None:
 def apply_okr_changes(user_id: str, changes: List[Dict[str, Any]]) -> None:
     """Apply structured OKR mutations extracted from a session conversation."""
     db = _get_client()
+    # A proposal can pair a brand-new objective with its key results; the KR
+    # then has no objective_id yet, so link it to the objective just added.
+    last_added_objective_id: Optional[str] = None
     for change in changes:
         action = change.get("action", "")
         try:
             if action == "add_objective":
-                upsert_objective(user_id=user_id, title=change["title"], description=change.get("description", ""))
+                new_obj = upsert_objective(user_id=user_id, title=change["title"], description=change.get("description", ""))
+                last_added_objective_id = new_obj.objective_id
             elif action == "edit_objective":
                 upsert_objective(
                     user_id=user_id,
@@ -383,7 +395,7 @@ def apply_okr_changes(user_id: str, changes: List[Dict[str, Any]]) -> None:
                 set_objective_status(change["objective_id"], OKRStatus.ACTIVE)
             elif action == "add_kr":
                 upsert_master_kr(
-                    objective_id=change["objective_id"],
+                    objective_id=change.get("objective_id") or last_added_objective_id or "",
                     user_id=user_id,
                     description=change["description"],
                     current_pct=change.get("current_pct", 0),
