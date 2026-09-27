@@ -1454,7 +1454,7 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
         expires_str = ""
         if invite.expires_at:
             expires_str = invite.expires_at.strftime("%B %d, %Y")
-        send_invite_email(
+        invite.email_sent = send_invite_email(
             to_email=req.email,
             to_name=req.name or "",
             register_url=register_url,

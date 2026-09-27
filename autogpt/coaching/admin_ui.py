@@ -167,7 +167,8 @@ def render_admin(
     if not invite_rows:
         invite_rows = f'<tr><td colspan="4" style="padding:16px;color:#9ca3af;text-align:center">{t(lang, "admin_no_invites")}</td></tr>'
 
-    invite_form_action = f"{public_url}/admin/invites" if public_url else "/admin/invites"
+    # Admin writes must stay on the authenticated origin, even when PUBLIC_URL differs.
+    invite_form_action = "/admin/invites"
     # Build lang toggle URL  — appends/replaces ?lang= param
     lang_toggle_href = f"?lang={other_lang}"
     font_import = '<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700&display=swap" rel="stylesheet">' if is_rtl else ""
@@ -394,8 +395,10 @@ async function submitInvite(sendEmail) {{
   }});
   if (res.ok) {{
     const data = await res.json();
-    if (sendEmail) {{
+    if (sendEmail && data.email_sent) {{
       alert('Invite email sent!\\n\\nRegistration link (also in email):\\n' + (data.register_url || data.token));
+    }} else if (sendEmail) {{
+      alert('Invite link created, but email was NOT sent.\\n\\nShare this link manually:\\n' + (data.register_url || data.token));
     }} else {{
       alert('Invite link created!\\n\\nShare this link:\\n' + (data.register_url || data.token));
     }}

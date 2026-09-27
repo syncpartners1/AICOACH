@@ -328,6 +328,7 @@ class Invite(BaseModel):
     created_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     register_url: Optional[str] = None
+    email_sent: bool = False
 
 
 class UserProgressSummary(BaseModel):
