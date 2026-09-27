@@ -32,22 +32,28 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
 
 _TEMPLATE_DIR = Path(__file__).parent / "email_templates"
 
+# Invite email is localized per invite language; English is the fallback
+# for unknown/unsupported codes.
+_INVITE_TEMPLATES = {"en": "invite.html", "he": "invite.he.html"}
+_INVITE_SUBJECTS = {
+    "en": "Private Invitation to {program_name} \U0001F389",
+    "he": "\u05d4\u05d6\u05de\u05e0\u05d4 \u05d0\u05d9\u05e9\u05d9\u05ea \u05d0\u05dc {program_name} \U0001F389",
+}
+
 # RFC 2606 / RFC 6761 reserved domains and TLDs — never real recipients.
 # Sending to one of these caused the 2026-09-27 incident: eight invites went
 # to test@example.com and bounced (confirmed in the Gmail sent/bounce records).
 _RESERVED_DOMAINS = {"example.com", "example.net", "example.org", "example.edu"}
 _RESERVED_TLDS = (".example", ".test", ".invalid", ".localhost")
 
-# Change Navigator signature (see Adi's standing preference): Gmail only adds
-# it to UI-composed mail, so API-sent mail appends it to the plain-text part.
+# Change Navigator signature (Adi's standing text, exact per 2026-09-27):
+# Gmail only adds it to UI-composed mail, so API-sent mail appends it to
+# the plain-text part.
 _SIGNATURE_PLAIN = (
     "\n\n--\n"
     "עדי בן נשר\n"
-    "אימון וליווי לשינוי אישי, כלכלי ועסקי\n"
-    "קבעו פגישה: https://meet.changenavigator.co.il\n"
-    "בקרו באתר: https://www.changenavigator.co.il\n"
-    "התנסות עם מאמן ה-AI: https://app.changenavigator.co.il\n"
-    "טלפון / ווצאפ: 054-7586022"
+    "מאמן לניווט שינויים\n"
+    "אישי | כלכלי | עסקי"
 )
 
 _IF_BLOCK_RE = re.compile(r"{{#if\s+(\w+)}}(.*?){{/if}}", re.DOTALL)
@@ -136,11 +142,16 @@ def send_invite_email(
     to_name: str,
     register_url: str,
     coach_name: str,
-    program_name: str = "ABN Consulting AI Co-Navigator",
+    program_name: str = "Change Navigator",
     invite_note: Optional[str] = None,
     expires_at: Optional[str] = None,
+    language: str = "en",
 ) -> bool:
-    """Send a personalised invitation email with the registration link."""
+    """Send a personalised invitation email with the registration link.
+
+    ``language`` ("en" or "he") selects the template and subject line;
+    unsupported codes fall back to English.
+    """
     validate_recipient_address(to_email)
     params = {
         "to_name": to_name or "there",
@@ -151,11 +162,12 @@ def send_invite_email(
         "invite_note": invite_note or "",
         "expires_at": expires_at or "",
     }
-    html_body = render_template("invite.html", params)
+    lang = language if language in _INVITE_TEMPLATES else "en"
+    html_body = render_template(_INVITE_TEMPLATES[lang], params)
     plain_body = _html_to_text(html_body) + _SIGNATURE_PLAIN
     return _send_message(
         to_email=to_email,
-        subject=f"Private Invitation to {program_name} 🎉",
+        subject=_INVITE_SUBJECTS[lang].format(program_name=program_name),
         html_body=html_body,
         plain_body=plain_body,
     )
@@ -166,7 +178,7 @@ def send_welcome_email(
     to_email: str,
     to_name: str,
     coach_name: str,
-    program_name: str = "ABN Consulting AI Co-Navigator",
+    program_name: str = "Change Navigator",
 ) -> bool:
     """Send a registration-confirmation (welcome) email to a newly registered user."""
     validate_recipient_address(to_email)
