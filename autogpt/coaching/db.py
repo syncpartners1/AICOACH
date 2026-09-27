@@ -124,6 +124,7 @@ class PGTableQuery:
         self.update_data: Any = None
         self.order_clause: Optional[str] = None
         self.limit_val: Optional[int] = None
+        self.offset_val: Optional[int] = None
         self._param_idx = 0
 
     def _next_param(self, prefix="p") -> str:
@@ -225,6 +226,16 @@ class PGTableQuery:
         self.limit_val = count
         return self
 
+    def range(self, start: int, end: int) -> PGTableQuery:
+        """PostgREST-style inclusive, zero-based range for SELECT pagination."""
+        if not isinstance(start, int) or isinstance(start, bool) or start < 0:
+            raise ValueError("Range start must be a non-negative integer")
+        if not isinstance(end, int) or isinstance(end, bool) or end < start:
+            raise ValueError("Range end must be an integer at or after start")
+        self.offset_val = start
+        self.limit_val = end - start + 1
+        return self
+
     def execute(self) -> PGResponse:
         where_str = (" WHERE " + " AND ".join(self.where_clauses)) if self.where_clauses else ""
 
@@ -232,9 +243,14 @@ class PGTableQuery:
             sql = f"SELECT {self.select_cols} FROM {self.table_name}{where_str}"
             if self.order_clause:
                 sql += f" {self.order_clause}"
+            select_params = dict(self.params)
             if self.limit_val is not None:
-                sql += f" LIMIT {self.limit_val}"
-            res = execute_query(sql, self.params, fetch_all=True)
+                sql += " LIMIT %(query_limit)s"
+                select_params["query_limit"] = self.limit_val
+            if self.offset_val is not None:
+                sql += " OFFSET %(query_offset)s"
+                select_params["query_offset"] = self.offset_val
+            res = execute_query(sql, select_params, fetch_all=True)
             return PGResponse(data=res or [])
 
         elif self.op in ("INSERT", "UPSERT"):
