@@ -46,7 +46,9 @@ def test_admin_view_route_accepts_fresh_user_without_okr_or_session(monkeypatch)
     with patch("autogpt.coaching.api.get_user_profile", return_value=user), \
          patch("autogpt.coaching.api.get_user_objectives", return_value=[]), \
          patch("autogpt.coaching.api.get_weekly_plan", return_value=plan), \
-         patch("autogpt.coaching.api.get_past_sessions", return_value=[]):
+         patch("autogpt.coaching.api.get_past_sessions", return_value=[]), \
+         patch("autogpt.coaching.weekly_reports.list_weekly_reports", return_value=[]), \
+         patch("autogpt.coaching.api.get_coaching_program", return_value={"plan_json": {}}):
         response = client.get("/dashboard/u1?week_start=2026-09-27")
     assert response.status_code == 200
     assert "Fresh" in response.text

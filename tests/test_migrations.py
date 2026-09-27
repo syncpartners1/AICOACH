@@ -281,6 +281,8 @@ class TestAdminDashboardView(unittest.TestCase):
              patch("autogpt.coaching.api.get_user_objectives", return_value=[]), \
              patch("autogpt.coaching.api.get_weekly_plan", return_value=None), \
              patch("autogpt.coaching.api.get_past_sessions", return_value=[]), \
+             patch("autogpt.coaching.weekly_reports.list_weekly_reports", return_value=[]), \
+             patch("autogpt.coaching.api.get_coaching_program", return_value={"plan_json": {}}), \
              patch("autogpt.coaching.dashboard_ui.render_dashboard", return_value=_admin_html):
 
             resp = client.get("/dashboard/user-test-001", follow_redirects=False)

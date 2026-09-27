@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 import html
-from typing import List
+from typing import List, Optional
 
 from autogpt.coaching.i18n import t
 from autogpt.coaching.models import (
@@ -69,6 +69,8 @@ def render_dashboard(
     week_end: date,
     language: str = "en",
     is_admin_view: bool = False,
+    weekly_reports: Optional[List[dict]] = None,
+    general_goal: str = "",
 ) -> str:
     lang = language
     is_rtl = lang == "he"
@@ -76,7 +78,6 @@ def render_dashboard(
     text_align = "right" if is_rtl else "left"
 
     kr_map = _kr_lookup(weekly_plan.kr_activities)
-    hl_map = {h.day_of_week.value: h.highlight for h in weekly_plan.daily_highlights}
 
     # ── Objectives section ────────────────────────────────────────────────────
     obj_html = ""
@@ -128,21 +129,41 @@ def render_dashboard(
     if not obj_html:
         obj_html = f'<p style="color:#9ca3af">{t(lang, "db_no_objectives")}</p>'
 
-    # ── Daily highlights grid (Sunday-first) ──────────────────────────────────
-    day_cells = ""
-    for day in _DAYS_DISPLAY_ORDER:
-        label = t(lang, f"db_day_{day}")
-        text = hl_map.get(day, "")
-        bg = "#f0fdf4" if text else "#f9fafb"
-        border = "#bbf7d0" if text else "#e5e7eb"
-        day_cells += f"""
-<div style="background:{bg};border:1px solid {border};border-radius:8px;padding:10px 12px">
-  <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;
-              letter-spacing:.5px;margin-bottom:4px;text-align:center">{label}</div>
-  <div style="font-size:13px;color:#374151;line-height:1.5;text-align:{text_align}">
-    {text or '<span style="color:#d1d5db">—</span>'}
-  </div>
-</div>"""
+    # ── Confirmed weekly reports (daily data stays in storage) ────────────────
+    reports = weekly_reports or []
+    current = next((r for r in reports if str(r["week_start"]) == week_start.isoformat()), None)
+
+    def report_card(report: dict, heading: str) -> str:
+        tasks = report.get("tasks") or []
+        submitted = report.get("submitted_at") is not None
+        completed = sum(bool(item.get("done")) for item in tasks)
+        count = (f"{completed}/{len(tasks)} " + t(lang, "db_weekly_completed")) if submitted and tasks else ""
+        rows = "".join(
+            f'<li style="margin:6px 0">{"✓" if item.get("done") else "○"} '
+            f'{html.escape(str(item.get("description") or ""))}</li>' for item in tasks
+        )
+        participant = html.escape(str(report.get("participant_update") or ""))
+        coach = html.escape(str(report.get("coach_update") or ""))
+        note_form = ""
+        if is_admin_view:
+            note_form = f'''<label style="display:block;font-size:12px;margin-top:12px">{t(lang, "db_weekly_coach_note")}</label>
+<textarea class="weekly-coach-input" data-week="{report["week_start"]}" maxlength="3000"
+ style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">{coach}</textarea>
+<button type="button" onclick="saveWeeklyCoachNote(this, '{user.user_id}', '{report["week_start"]}')"
+ style="padding:7px 14px;background:#1a2b4a;color:#fff;border:0;border-radius:6px;cursor:pointer">{t(lang, "db_weekly_save_note")}</button><span role="status" class="weekly-note-status"></span>'''
+        return f'''<article class="weekly-report-card" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;margin-bottom:12px">
+<strong>{heading}</strong><div style="margin-top:9px">{count or (t(lang, "db_weekly_reported") if submitted else t(lang, "db_weekly_not_reported"))}</div>
+{f'<ul style="padding-inline-start:20px">{rows}</ul>' if rows else ''}
+{f'<p style="white-space:pre-wrap;overflow-wrap:anywhere">{participant}</p>' if participant else ''}
+{f'<p style="white-space:pre-wrap;overflow-wrap:anywhere"><strong>{t(lang, "db_weekly_coach_note")}:</strong> {coach}</p>' if coach and not is_admin_view else ''}
+{note_form}</article>'''
+
+    week_html = report_card(current or {"week_start": week_start, "tasks": []},
+                            f"{week_start.strftime('%d-%m-%Y')} – {week_end.strftime('%d-%m-%Y')}")
+    history_html = "".join(report_card(r, str(r["week_start"])) for r in reports
+                           if str(r["week_start"]) < week_start.isoformat())
+    goal_html = (f'<div class="weekly-goal" style="background:#e0e7ff;border-radius:10px;padding:12px 16px;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:16px">'
+                 f'<strong>{t(lang, "db_success_goal")}:</strong> {html.escape(str(general_goal))}</div>') if general_goal else ""
 
     # ── Recent sessions ───────────────────────────────────────────────────────
     sess_html = ""
@@ -306,8 +327,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
 .container{{max-width:900px;margin:0 auto;padding:24px 16px}}
 .section-title{{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
                color:#6b7280;margin:28px 0 12px;text-align:{text_align}}}
-.highlights-grid{{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}}
-@media(max-width:640px){{.highlights-grid{{grid-template-columns:repeat(4,1fr)}}}}
+
 </style>
 </head>
 <body>
@@ -329,8 +349,10 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
   <div class="section-title">{t(lang, "db_section_okr")}</div>
   {obj_html}
 
-  <div class="section-title">{t(lang, "db_section_highlights")}</div>
-  <div class="highlights-grid">{day_cells}</div>
+  {goal_html}
+  <div class="section-title">{t(lang, "db_section_weekly_report")}</div>
+  {week_html}
+  {f'<div class="section-title">{t(lang, "db_weekly_history")}</div>{history_html}' if history_html else ''}
 
   <div class="section-title">{t(lang, "db_section_sessions")}</div>
   {sess_html}
