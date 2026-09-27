@@ -342,3 +342,5 @@ class UserProgressSummary(BaseModel):
     last_session: Optional[datetime] = None
     last_weekly_plan: Optional[date] = None
     telegram_user_id: Optional[int] = None
+    program_type: str = "base"
+    phase: str = "unassigned"

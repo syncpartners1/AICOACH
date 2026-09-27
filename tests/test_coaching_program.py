@@ -75,3 +75,32 @@ def test_admin_dashboard_links_to_program_screen():
                                avg_kr_pct=0)
     page = render_admin([user], [], lang="he")
     assert '/admin/users/u1/program/manage' in page
+
+
+def test_admin_table_shows_saved_program_and_same_origin_view_link():
+    from autogpt.coaching.admin_ui import render_admin
+    from autogpt.coaching.models import UserProgressSummary
+    user = UserProgressSummary(user_id="u1", name="Dana", phone_number="+1",
+                               program_type="base_financial", phase="meeting_4")
+    page = render_admin([user], [], public_url="https://app.changenavigator.colil", lang="he")
+    assert 'href="/dashboard/u1"' in page
+    assert "app.changenavigator.colil/dashboard" not in page
+    assert "בסיס + מעטפת כלכלית" in page
+    assert "מפגש 4" in page
+
+
+def test_progress_snapshot_loads_program_from_same_user():
+    from unittest.mock import MagicMock
+    from autogpt.coaching.storage import get_all_users_progress
+    db = MagicMock()
+    db.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"user_id": "u1", "name": "Dana", "phone_number": "+1", "account_status": "active"}
+    ]
+    db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    db.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+    with patch("autogpt.coaching.storage._get_client", return_value=db), \
+         patch("autogpt.coaching.storage.get_coaching_program", return_value={"program_type": "base_financial", "phase": "meeting_4"}) as program:
+        users = get_all_users_progress()
+    program.assert_called_once_with("u1")
+    assert users[0].program_type == "base_financial"
+    assert users[0].phase == "meeting_4"
