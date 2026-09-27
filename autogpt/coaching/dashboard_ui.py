@@ -71,6 +71,7 @@ def render_dashboard(
     is_admin_view: bool = False,
     weekly_reports: Optional[List[dict]] = None,
     general_goal: str = "",
+    leading_value: str = "",
 ) -> str:
     lang = language
     is_rtl = lang == "he"
@@ -162,8 +163,14 @@ def render_dashboard(
                             f"{week_start.strftime('%d-%m-%Y')} – {week_end.strftime('%d-%m-%Y')}")
     history_html = "".join(report_card(r, str(r["week_start"])) for r in reports
                            if str(r["week_start"]) < week_start.isoformat())
+    # The central GOAL and leading value are always visible: when unset, say
+    # so explicitly instead of silently omitting the block.
+    goal_text = html.escape(str(general_goal)) if general_goal else t(lang, "db_not_set")
+    leading_text = (f'{t(lang, "db_i_am")} {html.escape(str(leading_value))}'
+                    if leading_value else t(lang, "db_not_set"))
     goal_html = (f'<div class="weekly-goal" style="background:#e0e7ff;border-radius:10px;padding:12px 16px;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:16px">'
-                 f'<strong>{t(lang, "db_success_goal")}:</strong> {html.escape(str(general_goal))}</div>') if general_goal else ""
+                 f'<strong>{t(lang, "db_success_goal")}:</strong> {goal_text}<br>'
+                 f'<strong>{t(lang, "db_leading_value")}:</strong> {leading_text}</div>')
 
     # ── Recent sessions ───────────────────────────────────────────────────────
     sess_html = ""
@@ -399,6 +406,25 @@ async function saveNotes(sessionId, btn) {{
     alert('Failed to save notes. Please try again.');
   }}
 }}
+async function saveWeeklyCoachNote(btn, userId, week) {{
+  const card = btn.closest('article');
+  const textarea = card.querySelector('textarea.weekly-coach-input');
+  const statusEl = card.querySelector('.weekly-note-status');
+  const res = await fetch('/admin/users/' + userId + '/weekly-reports/' + week + '/coach-note', {{
+    method: 'PUT',
+    headers: {{'Content-Type':'application/json'}},
+    credentials: 'include',
+    body: JSON.stringify({{coach_update: textarea.value}}),
+  }});
+  if (res.ok) {{
+    if (statusEl) {{
+      statusEl.textContent = '✅ Saved';
+      setTimeout(() => {{ statusEl.textContent = ''; }}, 2000);
+    }}
+  }} else {{
+    alert('Failed to save coach update. Please try again.');
+  }}
+}}
 let pendingOkrChanges = [];
 async function addSession(userId) {{
   const date = document.getElementById('new_sess_date').value;
@@ -425,12 +451,12 @@ function describeOkrChange(c) {{
   const pct = (c.current_pct !== undefined && c.current_pct !== null) ? ' (' + c.current_pct + '%)' : '';
   switch (c.action) {{
     case 'add_objective': return '\u2795 {t(lang, "db_okr_add_objective")}: ' + (c.title || '');
-    case 'edit_objective': return '\u270F\uFE0F ' + (c.title || '');
+    case 'edit_objective': return '\u270F\uFE0F ' + (c.current_title ? c.current_title + ' \u2192 ' : '') + (c.title || '');
     case 'archive_objective': return '\U0001F5C4 {t(lang, "db_okr_archive")}';
     case 'hold_objective': return '\u23F8 {t(lang, "db_okr_hold")}';
     case 'reactivate_objective': return '\u25B6 {t(lang, "db_okr_reactivate")}';
     case 'add_kr': return '\u2795 KR: ' + (c.description || '') + pct;
-    case 'edit_kr': return '\u270F\uFE0F KR: ' + (c.description || '') + pct;
+    case 'edit_kr': return '\u270F\uFE0F KR: ' + (c.current_description ? c.current_description + ' \u2192 ' : '') + (c.description || '') + pct;
     case 'update_kr_pct': return '\U0001F4C8 KR \u2192 ' + c.current_pct + '%';
     case 'archive_kr': return '\U0001F5C4 KR';
     case 'hold_kr': return '\u23F8 KR';

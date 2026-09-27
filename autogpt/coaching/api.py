@@ -981,6 +981,12 @@ def user_dashboard(
         except (ValueError, TypeError):
             plan = {}
     general_goal = plan.get("general_goal", "") if isinstance(plan, dict) else ""
+    leading_value = plan.get("leading_value", "") if isinstance(plan, dict) else ""
+    # Older plans may hold these only inside the saved general form.
+    general_form = plan.get("general_form") if isinstance(plan, dict) else None
+    if isinstance(general_form, dict):
+        general_goal = general_goal or general_form.get("g_general_objective", "")
+        leading_value = leading_value or general_form.get("g_leading_value", "")
 
     html = render_dashboard(
         user=user,
@@ -993,6 +999,7 @@ def user_dashboard(
         is_admin_view=is_admin_view,
         weekly_reports=weekly_reports,
         general_goal=general_goal,
+        leading_value=leading_value,
     )
     resp = HTMLResponse(content=html)
     if not is_admin_view:
@@ -1632,10 +1639,24 @@ def admin_create_manual_session(
     if body.summary_for_coach.strip():
         try:
             from autogpt.coaching.session import extract_okr_changes_from_summary_text
+            objectives = get_user_objectives(user_id)
             proposed = extract_okr_changes_from_summary_text(
                 body.summary_for_coach,
-                get_user_objectives(user_id),
+                objectives,
             )
+            # Attach the current text to edit proposals so the approval list
+            # shows "old -> new" and an overwrite is visible BEFORE approving.
+            obj_by_id = {o.objective_id: o for o in objectives}
+            kr_by_id = {kr.kr_id: kr for o in objectives for kr in o.key_results}
+            for change in proposed:
+                if change.get("action") == "edit_kr":
+                    kr = kr_by_id.get(change.get("kr_id", ""))
+                    if kr is not None:
+                        change["current_description"] = kr.description
+                elif change.get("action") == "edit_objective":
+                    obj = obj_by_id.get(change.get("objective_id", ""))
+                    if obj is not None:
+                        change["current_title"] = obj.title
         except Exception:
             logger.exception("Manual-session OKR extraction failed for user %s", user_id)
             proposed = []
@@ -1683,6 +1704,11 @@ def admin_apply_okr_changes(
                 detail=f"Unknown OKR action: {action!r}",
             )
         missing = [f for f in required if not change.get(f) and change.get(f) != 0]
+        # A KR proposed alongside a NEW objective has no objective_id yet;
+        # apply_okr_changes links it to the objective created in the same batch.
+        if missing == ["objective_id"] and action == "add_kr" and any(
+                c.get("action") == "add_objective" for c in body.changes):
+            missing = []
         if missing:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -2862,8 +2888,9 @@ def save_success_plan(req: dict, request: Request) -> dict:
         previous = {}
     merged = {**previous, f"{plan_type}_form": allowed}
     if plan_type == "general":
-        merged.update({"leading_value": allowed.get("g_leading_value", ""),
-                       "general_goal": allowed.get("g_general_objective", ""),
+        # A partial submit (field absent) must not wipe previously saved values.
+        merged.update({"leading_value": allowed.get("g_leading_value", previous.get("leading_value", "")),
+                       "general_goal": allowed.get("g_general_objective", previous.get("general_goal", "")),
                        "near_goals": [allowed.get(f"g_near_obj_{n}", "") for n in range(1, 4)],
                        "weekly_actions": [allowed.get(f"g_act_plan_{n}", "") for n in range(1, 4)]})
     save_coaching_plan(user_id, merged)

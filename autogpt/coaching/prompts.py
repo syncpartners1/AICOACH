@@ -366,6 +366,7 @@ When the action-first weekly review is complete:
     {{"action": "hold_objective", "objective_id": "<uuid>"}},
     {{"action": "reactivate_objective", "objective_id": "<uuid>"}},
     {{"action": "add_kr", "objective_id": "<uuid>", "description": "<string>", "current_pct": 0}},
+  {{"action": "add_kr", "description": "<string>", "current_pct": 0}},
     {{"action": "edit_kr", "kr_id": "<uuid>", "description": "<string>", "current_pct": <0-100>}},
     {{"action": "update_kr_pct", "kr_id": "<uuid>", "current_pct": <0-100>}},
     {{"action": "archive_kr", "kr_id": "<uuid>"}},
@@ -416,6 +417,8 @@ The coach's session summary (may be in Hebrew or English):
 Identify only the OKR changes the summary clearly implies:
 - progress on an existing key result -> update_kr_pct (use its exact kr_id)
 - an explicitly new objective or key result -> add_objective / add_kr
+- a key result that belongs to a NEW objective in this proposal -> add_kr WITHOUT objective_id (it is linked automatically)
+- edit_kr ONLY when the summary explicitly rephrases an existing key result while keeping its identity - never for a new key result. When unsure between add_kr and edit_kr, choose add_kr
 - an explicitly stated status change -> archive/hold/reactivate objective or KR
 
 Map every update to the existing objective_id / kr_id values from the JSON above.
@@ -432,6 +435,7 @@ Output ONLY this block, nothing else:
   {{"action": "hold_objective", "objective_id": "<uuid>"}},
   {{"action": "reactivate_objective", "objective_id": "<uuid>"}},
   {{"action": "add_kr", "objective_id": "<uuid>", "description": "<string>", "current_pct": 0}},
+  {{"action": "add_kr", "description": "<string>", "current_pct": 0}},
   {{"action": "edit_kr", "kr_id": "<uuid>", "description": "<string>", "current_pct": 0}},
   {{"action": "update_kr_pct", "kr_id": "<uuid>", "current_pct": 0}},
   {{"action": "archive_kr", "kr_id": "<uuid>"}},
