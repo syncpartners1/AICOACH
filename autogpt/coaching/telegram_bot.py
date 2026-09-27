@@ -38,7 +38,7 @@ import re
 from datetime import date, timedelta
 from typing import Dict, Optional
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -1884,6 +1884,34 @@ async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> 
 # ── Bot builder ────────────────────────────────────────────────────────────────
 
 
+class SingleCommandMessage(filters.MessageFilter):
+    """Reject a command message containing another slash command on a new line.
+
+    Telegram's CommandHandler accepts trailing arguments. A pasted command list
+    must not silently run the first command with the rest treated as arguments.
+    """
+
+    def filter(self, message) -> bool:
+        text = message.text or ""
+        if not text:
+            return True
+        entities = message.entities or ()
+        if sum(entity.type == MessageEntity.BOT_COMMAND for entity in entities) > 1:
+            return False
+        return not any(re.match(r"^\s*/[A-Za-z][A-Za-z0-9_]*(?:@[A-Za-z0-9_]+)?(?:\s|$)", line)
+                       for line in text.splitlines()[1:])
+
+
+_SINGLE_COMMAND = SingleCommandMessage()
+
+
+async def reject_multi_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "Please send one command at a time. Send /weekly, /plan, or /new_session in separate messages.\n"
+        "יש לשלוח פקודה אחת בכל הודעה. שלחו /weekly, /plan או /new_session בנפרד."
+    )
+
+
 def _build_app(token: str) -> Application:
     logger.info("Building Telegram application...")
     app = Application.builder().token(token).build()
@@ -1989,6 +2017,9 @@ def _build_app(token: str) -> Application:
         allow_reentry=True,
     )
 
+    # Handle pasted command lists before the ConversationHandler sees the first
+    # slash command. One handler per group prevents the conversation from running.
+    app.add_handler(MessageHandler(filters.COMMAND & ~_SINGLE_COMMAND, reject_multi_command))
     app.add_handler(conv)
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("myplan", myplan))
