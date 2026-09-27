@@ -108,18 +108,6 @@ def _register_telegram_webhook(bot_token: str, public_url: str) -> None:
         logger.error("Failed to register Telegram webhook: %s", resp.text)
 
 
-def _delete_telegram_webhook(bot_token: str) -> None:
-    """Remove the Telegram webhook on shutdown."""
-    try:
-        http_requests.post(
-            f"https://api.telegram.org/bot{bot_token}/deleteWebhook",
-            timeout=10,
-        )
-        logger.info("Telegram webhook deleted")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not delete Telegram webhook: %s", exc)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan: start Telegram in webhook or polling mode depending on config."""
@@ -131,7 +119,7 @@ async def lifespan(app: FastAPI):
             # Initialize before registering a webhook so a deleted bot cannot
             # take down the web app or change Telegram's delivery destination.
             from telegram.error import InvalidToken
-            from autogpt.coaching.telegram_bot import get_application
+            from autogpt.coaching.telegram_bot import get_application, register_command_menu
             app.state.telegram_app = None
             try:
                 telegram_app = await get_application(coaching_config.telegram_bot_token)
@@ -140,6 +128,7 @@ async def lifespan(app: FastAPI):
                 logger.error("Telegram bot token rejected; continuing without the legacy bot")
             else:
                 app.state.telegram_app = telegram_app
+                await register_command_menu(telegram_app)
                 if coaching_config.public_url:
                     _register_telegram_webhook(
                         coaching_config.telegram_bot_token,
@@ -168,8 +157,9 @@ async def lifespan(app: FastAPI):
     if coaching_config.telegram_bot_token and coaching_config.telegram_webhook_mode:
         telegram_app = getattr(app.state, "telegram_app", None)
         if telegram_app is not None:
+            # Keep Telegram's global webhook intact: an old Cloud Run instance may
+            # shut down after a new instance has registered the same bot URL.
             await telegram_app.shutdown()
-            _delete_telegram_webhook(coaching_config.telegram_bot_token)
     if telegram_task:
         telegram_task.cancel()
         try:
