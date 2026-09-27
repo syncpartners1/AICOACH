@@ -112,8 +112,33 @@ def test_admin_invite_post_is_same_origin_even_when_public_url_differs():
     assert 'action="/admin/invites"' in page
     assert "fetch('/admin/invites'" in page
     assert "app.changenavigator.colil/admin/invites" not in page
-    assert "sendEmail && data.email_sent" in page
-    assert "email was NOT sent" in page
+    assert "data.email_sent ?" in page
+    assert 'id="inviteResultMessage"' in page
+
+
+def test_admin_invite_links_are_selectable_and_copyable():
+    from autogpt.coaching.admin_ui import render_admin
+    from autogpt.coaching.models import Invite
+    invite = Invite(invite_id="inv-1", token="t1", name="Test", register_url="/register?token=t1")
+    page = render_admin([], [invite], lang="he")
+    assert 'value="/register?token=t1"' in page
+    assert 'onclick="this.select()"' in page
+    assert 'copyInviteLink(this.previousElementSibling, this)' in page
+    assert 'id="createdInviteLink"' in page
+    assert 'id="inviteResult"' in page
+    assert 'navigator.clipboard.writeText(url)' in page
+    assert 'new URL(data.register_url ||' in page
+    assert 'location.reload()' not in page.split('async function submitInvite(sendEmail)')[1]
+    assert 'העתק קישור' in page
+
+
+def test_admin_invite_url_is_escaped_in_html_attribute():
+    from autogpt.coaching.admin_ui import render_admin
+    from autogpt.coaching.models import Invite
+    invite = Invite(invite_id="inv-1", token="t1", register_url='/register?token=x" onfocus="alert(1)')
+    page = render_admin([], [invite])
+    assert 'value="/register?token=x&amp;quot;' not in page
+    assert 'value="/register?token=x&quot; onfocus=&quot;alert(1)"' in page
 
 
 def test_invite_creation_reports_email_failure_without_claiming_sent():
