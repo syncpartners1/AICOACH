@@ -206,6 +206,7 @@ S_EN = {
         "/start — Begin or resume a coaching session\n"
         "/link — Link your Telegram to your registered account\n"
         "/plan — Fill in your weekly plan (per key result)\n"
+        "/weekly — Report weekly tasks and progress\n"
         "/highlight — Add today's key highlight\n"
         "/myplan — View your current week's plan\n"
         "/book — Book a meeting with Adi Ben Nesher\n"
@@ -232,6 +233,16 @@ S_EN = {
     "db_section_week": "This Week",
     "db_section_okr": "Objectives &amp; Key Results",
     "db_section_highlights": "Daily Highlights",
+    "db_section_weekly_report": "Weekly task report",
+    "db_weekly_completed": "tasks completed",
+    "db_weekly_reported": "Report submitted (no tasks listed)",
+    "db_weekly_not_reported": "No weekly report submitted yet",
+    "db_weekly_coach_note": "Coach update",
+    "db_weekly_save_note": "Save coach update",
+    "db_weekly_note_saved": "Saved",
+    "db_weekly_note_failed": "Could not save",
+    "db_weekly_history": "Previous weeks",
+    "db_success_goal": "Success-plan goal",
     "db_section_sessions": "Recent Sessions",
     # ── Dashboard: status ─────────────────────────────────────────────────
     "db_status_active": "ACTIVE",

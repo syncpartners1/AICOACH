@@ -382,3 +382,33 @@ CREATE POLICY service_only ON coaching_programs USING (auth.role() = 'service_ro
 ALTER TABLE invites
   ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en'
              CHECK (language IN ('en', 'he'));
+
+-- M012: confirmed weekly chat reports, one per participant per Sunday-start week.
+CREATE TABLE IF NOT EXISTS weekly_reports (
+  report_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+  week_start DATE NOT NULL,
+  participant_update TEXT NOT NULL DEFAULT '',
+  coach_update TEXT NOT NULL DEFAULT '',
+  submitted_at TIMESTAMPTZ,
+  coach_updated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, week_start)
+);
+CREATE INDEX IF NOT EXISTS idx_weekly_reports_user ON weekly_reports(user_id, week_start DESC);
+CREATE TABLE IF NOT EXISTS weekly_report_tasks (
+  task_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id UUID NOT NULL REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  done BOOLEAN NOT NULL DEFAULT FALSE,
+  position INTEGER NOT NULL,
+  UNIQUE (report_id, position)
+);
+CREATE INDEX IF NOT EXISTS idx_weekly_report_tasks_report ON weekly_report_tasks(report_id);
+ALTER TABLE weekly_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE weekly_report_tasks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS service_only ON weekly_reports;
+DROP POLICY IF EXISTS service_only ON weekly_report_tasks;
+CREATE POLICY service_only ON weekly_reports USING (auth.role() = 'service_role');
+CREATE POLICY service_only ON weekly_report_tasks USING (auth.role() = 'service_role');

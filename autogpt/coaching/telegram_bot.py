@@ -9,6 +9,7 @@ Commands (users):
   /start          – register or start a free-form AI coaching session
   /link           – link this Telegram account to a registered user (by phone)
   /plan           – guided weekly plan entry (per KR)
+  /weekly         – confirmed weekly task and progress report
   /highlight      – add today's key highlight
   /myplan         – view current week's plan summary
   /book           – book a meeting with Adi Ben Nesher
@@ -1886,6 +1887,7 @@ async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> 
 def _build_app(token: str) -> Application:
     logger.info("Building Telegram application...")
     app = Application.builder().token(token).build()
+    from autogpt.coaching import weekly_chat
     conv = ConversationHandler(
         per_message=False,
         entry_points=[
@@ -1893,6 +1895,7 @@ def _build_app(token: str) -> Application:
             CommandHandler("new_session", new_session_command),
             CommandHandler("link", link_start),
             CommandHandler("plan", plan_start),
+            CommandHandler("weekly", weekly_chat.weekly_start),
             CommandHandler("highlight", highlight_start),
             CommandHandler("message", msg_start),
             CommandHandler("book", book_start),
@@ -1953,6 +1956,10 @@ def _build_app(token: str) -> Application:
             MSG_WAITING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, msg_receive),
             ],
+            weekly_chat.WEEKLY_TASKS: [MessageHandler(filters.TEXT & ~filters.COMMAND, weekly_chat.weekly_tasks)],
+            weekly_chat.WEEKLY_DONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, weekly_chat.weekly_done)],
+            weekly_chat.WEEKLY_UPDATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, weekly_chat.weekly_update)],
+            weekly_chat.WEEKLY_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, weekly_chat.weekly_confirm)],
             # ── Booking flow ────────────────────────────────────────────────
             BOOK_TYPE: [
                 CallbackQueryHandler(book_receive_type, pattern=r"^book_type:"),
@@ -2046,6 +2053,7 @@ async def run_polling(token: str) -> None:
                     BotCommand("new_session", "Start a new coaching session"),
                     BotCommand("done",        "End & save current session"),
                     BotCommand("plan",        "Submit your weekly plan"),
+                    BotCommand("weekly",      "Report weekly tasks and progress"),
                     BotCommand("myplan",      "View your current week plan"),
                     BotCommand("highlight",   "Log today's highlight"),
                     BotCommand("book",        "Book a 1:1 session"),

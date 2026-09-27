@@ -981,6 +981,16 @@ def user_dashboard(
     objectives = get_user_objectives(user_id)
     weekly_plan = get_weekly_plan(user_id, parsed_week)
     past_sessions = get_past_sessions(user_id, limit=5)
+    from autogpt.coaching.weekly_reports import list_weekly_reports
+    weekly_reports = list_weekly_reports(user_id)
+    program = get_coaching_program(user_id)
+    plan = program.get("plan_json") or {}
+    if isinstance(plan, str):
+        try:
+            plan = json.loads(plan)
+        except (ValueError, TypeError):
+            plan = {}
+    general_goal = plan.get("general_goal", "") if isinstance(plan, dict) else ""
 
     html = render_dashboard(
         user=user,
@@ -991,6 +1001,8 @@ def user_dashboard(
         week_end=_week_end(parsed_week),
         language=user.language,
         is_admin_view=is_admin_view,
+        weekly_reports=weekly_reports,
+        general_goal=general_goal,
     )
     resp = HTMLResponse(content=html)
     if not is_admin_view:
@@ -1626,6 +1638,26 @@ def admin_create_manual_session(
         summary_for_coach=body.summary_for_coach,
     )
     return {"ok": True, "session_id": session_id}
+
+
+class _WeeklyCoachNoteBody(BaseModel):
+    coach_update: str
+
+
+@app.put("/admin/users/{user_id}/weekly-reports/{week}/coach-note",
+         summary="Coach: update a weekly report note")
+def admin_update_weekly_note(user_id: str, week: date, body: _WeeklyCoachNoteBody,
+                             _: None = Depends(verify_admin_or_api_key)) -> dict:
+    if not get_user_profile(user_id):
+        raise HTTPException(status_code=404, detail="User not found.")
+    from autogpt.coaching.weekly_reports import save_coach_weekly_note, week_start as sunday
+    if week != sunday(week) or week > sunday():
+        raise HTTPException(status_code=422, detail="Invalid week.")
+    try:
+        report = save_coach_weekly_note(user_id, week, body.coach_update)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, "week_start": str(report["week_start"])}
 
 
 @app.post("/admin/analyze-transcripts", summary="Admin: analyse recent session transcripts and save coaching insights")

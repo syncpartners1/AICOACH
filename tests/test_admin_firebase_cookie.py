@@ -53,6 +53,8 @@ def test_participant_cookie_survives_firebase_forwarding_and_cannot_grant_admin(
          patch("autogpt.coaching.api.get_user_objectives", return_value=[]), \
          patch("autogpt.coaching.api.get_weekly_plan", return_value=None), \
          patch("autogpt.coaching.api.get_past_sessions", return_value=[]), \
+         patch("autogpt.coaching.weekly_reports.list_weekly_reports", return_value=[]), \
+         patch("autogpt.coaching.api.get_coaching_program", return_value={"plan_json": {}}), \
          patch("autogpt.coaching.dashboard_ui.render_dashboard", return_value="participant dashboard"):
         profile.return_value = UserProfile(user_id="u1", name="Participant", phone_number="+111")
         page = client.get("/dashboard/u1")
@@ -75,6 +77,8 @@ def test_admin_view_does_not_replace_admin_cookie_with_participant_cookie(monkey
          patch("autogpt.coaching.api.get_user_objectives", return_value=[]), \
          patch("autogpt.coaching.api.get_weekly_plan", return_value=None), \
          patch("autogpt.coaching.api.get_past_sessions", return_value=[]), \
+         patch("autogpt.coaching.weekly_reports.list_weekly_reports", return_value=[]), \
+         patch("autogpt.coaching.api.get_coaching_program", return_value={"plan_json": {}}), \
          patch("autogpt.coaching.dashboard_ui.render_dashboard", return_value="admin view"):
         profile.return_value = UserProfile(user_id="u1", name="Participant", phone_number="+111")
         page = client.get("/dashboard/u1")

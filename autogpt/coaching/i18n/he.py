@@ -206,6 +206,7 @@ S_HE = {
         "/start — התחל או חדש פגישת אימון\n"
         "/link — קשר את הטלגרם לחשבון הרשום שלך\n"
         "/plan — מלא את התכנית השבועית (לכל תוצאת מפתח)\n"
+        "/weekly — דווח על משימות והתקדמות השבוע\n"
         "/highlight — הוסף הדגשה יומית\n"
         "/myplan — צפה בתכנית השבוע הנוכחי\n"
         "/book — הזמן פגישה עם עדי בן נשר\n"
@@ -232,6 +233,16 @@ S_HE = {
     "db_section_week": "השבוע",
     "db_section_okr": "יעדים ותוצאות מפתח",
     "db_section_highlights": "הדגשות יומיות",
+    "db_section_weekly_report": "דיווח משימות שבועי",
+    "db_weekly_completed": "משימות בוצעו",
+    "db_weekly_reported": "הוגש דיווח (לא פורטו משימות)",
+    "db_weekly_not_reported": "טרם דווח השבוע",
+    "db_weekly_coach_note": "עדכון המאמן",
+    "db_weekly_save_note": "שמירת עדכון מאמן",
+    "db_weekly_note_saved": "נשמר",
+    "db_weekly_note_failed": "השמירה נכשלה",
+    "db_weekly_history": "שבועות קודמים",
+    "db_success_goal": "מטרת תוכנית ההצלחה",
     "db_section_sessions": "פגישות אחרונות",
     # ── Dashboard: status ─────────────────────────────────────────────────
     "db_status_active": "פעיל",
