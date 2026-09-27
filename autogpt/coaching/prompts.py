@@ -397,3 +397,50 @@ Only fields explicitly confirmed by the participant during this session; otherwi
 Do not include coach-controlled track or phase.
 
 Output only these three blocks, nothing else."""
+
+
+# ── Manual-session OKR extraction ─────────────────────────────────────────────
+# Used when a coach records an in-person / phone session manually: there is no
+# conversation transcript, only the coach's free-text summary. The LLM proposes
+# OKR mutations which the coach then approves or rejects in the dashboard.
+MANUAL_SESSION_OKR_EXTRACTION_PROMPT = """You are analyzing a coach's written summary of an in-person coaching session.
+
+The participant's CURRENT objectives and key results (JSON):
+{objectives_json}
+
+The coach's session summary (may be in Hebrew or English):
+\"\"\"
+{summary_text}
+\"\"\"
+
+Identify only the OKR changes the summary clearly implies:
+- progress on an existing key result -> update_kr_pct (use its exact kr_id)
+- an explicitly new objective or key result -> add_objective / add_kr
+- an explicitly stated status change -> archive/hold/reactivate objective or KR
+
+Map every update to the existing objective_id / kr_id values from the JSON above.
+Be conservative: if a change is not clearly stated in the summary, omit it.
+Do not invent percentages beyond what the summary states; if progress is
+mentioned without a number, omit that update.
+
+Output ONLY this block, nothing else:
+[OKR_CHANGES_JSON]
+{{"okr_changes": [
+  {{"action": "add_objective", "title": "<string>", "description": "<string>"}},
+  {{"action": "edit_objective", "objective_id": "<uuid>", "title": "<string>", "description": "<string>"}},
+  {{"action": "archive_objective", "objective_id": "<uuid>"}},
+  {{"action": "hold_objective", "objective_id": "<uuid>"}},
+  {{"action": "reactivate_objective", "objective_id": "<uuid>"}},
+  {{"action": "add_kr", "objective_id": "<uuid>", "description": "<string>", "current_pct": 0}},
+  {{"action": "edit_kr", "kr_id": "<uuid>", "description": "<string>", "current_pct": 0}},
+  {{"action": "update_kr_pct", "kr_id": "<uuid>", "current_pct": 0}},
+  {{"action": "archive_kr", "kr_id": "<uuid>"}},
+  {{"action": "hold_kr", "kr_id": "<uuid>"}},
+  {{"action": "reactivate_kr", "kr_id": "<uuid>"}}
+]}}
+[/OKR_CHANGES_JSON]
+
+If nothing clearly applies, output:
+[OKR_CHANGES_JSON]
+{{"okr_changes": []}}
+[/OKR_CHANGES_JSON]"""
