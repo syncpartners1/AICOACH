@@ -243,6 +243,9 @@ S_HE = {
     "db_weekly_note_failed": "השמירה נכשלה",
     "db_weekly_history": "שבועות קודמים",
     "db_success_goal": "מטרת תוכנית ההצלחה",
+    "db_leading_value": "ערך מוביל",
+    "db_i_am": "אני",
+    "db_not_set": "לא נקבע עדיין",
     "db_section_sessions": "פגישות אחרונות",
     # ── Dashboard: status ─────────────────────────────────────────────────
     "db_status_active": "פעיל",
