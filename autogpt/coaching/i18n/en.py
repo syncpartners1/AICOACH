@@ -243,6 +243,9 @@ S_EN = {
     "db_weekly_note_failed": "Could not save",
     "db_weekly_history": "Previous weeks",
     "db_success_goal": "Success-plan goal",
+    "db_leading_value": "Leading value",
+    "db_i_am": "I am",
+    "db_not_set": "Not set yet",
     "db_section_sessions": "Recent Sessions",
     # ── Dashboard: status ─────────────────────────────────────────────────
     "db_status_active": "ACTIVE",
