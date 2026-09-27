@@ -989,7 +989,8 @@ def user_dashboard(
 
 # ── Admin dashboard ────────────────────────────────────────────────────────────
 
-_ADMIN_COOKIE = "admin_session"
+# Firebase Hosting forwards only this cookie to the rewritten Cloud Run app.
+_ADMIN_COOKIE = "__session"
 
 # In-memory OTP store: phone → (otp, expires_at)
 _otp_store: Dict[str, tuple] = {}
