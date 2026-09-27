@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import List
 
+from autogpt.coaching.admin_program_ui import PHASE_LABELS
 from autogpt.coaching.i18n import t
 from autogpt.coaching.models import Invite, UserProgressSummary
 
@@ -49,7 +50,10 @@ def render_admin(
         last_sess = u.last_session.strftime("%d-%m-%Y") if u.last_session else "—"
         last_plan = u.last_weekly_plan.strftime("%d-%m-%Y") if u.last_weekly_plan else "—"
         contact = u.phone_number or u.email or "—"
-        dashboard_url = f"{public_url}/dashboard/{u.user_id}" if public_url else f"/dashboard/{u.user_id}"
+        # Use the current host instead of a potentially stale PUBLIC_URL.
+        dashboard_url = f"/dashboard/{u.user_id}"
+        track_label = {"base": "תוכנית בסיס", "base_financial": "בסיס + מעטפת כלכלית"}.get(u.program_type, "טרם הוגדר")
+        phase_label = PHASE_LABELS.get(u.phase, "טרם הוגדר")
         st = u.account_status.value if hasattr(u.account_status, "value") else str(u.account_status)
         fg, bg = _status_colors.get(st, ("#6b7280", "#f3f4f6"))
         status_pill = (f'<span style="font-size:10px;font-weight:700;padding:1px 7px;'
@@ -85,6 +89,8 @@ def render_admin(
   </td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
   <td style="padding:10px 12px;text-align:center">{status_pill}</td>
+  <td style="padding:10px 12px;font-size:12px">{track_label}</td>
+  <td style="padding:10px 12px;font-size:12px">{phase_label}</td>
   <td style="padding:10px 12px;text-align:center">{u.objectives_count}</td>
   <td style="padding:10px 12px;white-space:nowrap">
     <span style="font-weight:600">{u.avg_kr_pct:.0f}%</span>
@@ -103,7 +109,7 @@ def render_admin(
 </tr>"""
 
     if not user_rows:
-        user_rows = f'<tr><td colspan="8" style="padding:20px;color:#9ca3af;text-align:center">{t(lang, "admin_no_users")}</td></tr>'
+        user_rows = f'<tr><td colspan="10" style="padding:20px;color:#9ca3af;text-align:center">{t(lang, "admin_no_users")}</td></tr>'
 
     # ── Pending registration rows ─────────────────────────────────────────────
     pending_rows = ""
@@ -237,7 +243,7 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
     <table>
       <thead><tr>
         <th>{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th>
-        <th>{t(lang, "admin_col_status")}</th><th>{t(lang, "admin_col_okrs")}</th>
+        <th>{t(lang, "admin_col_status")}</th><th>מסלול</th><th>שלב</th><th>{t(lang, "admin_col_okrs")}</th>
         <th>{t(lang, "admin_col_progress")}</th><th>{t(lang, "admin_col_last_session")}</th>
         <th>{t(lang, "admin_col_last_plan")}</th><th>{t(lang, "admin_col_actions")}</th>
       </tr></thead>
