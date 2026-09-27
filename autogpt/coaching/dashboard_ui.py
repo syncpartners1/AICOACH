@@ -246,6 +246,17 @@ def render_dashboard(
     style="background:#16a34a;color:#fff;border:none;padding:7px 18px;border-radius:8px;
            font-size:13px;font-weight:600;cursor:pointer">{t(lang, 'db_btn_save_session')}</button>
   <span id="add_sess_msg" style="margin-left:10px;font-size:12px;color:#16a34a"></span>
+  <div id="okr_proposal" style="display:none;margin-top:10px;border:1px solid #f59e0b;
+       background:#fffbeb;border-radius:8px;padding:10px 12px">
+    <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:6px">{t(lang, 'db_okr_proposal_title')}</div>
+    <ul id="okr_proposal_list" style="margin:0 0 8px 0;padding-inline-start:20px;font-size:13px;color:#374151"></ul>
+    <button onclick="approveOkrChanges('{user.user_id}')"
+      style="background:#16a34a;color:#fff;border:none;padding:5px 14px;border-radius:6px;
+             font-size:12px;cursor:pointer">{t(lang, 'db_okr_approve')}</button>
+    <button onclick="rejectOkrChanges()"
+      style="background:#e5e7eb;color:#374151;border:none;padding:5px 14px;border-radius:6px;
+             font-size:12px;cursor:pointer;margin-inline-start:6px">{t(lang, 'db_okr_reject')}</button>
+  </div>
 </div>"""
 
     week_label = f"{week_start.strftime('%d-%m-%Y')} – {week_end.strftime('%d-%m-%Y')}"
@@ -388,6 +399,7 @@ async function saveNotes(sessionId, btn) {{
     alert('Failed to save notes. Please try again.');
   }}
 }}
+let pendingOkrChanges = [];
 async function addSession(userId) {{
   const date = document.getElementById('new_sess_date').value;
   const summary = document.getElementById('new_sess_summary').value;
@@ -399,12 +411,61 @@ async function addSession(userId) {{
     credentials: 'include',
     body: JSON.stringify({{session_date: date, summary_for_coach: summary, coach_notes: notes}}),
   }});
-  if (res.ok) {{
+  if (!res.ok) {{ alert('Failed to save session. Please try again.'); return; }}
+  const data = await res.json();
+  if (data.proposed_okr_changes && data.proposed_okr_changes.length > 0) {{
+    pendingOkrChanges = data.proposed_okr_changes;
+    showOkrProposal();
+  }} else {{
     document.getElementById('add_sess_msg').textContent = '{t(lang, "db_session_saved")}';
     setTimeout(() => location.reload(), 1200);
-  }} else {{
-    alert('Failed to save session. Please try again.');
   }}
+}}
+function describeOkrChange(c) {{
+  const pct = (c.current_pct !== undefined && c.current_pct !== null) ? ' (' + c.current_pct + '%)' : '';
+  switch (c.action) {{
+    case 'add_objective': return '\u2795 {t(lang, "db_okr_add_objective")}: ' + (c.title || '');
+    case 'edit_objective': return '\u270F\uFE0F ' + (c.title || '');
+    case 'archive_objective': return '\U0001F5C4 {t(lang, "db_okr_archive")}';
+    case 'hold_objective': return '\u23F8 {t(lang, "db_okr_hold")}';
+    case 'reactivate_objective': return '\u25B6 {t(lang, "db_okr_reactivate")}';
+    case 'add_kr': return '\u2795 KR: ' + (c.description || '') + pct;
+    case 'edit_kr': return '\u270F\uFE0F KR: ' + (c.description || '') + pct;
+    case 'update_kr_pct': return '\U0001F4C8 KR \u2192 ' + c.current_pct + '%';
+    case 'archive_kr': return '\U0001F5C4 KR';
+    case 'hold_kr': return '\u23F8 KR';
+    case 'reactivate_kr': return '\u25B6 KR';
+    default: return c.action || '?';
+  }}
+}}
+function showOkrProposal() {{
+  const box = document.getElementById('okr_proposal');
+  const list = document.getElementById('okr_proposal_list');
+  list.innerHTML = '';
+  pendingOkrChanges.forEach(c => {{
+    const li = document.createElement('li');
+    li.textContent = describeOkrChange(c);
+    list.appendChild(li);
+  }});
+  box.style.display = 'block';
+}}
+async function approveOkrChanges(userId) {{
+  const res = await fetch('/admin/users/' + userId + '/okr-changes/apply', {{
+    method: 'POST',
+    headers: {{'Content-Type':'application/json'}},
+    credentials: 'include',
+    body: JSON.stringify({{changes: pendingOkrChanges}}),
+  }});
+  if (res.ok) {{
+    document.getElementById('add_sess_msg').textContent = '{t(lang, "db_okr_applied")}';
+    setTimeout(() => location.reload(), 1200);
+  }} else {{
+    alert('Failed to apply OKR changes. Please try again.');
+  }}
+}}
+function rejectOkrChanges() {{
+  document.getElementById('add_sess_msg').textContent = '{t(lang, "db_session_saved")}';
+  setTimeout(() => location.reload(), 1200);
 }}
 </script>
 </body>

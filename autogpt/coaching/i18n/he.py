@@ -297,6 +297,14 @@ S_HE = {
     "db_session_notes_placeholder": "תוצאות מרכזיות, פעולות שהוסכמו, תצפיות...",
     "db_btn_save_session": "✅ שמור פגישה",
     "db_session_saved": "✅ הפגישה נשמרה!",
+    "db_okr_proposal_title": "עדכוני OKR מוצעים מהפגישה:",
+    "db_okr_approve": "✅ אשר והחל",
+    "db_okr_reject": "✖ דלג",
+    "db_okr_applied": "✅ הפגישה נשמרה והיעדים עודכנו!",
+    "db_okr_add_objective": "יעד חדש",
+    "db_okr_archive": "ארכוב יעד",
+    "db_okr_hold": "הקפאת יעד",
+    "db_okr_reactivate": "הפעלת יעד מחדש",
     # ── WhatsApp bot ──────────────────────────────────────────────────────
     "wa_help": (
         "👋 <b>ABN Co-Navigator — פקודות WhatsApp</b>\n\n"

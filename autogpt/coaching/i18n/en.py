@@ -297,6 +297,14 @@ S_EN = {
     "db_session_notes_placeholder": "Key outcomes, actions agreed, observations…",
     "db_btn_save_session": "✅ Save Session",
     "db_session_saved": "✅ Session saved!",
+    "db_okr_proposal_title": "Proposed OKR updates from this session:",
+    "db_okr_approve": "✅ Approve & apply",
+    "db_okr_reject": "✖ Skip",
+    "db_okr_applied": "✅ Session saved, OKRs updated!",
+    "db_okr_add_objective": "New objective",
+    "db_okr_archive": "Archive objective",
+    "db_okr_hold": "Put objective on hold",
+    "db_okr_reactivate": "Reactivate objective",
     # ── WhatsApp bot ──────────────────────────────────────────────────────
     "wa_help": (
         "👋 *ABN Co-Navigator — WhatsApp commands*\n\n"

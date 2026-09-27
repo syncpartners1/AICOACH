@@ -293,3 +293,68 @@ class CoachingSession:
         history = row.get("message_history") or []
         obj.full_message_history = list(history)
         return obj
+
+
+def extract_okr_changes_from_summary_text(
+    summary_text: str,
+    objectives: List[Objective],
+) -> List[Dict[str, Any]]:
+    """Propose OKR mutations from a coach's free-text manual-session summary.
+
+    Uses the same [OKR_CHANGES_JSON] block format as live-session extraction,
+    grounded in the participant's current objectives so updates reference real
+    objective_id / kr_id values. Returns [] on any parse failure — callers
+    treat empty as "no proposals" and never fail the session save over it.
+    """
+    from autogpt.coaching.llm import chat_completion
+    from autogpt.coaching.prompts import MANUAL_SESSION_OKR_EXTRACTION_PROMPT
+
+    objectives_json = json.dumps(
+        [
+            {
+                "objective_id": o.objective_id,
+                "title": o.title,
+                "description": o.description,
+                "status": o.status.value if hasattr(o.status, "value") else str(o.status),
+                "key_results": [
+                    {
+                        "kr_id": kr.kr_id,
+                        "description": kr.description,
+                        "current_pct": kr.current_pct,
+                    }
+                    for kr in o.key_results
+                ],
+            }
+            for o in objectives
+        ],
+        ensure_ascii=False,
+    )
+
+    raw = chat_completion(
+        messages=[
+            {
+                "role": "user",
+                "content": MANUAL_SESSION_OKR_EXTRACTION_PROMPT.format(
+                    objectives_json=objectives_json,
+                    summary_text=summary_text,
+                ),
+            }
+        ],
+        model=coaching_config.llm_model,
+        temperature=0.0,
+        thinking_level="low",  # structured extraction: fast, low-effort thinking
+    )
+
+    match = re.search(
+        r"\[OKR_CHANGES_JSON\](.*?)\[/OKR_CHANGES_JSON\]",
+        raw,
+        re.DOTALL,
+    )
+    if not match:
+        return []
+    try:
+        data = json.loads(match.group(1).strip())
+        changes = data.get("okr_changes", [])
+        return changes if isinstance(changes, list) else []
+    except (json.JSONDecodeError, AttributeError):
+        return []

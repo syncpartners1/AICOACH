@@ -12,7 +12,7 @@ import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
 import requests as http_requests
@@ -1624,7 +1624,78 @@ def admin_create_manual_session(
         coach_notes=body.coach_notes,
         summary_for_coach=body.summary_for_coach,
     )
-    return {"ok": True, "session_id": session_id}
+    # Propose OKR mutations from the coach's summary for dashboard approval.
+    # Extraction must never fail the session save - empty means "no proposals".
+    proposed: List[Dict[str, Any]] = []
+    if body.summary_for_coach.strip():
+        try:
+            from autogpt.coaching.session import extract_okr_changes_from_summary_text
+            proposed = extract_okr_changes_from_summary_text(
+                body.summary_for_coach,
+                get_user_objectives(user_id),
+            )
+        except Exception:
+            logger.exception("Manual-session OKR extraction failed for user %s", user_id)
+            proposed = []
+    return {"ok": True, "session_id": session_id, "proposed_okr_changes": proposed}
+
+
+# ── Admin: apply coach-approved OKR changes (manual-session proposal flow) ────
+
+# Whitelist of OKR actions and their required fields - mirrors
+# storage.apply_okr_changes so the stateless approve call can be validated.
+_OKR_ACTION_REQUIRED_FIELDS = {
+    "add_objective": ("title",),
+    "edit_objective": ("objective_id", "title"),
+    "archive_objective": ("objective_id",),
+    "hold_objective": ("objective_id",),
+    "reactivate_objective": ("objective_id",),
+    "add_kr": ("objective_id", "description"),
+    "edit_kr": ("kr_id", "description"),
+    "update_kr_pct": ("kr_id",),
+    "archive_kr": ("kr_id",),
+    "hold_kr": ("kr_id",),
+    "reactivate_kr": ("kr_id",),
+}
+
+
+class _OkrChangesBody(BaseModel):
+    changes: List[Dict[str, Any]]
+
+
+@app.post("/admin/users/{user_id}/okr-changes/apply",
+          summary="Admin: apply coach-approved OKR changes from a session proposal")
+def admin_apply_okr_changes(
+    user_id: str,
+    body: _OkrChangesBody,
+    _: None = Depends(verify_admin_or_api_key),
+) -> dict:
+    if not get_user_profile(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    for change in body.changes:
+        action = change.get("action")
+        required = _OKR_ACTION_REQUIRED_FIELDS.get(action)
+        if required is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown OKR action: {action!r}",
+            )
+        missing = [f for f in required if not change.get(f) and change.get(f) != 0]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"OKR action {action!r} is missing fields: {', '.join(missing)}",
+            )
+        if "current_pct" in change:
+            pct = change["current_pct"]
+            if not isinstance(pct, int) or isinstance(pct, bool) or not 0 <= pct <= 100:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="current_pct must be an integer between 0 and 100",
+                )
+    from autogpt.coaching.storage import apply_okr_changes
+    apply_okr_changes(user_id, body.changes)
+    return {"ok": True, "applied": len(body.changes)}
 
 
 class _WeeklyCoachNoteBody(BaseModel):
