@@ -1464,6 +1464,7 @@ def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(
                 coach_name=get_coach_name(lang),
                 invite_note=req.note,
                 expires_at=expires_str,
+                language=lang,
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -1520,6 +1521,7 @@ def admin_resend_invite(invite_id: str, _: None = Depends(verify_admin_or_api_ke
         coach_name=get_coach_name(lang),
         invite_note=inv.note,
         expires_at=expires_str,
+        language=lang,
     )
     if not ok:
         raise HTTPException(
