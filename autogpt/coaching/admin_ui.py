@@ -6,6 +6,7 @@ Supports ?lang=en (default) or ?lang=he for bilingual UI.
 """
 from __future__ import annotations
 
+from html import escape
 from typing import List
 
 from autogpt.coaching.admin_program_ui import PHASE_LABELS
@@ -141,14 +142,18 @@ def render_admin(
     invite_rows = ""
     for inv in pending_invites:
         reg_url = inv.register_url or f"{public_url}/register?token={inv.token}"
+        # Fallback to this origin if the stored URL is relative; never inject invite data into HTML.
+        reg_url_display = escape(reg_url, quote=True)
         who = inv.name or inv.email or inv.phone or "—"
         invite_rows += f"""
 <tr>
   <td style="padding:8px 12px;font-size:13px">{who}</td>
   <td style="padding:8px 12px;font-size:12px;color:#6b7280">{inv.note or "—"}</td>
   <td style="padding:8px 12px">
-    <code style="font-size:11px;background:#f3f4f6;padding:2px 6px;border-radius:4px;
-                 word-break:break-all">{reg_url}</code>
+    <input type="text" readonly class="invite-link" aria-label="{t(lang, 'admin_col_link')}"
+           value="{reg_url_display}" onclick="this.select()">
+    <button type="button" class="copy-link-btn" onclick="copyInviteLink(this.previousElementSibling, this)"
+            aria-label="{t(lang, 'admin_btn_copy_link')}">{t(lang, 'admin_btn_copy_link')}</button>
   </td>
   <td style="padding:8px 12px;white-space:nowrap">
     <button onclick="resendInvite('{inv.invite_id}','{inv.email or ''}')"
@@ -204,6 +209,13 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 .invite-form{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;
              box-shadow:0 1px 3px rgba(0,0,0,.06)}}
 .invite-form h3{{font-size:14px;font-weight:700;color:#1a2b4a;margin-bottom:14px}}
+.invite-link{{width:min(320px,60vw);max-width:100%;box-sizing:border-box;direction:ltr;text-align:left;
+  font-size:12px;padding:7px;border:1px solid #d1d5db;border-radius:6px;user-select:text}}
+.copy-link-btn{{font-size:12px;cursor:pointer;padding:7px 10px;border-radius:6px;
+  background:#e0e7ff;color:#1a2b4a;border:1px solid #a5b4fc}}
+.invite-result{{margin-top:12px;padding:12px;border:1px solid #86efac;border-radius:8px;
+  background:#f0fdf4;font-size:13px}}
+.invite-result .invite-link{{width:min(480px,100%);margin:8px 6px 0 0}}
 .form-row{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}}
 .form-row input,.form-row textarea{{flex:1;min-width:140px;padding:9px 12px;
   border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none}}
@@ -295,6 +307,13 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
                 style="flex:1;background:linear-gradient(135deg,#1a6b3a,#2d9e5a);">{t(lang, "admin_btn_send_email")}</button>
       </div>
     </form>
+    <div id="inviteResult" class="invite-result" role="status" hidden>
+      <div id="inviteResultMessage"></div>
+      <input id="createdInviteLink" class="invite-link" type="text" readonly
+             aria-label="{t(lang, 'admin_col_link')}" onclick="this.select()">
+      <button type="button" class="copy-link-btn"
+              onclick="copyInviteLink(document.getElementById('createdInviteLink'), this)">{t(lang, 'admin_btn_copy_link')}</button>
+    </div>
   </div>
 
   <div class="section-title">{t(lang, "admin_section_invites")}</div>
@@ -382,6 +401,20 @@ async function removeInvite(inviteId) {{
   }}
 }}
 
+async function copyInviteLink(input, button) {{
+  const url = new URL(input.value, location.origin).href;
+  try {{
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+    await navigator.clipboard.writeText(url);
+    button.textContent = {t(lang, 'admin_link_copied_js')!r};
+    setTimeout(() => button.textContent = {t(lang, 'admin_btn_copy_link')!r}, 2000);
+  }} catch (_) {{
+    input.focus();
+    input.select();
+    // Older browsers / denied clipboard: leave the URL selected for manual copying.
+  }}
+}}
+
 async function submitInvite(sendEmail) {{
   const form = document.getElementById('inviteForm');
   const fd = new FormData(form);
@@ -395,14 +428,15 @@ async function submitInvite(sendEmail) {{
   }});
   if (res.ok) {{
     const data = await res.json();
-    if (sendEmail && data.email_sent) {{
-      alert('Invite email sent!\\n\\nRegistration link (also in email):\\n' + (data.register_url || data.token));
-    }} else if (sendEmail) {{
-      alert('Invite link created, but email was NOT sent.\\n\\nShare this link manually:\\n' + (data.register_url || data.token));
-    }} else {{
-      alert('Invite link created!\\n\\nShare this link:\\n' + (data.register_url || data.token));
-    }}
-    location.reload();
+    const url = new URL(data.register_url || `/register?token=${{encodeURIComponent(data.token)}}`, location.origin).href;
+    const result = document.getElementById('inviteResult');
+    const message = document.getElementById('inviteResultMessage');
+    message.textContent = sendEmail
+      ? (data.email_sent ? {t(lang, 'admin_invite_email_sent_js')!r} : {t(lang, 'admin_invite_email_failed_js')!r})
+      : {t(lang, 'admin_invite_created_js')!r};
+    document.getElementById('createdInviteLink').value = url;
+    result.hidden = false;
+    result.scrollIntoView({{block: 'nearest'}});
   }} else {{
     const err = await res.json().catch(()=>({{}}));
     alert('Error: ' + (err.detail || 'unknown error'));
