@@ -104,3 +104,42 @@ def test_progress_snapshot_loads_program_from_same_user():
     program.assert_called_once_with("u1")
     assert users[0].program_type == "base_financial"
     assert users[0].phase == "meeting_4"
+
+
+def test_admin_invite_post_is_same_origin_even_when_public_url_differs():
+    from autogpt.coaching.admin_ui import render_admin
+    page = render_admin([], [], public_url="https://app.changenavigator.colil")
+    assert 'action="/admin/invites"' in page
+    assert "fetch('/admin/invites'" in page
+    assert "app.changenavigator.colil/admin/invites" not in page
+    assert "sendEmail && data.email_sent" in page
+    assert "email was NOT sent" in page
+
+
+def test_invite_creation_reports_email_failure_without_claiming_sent():
+    from autogpt.coaching.api import app, verify_admin_or_api_key
+    from autogpt.coaching.models import Invite
+    from autogpt.coaching.config import coaching_config
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+
+    app.dependency_overrides[verify_admin_or_api_key] = lambda: None
+    try:
+        invite = Invite(invite_id="i1", token="t1", register_url="https://app.changenavigator.co.il/register?token=t1")
+        with patch("autogpt.coaching.api.create_invite", return_value=invite), \
+             patch("autogpt.coaching.api.send_invite_email", return_value=False) as send, \
+             patch.object(coaching_config, "emailjs_service_id", "svc"), \
+             patch.object(coaching_config, "emailjs_template_invite", "tmpl"):
+            response = TestClient(app).post("/admin/invites", json={"email": "a@example.com", "send_email": True})
+        assert response.status_code == 200
+        assert response.json()["email_sent"] is False
+        send.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_invite_language_migration_is_present():
+    from pathlib import Path
+    schema = (Path(__file__).resolve().parents[1] / "autogpt/coaching/supabase_schema.sql").read_text()
+    assert "M011: Invite language" in schema
+    assert "ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en'" in schema

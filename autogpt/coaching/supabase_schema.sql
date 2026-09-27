@@ -202,6 +202,7 @@ CREATE TABLE IF NOT EXISTS invites (
   email       TEXT,                -- pre-filled email hint (optional)
   phone       TEXT,                -- pre-filled phone hint (optional)
   note        TEXT,                -- private note from admin
+  language    TEXT NOT NULL DEFAULT 'en' CHECK (language IN ('en', 'he')),
   used_at     TIMESTAMPTZ,
   used_by     UUID  REFERENCES user_profiles(user_id) ON DELETE SET NULL,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
@@ -375,3 +376,9 @@ CREATE TABLE IF NOT EXISTS coaching_programs (
 ALTER TABLE coaching_programs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS service_only ON coaching_programs;
 CREATE POLICY service_only ON coaching_programs USING (auth.role() = 'service_role');
+
+-- M011: Invite language, which create_invite writes on every new invite.
+-- Apply this to existing databases before deploying invite creation fixes.
+ALTER TABLE invites
+  ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en'
+             CHECK (language IN ('en', 'he'));
