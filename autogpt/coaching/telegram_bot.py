@@ -851,6 +851,20 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def restore_chat_after_restart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Resume a persisted coaching chat whose ConversationHandler state was lost.
+
+    The bot's conversation state is process-local, but `telegram_sessions` is
+    durable. This handler only runs for otherwise-unmatched private text and
+    only forwards it when a session for this Telegram ID can be restored.
+    Other command/flow/admin-reply handlers keep their existing precedence.
+    """
+    tg_id = update.effective_user.id
+    if _get_or_restore_session(tg_id) is None:
+        return
+    await handle_message(update, context)
+
+
 # ── /link — connect Telegram to registered account ────────────────────────────
 
 async def link_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1796,6 +1810,14 @@ def _build_app(token: str) -> Application:
     app.add_handler(MessageHandler(
         filters.REPLY & filters.TEXT & ~filters.COMMAND,
         admin_reply_handler,
+    ))
+
+    # A Cloud Run revision/instance change loses ConversationHandler's CHATTING
+    # state. Preserve commands, guided flows and admin replies above; only a
+    # persisted private coaching session can consume otherwise-unmatched text.
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+        restore_chat_after_restart,
     ))
 
     app.add_error_handler(_error_handler)
