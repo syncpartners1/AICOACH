@@ -333,12 +333,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         if err:
             await update.message.reply_text(err, parse_mode="HTML")
             return ConversationHandler.END
+        esc_name = html.escape(user.name)
         await update.message.reply_text(
-            t(lang, "welcome_back", name=user.name) + "\n\n" +
-            t(lang, "ready_to_begin"),
-            parse_mode="HTML",
+            t(lang, "welcome_back", name=esc_name), parse_mode="HTML"
         )
-        return ConversationHandler.END
+        await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
+        return CHATTING
 
     # Non-registered users → sales funnel (strategic micro-assessment)
     try:
@@ -346,9 +346,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         upsert_funnel_lead(tg_id, update.effective_user.username or "")
     except Exception:
         logger.exception("Failed to upsert funnel lead for tg_id=%s", tg_id)
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton(t(lang, "funnel_btn_start"), callback_data="funnel_start"),
-    ]])
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "funnel_btn_start"), callback_data="funnel_start")],
+        [InlineKeyboardButton(t(lang, "funnel_btn_register"),
+                              url=f"{coaching_config.public_url}/register")],
+    ])
     await update.message.reply_text(
         t(lang, "funnel_welcome"),
         reply_markup=keyboard,
