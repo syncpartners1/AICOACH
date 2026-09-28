@@ -458,6 +458,10 @@ S_EN = {
     "admin_lang_label": "Language:",
     "admin_registering": "Registering…",
     "admin_view_lang": "🇬🇧 EN",
+    "reg_link_used_title": "This link has already been used",
+    "reg_link_used_msg": "If you already registered, you're all set - just sign in again. Otherwise, ask Adi for a new link.",
+    "reg_link_invalid_title": "This link is not valid",
+    "reg_link_invalid_msg": "The link may be incorrect or expired. Ask Adi for a new link.",
     # ── Funnel ────────────────────────────────────────────────────────────
     "funnel_welcome": (
         "👋 <b>Change Navigator - Adi Ben Nesher's personal, financial and business coaching program</b>\n\n"
