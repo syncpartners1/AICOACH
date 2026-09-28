@@ -198,6 +198,11 @@ S_EN = {
     "lang_set_he": "🇮🇱 Language set to <b>Hebrew</b>. Bot messages will now appear in Hebrew.",
     "lang_set_en": "🇬🇧 Language set to <b>English</b>. Bot messages will now appear in English.",
     "lang_usage": "Usage: /lang en  or  /lang he",
+    # ── Bot: /goal ────────────────────────────────────────────────────────
+    "goal_usage": "Usage: /goal — view, /goal goal <text> — set central goal, /goal value <text> — set leading value",
+    "goal_show": "🎯 <b>Central goal:</b> {goal}\n💠 <b>Leading value:</b> {value}\n\n<i>To change: /goal goal <text> or /goal value <text></i>",
+    "goal_saved": "✅ Central goal saved: <b>{goal}</b>",
+    "goal_value_saved": "✅ Leading value saved: <b>{value}</b>",
     # ── Bot: /cancel ──────────────────────────────────────────────────────
     "cancelled": "Operation cancelled. Use /start or /help whenever you're ready.",
     # ── Bot: /help ────────────────────────────────────────────────────────
@@ -209,6 +214,7 @@ S_EN = {
         "/weekly — Report weekly tasks and progress\n"
         "/highlight — Add today's key highlight\n"
         "/myplan — View your current week's plan\n"
+        "/goal — View or set your central goal & leading value\n"
         "/book — Book a meeting with Adi Ben Nesher\n"
         "/mybookings — View your upcoming bookings\n"
         "/cancelmeeting — Cancel a booking\n"
