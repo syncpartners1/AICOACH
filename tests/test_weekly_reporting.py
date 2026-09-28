@@ -29,9 +29,9 @@ def test_weekly_flow_confirms_and_binds_to_telegram_identity():
     user = _user()
     with patch("autogpt.coaching.telegram_bot._get_linked_user", return_value=user), \
          patch("autogpt.coaching.storage.get_coaching_program", return_value={"phase":"meeting_7", "plan_json":{"weekly_actions":["Write proposal", "Call client"]}}), \
-         patch.object(weekly_chat, "get_weekly_report", return_value=None), \
-         patch.object(weekly_chat, "previous_week_tasks", return_value=[]), \
-         patch.object(weekly_chat, "save_participant_report") as save:
+         patch.object(weekly_reports, "get_weekly_report", return_value=None), \
+         patch.object(weekly_reports, "previous_week_tasks", return_value=[]), \
+         patch.object(weekly_reports, "save_participant_report") as save:
         assert _run(weekly_chat.weekly_start(_event("/weekly"), ctx)) == weekly_chat.WEEKLY_TASKS
         assert ctx.user_data["weekly"]["tasks"] == ["Write proposal", "Call client"]
         assert _run(weekly_chat.weekly_tasks(_event("אותן"), ctx)) == weekly_chat.WEEKLY_DONE
@@ -51,10 +51,10 @@ def test_weekly_flow_rejects_unlinked_and_identity_change():
     with patch("autogpt.coaching.telegram_bot._get_linked_user", return_value=None):
         assert _run(weekly_chat.weekly_start(_event("/weekly"), ctx)) == -1
         assert ctx.user_data == {}
-    ctx.user_data["weekly"] = {"user_id":"u1", "week":weekly_reports.week_start().isoformat(),
+    ctx.user_data["weekly"] = {"flow":"weekly", "step":"confirm", "user_id":"u1", "week":weekly_reports.week_start().isoformat(),
                                "lang":"he", "tasks":["A"], "done":[], "update":""}
     with patch("autogpt.coaching.telegram_bot._get_linked_user", return_value=_user("u2")), \
-         patch.object(weekly_chat, "save_participant_report") as save:
+         patch.object(weekly_reports, "save_participant_report") as save:
         assert _run(weekly_chat.weekly_confirm(_event("מאשר"), ctx)) == -1
         save.assert_not_called()
 
@@ -143,7 +143,7 @@ def test_coach_note_storage_upsert_does_not_touch_participant_fields():
 
 
 def test_weekly_task_input_rejects_invalid_completion_and_escapes_preview():
-    ctx = SimpleNamespace(user_data={"weekly":{"user_id":"u1","week":weekly_reports.week_start().isoformat(),"lang":"he","tasks":["<A>"],"done":[],"update":""}})
+    ctx = SimpleNamespace(user_data={"weekly":{"flow":"weekly","step":"done","user_id":"u1","week":weekly_reports.week_start().isoformat(),"lang":"he","tasks":["<A>"],"done":[],"update":""}})
     invalid = _event("3")
     assert _run(weekly_chat.weekly_done(invalid, ctx)) == weekly_chat.WEEKLY_DONE
     good = _event("1")
