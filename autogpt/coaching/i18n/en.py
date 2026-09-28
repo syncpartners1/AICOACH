@@ -460,37 +460,33 @@ S_EN = {
     "admin_view_lang": "🇬🇧 EN",
     # ── Funnel ────────────────────────────────────────────────────────────
     "funnel_welcome": (
-        "👋 <b>Welcome to the Co-Navigator</b>\n\n"
-        "I'm Adi Ben Nesher — 25+ years guiding leaders through complex change and digital transformation.\n\n"
-        "Before we start, let's do a <b>Strategic Alignment Check</b> — 3 targeted questions to evaluate your current trajectory.\n\n"
-        "<i>Ready to evaluate your current strategic position?</i>"
+        "👋 <b>Change Navigator - Adi Ben Nesher's personal, financial and business coaching program</b>\n\n"
+        "I'm Adi Ben Nesher — a personal and business coach, guiding people through meaningful change for over 25 years.\n\n"
+        "Before we start — 3 short questions to help me understand where you are and what matters to you.\n\n"
+        "<i>Ready to start?</i>"
     ),
-    "funnel_btn_start": "🎯 Start Strategic Alignment Check",
-    "funnel_btn_register": "📝 Register",
+    "funnel_btn_start": "🎯 Let's begin",
     "funnel_q1_title": "🎯 <b>Question 1 of 3</b>",
     "funnel_q1_desc": (
-        "<b>How aligned is your team with your current strategic vision?</b>\n\n"
-        "<i>Is everyone fully synchronized — or is there hidden friction pulling you off track?</i>"
+        "<b>Which area do you most want to change right now - personal, financial, or business?</b>\n\n"
+        "<i>No right answer - just the place that's on your mind these days.</i>"
     ),
     "funnel_q2_title": "🎯 <b>Question 2 of 3</b>",
     "funnel_q2_desc": (
-        "<b>Is your organization structured for current market conditions, or are you facing efficiency loss?</b>\n\n"
-        "<i>Are your operations, processes, and resources aligned with where the market is heading — "
-        "or are you facing strategic drift?</i>"
+        "<b>What's actually holding you back from making that change?</b>\n\n"
+        "<i>Time, money, fear, habits - or are you not quite sure yet?</i>"
     ),
     "funnel_q3_title": "🎯 <b>Question 3 of 3</b>",
     "funnel_q3_desc": (
-        "<b>What is the most significant challenge threatening your stability right now?</b>\n\n"
-        "<i>What is the one obstacle — internal or external — that if left unaddressed, "
-        "could impact your organizational trajectory?</i>"
+        "<b>What's one result you'd like to achieve six months from now?</b>\n\n"
+        "<i>The more concrete you are, the better we can fit the right path for you.</i>"
     ),
-    "funnel_done_title": "🎯 <b>You've identified your key strategic gaps.</b>",
+    "funnel_done_title": "🎯 <b>Got your answers — thank you!</b>",
     "funnel_done_desc": (
-        "Based on your answers, there are <b>real opportunities</b> to stabilize your operations "
-        "and accelerate your results.\n\n"
-        "The full assessment (5 min) will generate your personalised <b>Strategic Report</b> — "
-        "and completing it unlocks a <b>free 30-minute strategy call</b> with Adi.\n\n"
-        "🎯 <i>Strategic change doesn't wait. Neither should you.</i>"
+        "Based on your answers, there's a good foundation here for working together.\n\n"
+        "The full assessment (5 min) will produce your <b>personal snapshot</b> — "
+        "and completing it unlocks a <b>free 30-minute intro call</b> with Adi.\n\n"
+        "🎯 <i>Change starts with the first step. You're on your way.</i>"
     ),
     "funnel_btn_assessment": "🌊 Complete Full Assessment →",
     "funnel_btn_apply": "🎯 Apply to Coaching Program",
