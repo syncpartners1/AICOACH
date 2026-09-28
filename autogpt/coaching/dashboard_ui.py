@@ -178,6 +178,9 @@ def render_dashboard(
         dot_color = {"green": "#16a34a", "yellow": "#d97706", "red": "#dc2626"}.get(
             s.alert_level, "#6b7280"
         )
+        alert_label = (t(lang, f"db_alert_{s.alert_level}")
+                       if s.alert_level in ("green", "yellow", "red")
+                       else s.alert_level.upper())
         session_type_badge = (
             '<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;'
             'border-radius:6px;margin-left:6px">1:1</span>'
@@ -215,7 +218,7 @@ def render_dashboard(
                 margin-bottom:10px;background:#f9fafb;border-radius:0 8px 8px 0">
       <div style="font-size:12px;font-weight:600;color:#374151">{session_date_str}
         <span style="margin-left:8px;padding:1px 7px;border-radius:10px;font-size:11px;
-                     background:{dot_color}22;color:{dot_color}">{s.alert_level.upper()}</span>
+                     background:{dot_color}22;color:{dot_color}">{alert_label}</span>
         {session_type_badge}
       </div>
       <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.5">{excerpt}</div>
@@ -388,7 +391,7 @@ async function setStatus(action) {{
   const body = action === 'suspend' ? JSON.stringify({{reason: 'User self-suspended'}}) : null;
   const res = await fetch(url, {{method:'POST', headers, body}});
   if (res.ok) location.reload();
-  else alert('Could not update status. Please try again.');
+  else alert('{t(lang, "db_status_update_failed")}');
 }}
 async function saveNotes(sessionId, btn) {{
   const notes = document.getElementById('notes_' + sessionId).value;
@@ -400,10 +403,10 @@ async function saveNotes(sessionId, btn) {{
     body: JSON.stringify({{coach_notes: notes}}),
   }});
   if (res.ok) {{
-    btn.textContent = '✅ Saved';
+    btn.textContent = '✅ {t(lang, "db_weekly_note_saved")}';
     setTimeout(() => {{ btn.textContent = originalLabel; }}, 2000);
   }} else {{
-    alert('Failed to save notes. Please try again.');
+    alert('{t(lang, "db_note_save_failed")}');
   }}
 }}
 async function saveWeeklyCoachNote(btn, userId, week) {{
@@ -418,11 +421,11 @@ async function saveWeeklyCoachNote(btn, userId, week) {{
   }});
   if (res.ok) {{
     if (statusEl) {{
-      statusEl.textContent = '✅ Saved';
+      statusEl.textContent = '✅ {t(lang, "db_weekly_note_saved")}';
       setTimeout(() => {{ statusEl.textContent = ''; }}, 2000);
     }}
   }} else {{
-    alert('Failed to save coach update. Please try again.');
+    alert('{t(lang, "db_weekly_note_failed")}');
   }}
 }}
 let pendingOkrChanges = [];
@@ -430,14 +433,14 @@ async function addSession(userId) {{
   const date = document.getElementById('new_sess_date').value;
   const summary = document.getElementById('new_sess_summary').value;
   const notes = document.getElementById('new_sess_notes').value;
-  if (!date) {{ alert('Please select a session date.'); return; }}
+  if (!date) {{ alert('{t(lang, "db_session_date_required")}'); return; }}
   const res = await fetch('/admin/users/' + userId + '/sessions', {{
     method: 'POST',
     headers: {{'Content-Type':'application/json'}},
     credentials: 'include',
     body: JSON.stringify({{session_date: date, summary_for_coach: summary, coach_notes: notes}}),
   }});
-  if (!res.ok) {{ alert('Failed to save session. Please try again.'); return; }}
+  if (!res.ok) {{ alert('{t(lang, "db_session_save_failed")}'); return; }}
   const data = await res.json();
   if (data.proposed_okr_changes && data.proposed_okr_changes.length > 0) {{
     pendingOkrChanges = data.proposed_okr_changes;
@@ -448,6 +451,7 @@ async function addSession(userId) {{
   }}
 }}
 function describeOkrChange(c) {{
+  const KR = '{t(lang, "db_kr_short")}';
   const pct = (c.current_pct !== undefined && c.current_pct !== null) ? ' (' + c.current_pct + '%)' : '';
   switch (c.action) {{
     case 'add_objective': return '\u2795 {t(lang, "db_okr_add_objective")}: ' + (c.title || '');
@@ -455,12 +459,12 @@ function describeOkrChange(c) {{
     case 'archive_objective': return '\U0001F5C4 {t(lang, "db_okr_archive")}';
     case 'hold_objective': return '\u23F8 {t(lang, "db_okr_hold")}';
     case 'reactivate_objective': return '\u25B6 {t(lang, "db_okr_reactivate")}';
-    case 'add_kr': return '\u2795 KR: ' + (c.description || '') + pct;
-    case 'edit_kr': return '\u270F\uFE0F KR: ' + (c.current_description ? c.current_description + ' \u2192 ' : '') + (c.description || '') + pct;
-    case 'update_kr_pct': return '\U0001F4C8 KR \u2192 ' + c.current_pct + '%';
-    case 'archive_kr': return '\U0001F5C4 KR';
-    case 'hold_kr': return '\u23F8 KR';
-    case 'reactivate_kr': return '\u25B6 KR';
+    case 'add_kr': return '\u2795 ' + KR + ': ' + (c.description || '') + pct;
+    case 'edit_kr': return '\u270F\uFE0F ' + KR + ': ' + (c.current_description ? c.current_description + ' \u2192 ' : '') + (c.description || '') + pct;
+    case 'update_kr_pct': return '\U0001F4C8 ' + KR + ' \u2192 ' + c.current_pct + '%';
+    case 'archive_kr': return '\U0001F5C4 ' + KR;
+    case 'hold_kr': return '\u23F8 ' + KR;
+    case 'reactivate_kr': return '\u25B6 ' + KR;
     default: return c.action || '?';
   }}
 }}
@@ -486,7 +490,7 @@ async function approveOkrChanges(userId) {{
     document.getElementById('add_sess_msg').textContent = '{t(lang, "db_okr_applied")}';
     setTimeout(() => location.reload(), 1200);
   }} else {{
-    alert('Failed to apply OKR changes. Please try again.');
+    alert('{t(lang, "db_okr_apply_failed")}');
   }}
 }}
 function rejectOkrChanges() {{
