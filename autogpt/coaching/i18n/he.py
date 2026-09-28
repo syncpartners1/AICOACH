@@ -458,6 +458,10 @@ S_HE = {
     "admin_lang_label": "שפה:",
     "admin_registering": "מבצע רישום…",
     "admin_view_lang": "🇮🇱 עב",
+    "reg_link_used_title": "הקישור הזה כבר נוצל",
+    "reg_link_used_msg": "אם כבר נרשמת, הכל בסדר - פשוט התחבר/י שוב. אם לא, בקש/י מעדי קישור חדש.",
+    "reg_link_invalid_title": "הקישור אינו תקף",
+    "reg_link_invalid_msg": "ייתכן שהקישור שגוי או שפג תוקפו. בקש/י מעדי קישור חדש.",
     # ── Funnel ────────────────────────────────────────────────────────────
     "funnel_welcome": (
         "👋 <b>ברוכים הבאים ל-Co-Navigator</b>\n\n"
