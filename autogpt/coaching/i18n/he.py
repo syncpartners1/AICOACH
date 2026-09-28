@@ -437,6 +437,16 @@ S_HE = {
     "admin_btn_register": "רשום משתמש",
     "admin_btn_copy_link": 'העתק קישור',
     "admin_link_copied_js": 'הקישור הועתק',
+    "admin_btn_login_link": "קישור כניסה",
+    "admin_login_link_failed": "לא הצלחתי לייצר קישור כניסה.",
+    "admin_login_link_copied_js": "הועתק!",
+    "admin_login_link_prompt_js": "העתק/י את קישור הכניסה:",
+    "login_link_invalid_title": "הקישור אינו תקף",
+    "login_link_invalid_msg": "קישור הכניסה שגוי או ששונה. בקש/י מעדי קישור חדש.",
+    "login_link_expired_title": "פג תוקף הקישור",
+    "login_link_expired_msg": "קישורי כניסה תקפים ל-48 שעות. בקש/י מעדי קישור חדש.",
+    "login_link_inactive_title": "החשבון אינו פעיל",
+    "login_link_inactive_msg": "החשבון אינו פעיל. בקש/י מעדי להפעיל אותו.",
     "admin_invite_email_sent_js": 'אימייל ההזמנה נשלח. אפשר להעתיק את קישור הרישום למטה.',
     "admin_invite_email_failed_js": 'קישור ההזמנה נוצר, אך האימייל לא נשלח. יש להעתיק ולשתף אותו ידנית.',
     "admin_invite_created_js": 'קישור ההזמנה נוצר. אפשר להעתיק ולשתף אותו למטה.',
@@ -458,10 +468,6 @@ S_HE = {
     "admin_lang_label": "שפה:",
     "admin_registering": "מבצע רישום…",
     "admin_view_lang": "🇮🇱 עב",
-    "reg_link_used_title": "הקישור הזה כבר נוצל",
-    "reg_link_used_msg": "אם כבר נרשמת, הכל בסדר - פשוט התחבר/י שוב. אם לא, בקש/י מעדי קישור חדש.",
-    "reg_link_invalid_title": "הקישור אינו תקף",
-    "reg_link_invalid_msg": "ייתכן שהקישור שגוי או שפג תוקפו. בקש/י מעדי קישור חדש.",
     # ── Funnel ────────────────────────────────────────────────────────────
     "funnel_welcome": (
         "👋 <b>Change Navigator - תוכנית אימון אישי, כלכלי ועסקי של עדי בן נשר</b>\n\n"
