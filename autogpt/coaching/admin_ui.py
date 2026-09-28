@@ -9,8 +9,7 @@ from __future__ import annotations
 from html import escape
 from typing import List
 
-from autogpt.coaching.admin_program_ui import PHASE_LABELS
-from autogpt.coaching.i18n import t
+from autogpt.coaching.i18n import phase_label, t
 from autogpt.coaching.models import Invite, UserProgressSummary
 
 
@@ -52,13 +51,18 @@ def render_admin(
         last_plan = u.last_weekly_plan.strftime("%d-%m-%Y") if u.last_weekly_plan else "—"
         contact = u.phone_number or u.email or "—"
         # Use the current host instead of a potentially stale PUBLIC_URL.
-        dashboard_url = f"/dashboard/{u.user_id}"
-        track_label = {"base": "תוכנית בסיס", "base_financial": "בסיס + מעטפת כלכלית"}.get(u.program_type, "טרם הוגדר")
-        phase_label = PHASE_LABELS.get(u.phase, "טרם הוגדר")
+        dashboard_url = f"/dashboard/{u.user_id}?lang={lang}"
+        track_key = f"admin_track_{u.program_type}"
+        track_label = t(lang, track_key)
+        if track_label == track_key:  # unknown program type -> "not set yet"
+            track_label = t(lang, "admin_track_undefined")
+        phase_txt = phase_label(lang, u.phase)
         st = u.account_status.value if hasattr(u.account_status, "value") else str(u.account_status)
         fg, bg = _status_colors.get(st, ("#6b7280", "#f3f4f6"))
+        status_txt = (t(lang, f"db_status_{st}")
+                      if st in ("active", "suspended", "archived") else st.upper())
         status_pill = (f'<span style="font-size:10px;font-weight:700;padding:1px 7px;'
-                       f'border-radius:8px;background:{bg};color:{fg}">{st.upper()}</span>')
+                       f'border-radius:8px;background:{bg};color:{fg}">{status_txt}</span>')
         # Admin action buttons
         if st == "active":
             actions = (f'<button onclick="setStatus(\'{u.user_id}\',\'suspended\')" '
@@ -91,7 +95,7 @@ def render_admin(
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
   <td style="padding:10px 12px;text-align:center">{status_pill}</td>
   <td style="padding:10px 12px;font-size:12px">{track_label}</td>
-  <td style="padding:10px 12px;font-size:12px">{phase_label}</td>
+  <td style="padding:10px 12px;font-size:12px">{phase_txt}</td>
   <td style="padding:10px 12px;text-align:center">{u.objectives_count}</td>
   <td style="padding:10px 12px;white-space:nowrap">
     <span style="font-weight:600">{u.avg_kr_pct:.0f}%</span>
@@ -157,7 +161,7 @@ def render_admin(
   </td>
   <td style="padding:8px 12px;white-space:nowrap">
     <button onclick="resendInvite('{inv.invite_id}','{inv.email or ''}')"
-      {"" if inv.email else 'disabled title="No email on this invite"'}
+      {"" if inv.email else f'disabled title="{t(lang, "admin_invite_no_email")}"'}
       style="font-size:11px;cursor:pointer;padding:2px 8px;border-radius:6px;
              background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;margin-right:4px;
              {'opacity:.4;cursor:not-allowed;' if not inv.email else ''}">
@@ -336,7 +340,7 @@ async function setStatus(userId, newStatus) {{
     body: JSON.stringify({{status: newStatus, reason: reasons[newStatus] || ''}})
   }});
   if (res.ok) location.reload();
-  else alert('Could not update status.');
+  else alert('{t(lang, "admin_status_update_failed")}');
 }}
 
 async function approveUser(userId) {{
@@ -345,7 +349,7 @@ async function approveUser(userId) {{
     credentials: 'include',
   }});
   if (res.ok) location.reload();
-  else alert('Could not approve user.');
+  else alert('{t(lang, "admin_approve_failed")}');
 }}
 
 // Register user form
@@ -381,10 +385,10 @@ async function resendInvite(inviteId, email) {{
     method: 'POST',
     credentials: 'include',
   }});
-  if (res.ok) alert('Invite email resent to ' + email);
+  if (res.ok) alert('{t(lang, "admin_invite_resent", email="")}' + email);
   else {{
     const err = await res.json().catch(()=>({{}}));
-    alert('Error: ' + (err.detail || 'unknown error'));
+    alert('{t(lang, "admin_error_prefix")}: ' + (err.detail || 'unknown error'));
   }}
 }}
 
@@ -397,7 +401,7 @@ async function removeInvite(inviteId) {{
   if (res.ok) location.reload();
   else {{
     const err = await res.json().catch(()=>({{}}));
-    alert('Error: ' + (err.detail || 'unknown error'));
+    alert('{t(lang, "admin_error_prefix")}: ' + (err.detail || 'unknown error'));
   }}
 }}
 
@@ -439,7 +443,7 @@ async function submitInvite(sendEmail) {{
     result.scrollIntoView({{block: 'nearest'}});
   }} else {{
     const err = await res.json().catch(()=>({{}}));
-    alert('Error: ' + (err.detail || 'unknown error'));
+    alert('{t(lang, "admin_error_prefix")}: ' + (err.detail || 'unknown error'));
   }}
 }}
 </script>
