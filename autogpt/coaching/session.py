@@ -133,6 +133,20 @@ class CoachingSession:
         self.full_message_history.append(assistant_message)
         return reply
 
+    def brief_summary(self) -> SessionSummary:
+        """Preserve a short session without asking the model to invent a weekly log."""
+        return SessionSummary(
+            session_id=self.session_id,
+            client_id=self.client_id,
+            client_name=self.client_name,
+            user_id=self.user_id,
+            timestamp=self.timestamp,
+            weekly_log=WeeklyLog(),
+            alerts=Alert(level=AlertLevel.YELLOW, reason="Short session; review conversation."),
+            summary_for_coach="Short session (fewer than four messages). Review raw conversation.",
+            raw_conversation=list(self.full_message_history),
+        )
+
     def extract_summary(self) -> SessionSummary:
         """Ask the LLM to produce a structured JSON summary + OKR changes, then parse."""
         from autogpt.coaching.llm import chat_completion
