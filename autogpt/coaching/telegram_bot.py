@@ -1262,25 +1262,37 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db = _get_client()
     rows = (
         db.table("user_profiles")
-        .select("telegram_user_id,name,language")
+        .select("telegram_user_id,name,language,email")
         .not_.is_("telegram_user_id", "null")
         .execute()
         .data or []
     )
     sent = 0
+    emailed = 0
     for row in rows:
         try:
             html_text = markdown_to_html(text)
+            body = f"📢 <b>Message from Adi Ben Nesher:</b>\n\n{html_text}"
             await context.bot.send_message(
                 chat_id=row["telegram_user_id"],
-                text=f"📢 <b>Message from Adi Ben Nesher:</b>\n\n{html_text}",
+                text=body,
                 parse_mode="HTML",
             )
             sent += 1
+            # Email leg in parallel - every notification reaches every channel
+            from types import SimpleNamespace
+            from autogpt.coaching.i18n import t as _t
+            from autogpt.coaching.notifications import notify_email_leg
+            row_user = SimpleNamespace(email=row.get("email"), name=row.get("name"),
+                                       language=row.get("language"), user_id=None)
+            if notify_email_leg(row_user,
+                                subject=_t(row.get("language") or "en", "notif_subject_broadcast"),
+                                html_body=body, lang=row.get("language")):
+                emailed += 1
         except Exception:
             pass
 
-    await update.message.reply_text(f"✅ Broadcast sent to {sent} user(s).")
+    await update.message.reply_text(f"✅ Broadcast sent to {sent} user(s), {emailed} email(s).")
 
 
 # ── /help ──────────────────────────────────────────────────────────────────────
