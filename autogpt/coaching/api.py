@@ -73,6 +73,7 @@ from autogpt.coaching.storage import (
     save_coaching_plan,
     set_coaching_program,
     get_user_objectives,
+    get_user_by_phone,
     get_user_profile,
     get_weekly_plan,
     google_auth,
@@ -1976,11 +1977,21 @@ def public_register_phone(
 ) -> AuthResponse:
     """Register by phone. With a valid invite token the account is immediately active;
     without one the account is created with 'pending' status awaiting admin approval."""
+    existing = get_user_by_phone(req.phone_number)
+    if existing:
+        # Idempotent retry: a previous successful registration already consumed the
+        # invite; return the existing account instead of a misleading token error.
+        return AuthResponse(user_id=existing.user_id, name=existing.name,
+                            email=existing.email, phone_number=existing.phone_number,
+                            account_status=existing.account_status)
     if invite_token:
         invite = get_invite(invite_token)
-        if not invite or invite.used_at:
+        if not invite:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Invite token is invalid or already used.")
+                                detail="Invite token is invalid.")
+        if invite.used_at:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Invite link was already used.")
         new_status = AccountStatus.ACTIVE
     else:
         new_status = AccountStatus.PENDING
@@ -2020,6 +2031,30 @@ def _detect_lang_from_header(accept_language: str) -> str:
     return "en"
 
 
+def _register_link_notice(request: Request, invite_lang: Optional[str], title_key: str, msg_key: str) -> HTMLResponse:
+    """Minimal notice page for an invalid or already-used invite link."""
+    from autogpt.coaching.i18n import t as _t
+    lang = invite_lang if invite_lang in ("en", "he") else _detect_lang_from_header(
+        request.headers.get("accept-language", ""))
+    dir_attr = 'dir="rtl"' if lang == "he" else ''
+    title = _t(lang, title_key)
+    msg = _t(lang, msg_key)
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="{lang}" {dir_attr}><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title} – ABN Consulting</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
+.card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:420px;width:100%;
+      box-shadow:0 4px 20px rgba(0,0,0,.1);text-align:center}}
+h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:10px}}
+p{{color:#6b7280;font-size:14px;line-height:1.5}}
+</style></head>
+<body><div class="card"><h1>{title}</h1><p>{msg}</p></div></body></html>""")
+
+
 @app.get(
     "/register",
     response_class=HTMLResponse,
@@ -2029,6 +2064,10 @@ def register_page(request: Request, token: Optional[str] = Query(default=None)) 
     """Landing page for invited users — pre-fills name/phone from the invite token."""
     from autogpt.coaching.i18n import t as _t, get_coach_name as _coach_name
     invite = get_invite(token) if token else None
+    if token and invite is None:
+        return _register_link_notice(request, None, "reg_link_invalid_title", "reg_link_invalid_msg")
+    if invite is not None and invite.used_at:
+        return _register_link_notice(request, invite.language, "reg_link_used_title", "reg_link_used_msg")
     name_val = invite.name or "" if invite else ""
     phone_val = invite.phone or "" if invite else ""
     invite_lang = invite.language if invite and invite.language else None
