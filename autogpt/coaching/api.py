@@ -27,6 +27,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from autogpt.coaching.config import coaching_config
+from autogpt.coaching.commands import CommandContext, dispatch as commands_dispatch
+from autogpt.coaching.commands import command_names
+from autogpt.coaching.commands.flows import (
+    FlowInput, continue_flow, flow_names, start_flow,
+)
 from autogpt.coaching.email_service import send_invite_email, validate_recipient_address
 from autogpt.coaching.i18n import get_coach_name
 
@@ -2417,6 +2422,7 @@ def chat_page(request: Request) -> Response:
 <h2>Your account is {user.account_status.value}.</h2>
 <p>Please contact your coach to reactivate.</p></body></html>""")
     scheduler_url = coaching_config.scheduler_url.strip() if coaching_config.scheduler_url else ""
+    user_lang = user.language if user.language in ("en", "he") else "en"
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2478,6 +2484,16 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
             font-size:15px;font-weight:700;cursor:pointer}}
 .btn-start:hover{{background:#243d6b}}
 #chat-area{{display:none}}
+#pwa-bar{{background:#fff;border-top:1px solid #e5e7eb;padding:8px 12px;display:flex;
+         gap:6px;flex-wrap:wrap;flex-shrink:0}}
+.pwa-btn{{background:#f3f4f6;color:#1a2b4a;border:1px solid #d1d5db;padding:7px 12px;
+         border-radius:9px;font-size:12.5px;font-weight:600;cursor:pointer}}
+.pwa-btn:hover:not(:disabled){{background:#e5e7eb}}
+.pwa-btn:disabled{{opacity:.4;cursor:default}}
+.choice-row{{display:flex;flex-wrap:wrap;gap:4px;align-self:flex-start;max-width:80%}}
+.choice-chip{{background:#eef2ff;color:#1a2b4a;border:1px solid #c7d2fe;padding:6px 12px;
+             border-radius:8px;font-size:12.5px;cursor:pointer}}
+.choice-chip:hover{{background:#e0e7ff}}
 </style></head>
 <body>
 <div class="hdr">
@@ -2507,11 +2523,19 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     <button class="btn-send" id="sendBtn" onclick="sendMsg()">Send</button>
     <button class="btn-end" id="endBtn" onclick="endSession()">End</button>
   </div>
+  <div id="pwa-bar">
+    <button class="pwa-btn" id="btnNew" onclick="startSession()">New Session</button>
+    <button class="pwa-btn" id="btnEnd" onclick="endSession()">End Session</button>
+    <button class="pwa-btn" id="btnCancel" onclick="cancelAll()">Cancel</button>
+    <button class="pwa-btn" id="btnWeekly" onclick="weeklyReport()">Weekly Report</button>
+    <button class="pwa-btn" id="btnHelp" onclick="sendSlash('/help')">Help</button>
+  </div>
 </div>
 
 <script>
 let sid  = null;
-let lang = 'en';
+let lang = '{user_lang}';
+let flowActive = false;
 const msgs = document.getElementById('messages');
 
 const UI = {{
@@ -2527,6 +2551,13 @@ const UI = {{
     langBtn:     'עב',
     expired:     '⏱️ Your session expired.',
     newSession:  'Start new session',
+    btnNew:      'New session',
+    btnEnd:      'End session',
+    btnCancel:   'Cancel',
+    btnWeekly:   'Weekly report',
+    btnHelp:     'Help',
+    cancelled:   'Cancelled.',
+    weeklySoon:  'Weekly report through the app is coming soon - for now it arrives on Telegram from the scheduler.',
   }},
   he: {{
     startTitle:  'מוכן לפגישת הקואצ׳ינג שלך?',
@@ -2540,6 +2571,13 @@ const UI = {{
     langBtn:     'EN',
     expired:     '⏱️ הפגישה פגה. ',
     newSession:  'התחל פגישה חדשה',
+    btnNew:      'פגישה חדשה',
+    btnEnd:      'סיום פגישה',
+    btnCancel:   'ביטול',
+    btnWeekly:   'דיווח שבועי',
+    btnHelp:     'עזרה',
+    cancelled:   'בוטל.',
+    weeklySoon:  'הדיווח השבועי דרך האפליקציה יגיע בקרוב - כרגע הוא מגיע בטלגרם מהסקד׳ולר.',
   }},
 }};
 
@@ -2555,6 +2593,11 @@ function applyLang() {{
   document.getElementById('dashLink').textContent    = t.dashLink;
   document.getElementById('logoutLink').textContent  = t.logoutLink;
   document.getElementById('langBtn').textContent     = t.langBtn;
+  document.getElementById('btnNew').textContent      = t.btnNew;
+  document.getElementById('btnEnd').textContent      = t.btnEnd;
+  document.getElementById('btnCancel').textContent   = t.btnCancel;
+  document.getElementById('btnWeekly').textContent   = t.btnWeekly;
+  document.getElementById('btnHelp').textContent     = t.btnHelp;
 }}
 
 function toggleLang() {{
@@ -2623,6 +2666,7 @@ async function startSession() {{
     const d = await api('/user/session/start', {{ lang }});
     sid = d.session_id;
     addMsg(d.message, 'bot');
+    refreshState();
   }} catch(e) {{
     addMsg('Could not start session: ' + e.message, 'sys');
   }}
@@ -2631,10 +2675,13 @@ async function startSession() {{
 async function sendMsg() {{
   const input = document.getElementById('msg-input');
   const text = input.value.trim();
-  if (!text || !sid) return;
+  if (!text) return;
   input.value = '';
   input.style.height = 'auto';
+  if (text.startsWith('/')) {{ handleSlash(text); return; }}
   addMsg(text, 'user');
+  if (flowActive) {{ flowMsg('text', text); return; }}
+  if (!sid) return;
   document.getElementById('sendBtn').disabled = true;
   try {{
     const d = await api('/user/session/' + sid + '/message', {{message: text}});
@@ -2659,6 +2706,7 @@ async function endSession() {{
     if (d.focus_goal) lines.push('Focus: ' + d.focus_goal);
     if (d.summary_for_coach) lines.push(d.summary_for_coach.slice(0, 300) + '…');
     addMsg('✅ Session saved! ' + lines.join(' · '), 'sys');
+    refreshState();
     {"if ('" + scheduler_url + "') {" if scheduler_url else "if (false) {"}
       setTimeout(() => {{
         addMsg('📅 Book your next session: {scheduler_url}', 'bot');
@@ -2667,6 +2715,103 @@ async function endSession() {{
   }} catch(e) {{
     addMsg('Could not save session: ' + e.message, 'sys');
   }}
+}}
+
+async function apiGet(path) {{
+  const r = await fetch(path, {{credentials: 'include'}});
+  if (!r.ok) throw new Error('Request failed');
+  return r.json();
+}}
+
+async function refreshState() {{
+  try {{
+    const d = await apiGet('/pwa/state');
+    flowActive = !!d.flow;
+    document.getElementById('btnEnd').disabled = !d.session_active;
+    document.getElementById('btnCancel').disabled = !(d.session_active || d.flow);
+  }} catch(e) {{}}
+}}
+
+async function runCommand(cmd, args) {{
+  document.getElementById('sendBtn').disabled = true;
+  try {{
+    const d = await api('/pwa/command', {{command: cmd, args: args}});
+    addMsg(d.text, 'bot');
+  }} catch(e) {{
+    addMsg('Error: ' + e.message, 'sys');
+  }}
+  document.getElementById('sendBtn').disabled = false;
+}}
+
+function handleSlash(text) {{
+  const parts = text.slice(1).split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+  const args = parts.slice(1);
+  addMsg(text, 'user');
+  if (cmd === 'plan' || cmd === 'highlight' || cmd === 'book') {{ startFlowWeb(cmd); return; }}
+  if (cmd === 'cancel') {{ cancelAll(); return; }}
+  if (cmd === 'skip' && flowActive) {{ flowMsg('text', '/skip'); return; }}
+  if (cmd === 'done' && flowActive) {{ flowMsg('text', '/done'); return; }}
+  runCommand(cmd, args);
+}}
+
+async function startFlowWeb(name) {{
+  try {{
+    const d = await api('/pwa/flow/start', {{flow: name}});
+    renderReplies(d.replies);
+    flowActive = d.active;
+  }} catch(e) {{
+    addMsg('Error: ' + e.message, 'sys');
+  }}
+  refreshState();
+}}
+
+async function flowMsg(kind, value) {{
+  try {{
+    const d = await api('/pwa/flow/message', {{kind: kind, value: value}});
+    renderReplies(d.replies);
+    flowActive = d.active;
+  }} catch(e) {{
+    if (e.status === 404) {{ flowActive = false; }} else {{ addMsg('Error: ' + e.message, 'sys'); }}
+  }}
+  refreshState();
+}}
+
+function renderReplies(replies) {{
+  for (const r of replies) {{
+    if (r.progress_text) addMsg(r.progress_text, 'sys');
+    addMsg(r.text, 'bot');
+    if (r.choices && r.choices.length) {{
+      const row = document.createElement('div');
+      row.className = 'choice-row';
+      for (const c of r.choices) {{
+        const b = document.createElement('button');
+        b.className = 'choice-chip';
+        b.textContent = c[1];
+        b.onclick = () => {{ row.remove(); flowMsg('choice', c[0]); }};
+        row.appendChild(b);
+      }}
+      msgs.appendChild(row);
+      msgs.scrollTop = msgs.scrollHeight;
+    }}
+  }}
+}}
+
+async function cancelAll() {{
+  try {{
+    const d = await api('/pwa/flow/cancel', {{}});
+    if (d.cancelled) addMsg(UI[lang].cancelled, 'sys');
+  }} catch(e) {{}}
+  flowActive = false;
+  refreshState();
+}}
+
+function weeklyReport() {{
+  addMsg(UI[lang].weeklySoon, 'sys');
+}}
+
+function sendSlash(c) {{
+  handleSlash(c);
 }}
 
 function handleKey(e) {{
@@ -2681,6 +2826,9 @@ document.getElementById('msg-input').addEventListener('input', function() {{
   this.style.height = 'auto';
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 }});
+
+applyLang();
+refreshState();
 </script>
 </body></html>""")
 
@@ -2755,6 +2903,145 @@ def user_session_end(session_id: str, request: Request) -> SessionSummary:
     del _active_sessions[session_id]
     _session_last_access.pop(session_id, None)
     return summary
+
+
+# ── PWA shared-core endpoints (cookie-authenticated) ─────────────────────────
+
+_active_flows: Dict[str, dict] = {}          # user_id → flow state dict
+_flow_last_access: Dict[str, float] = {}     # user_id → epoch time
+
+
+def _touch_flow(user_id: str) -> None:
+    _flow_last_access[user_id] = time.monotonic()
+
+
+def _prune_stale_flows() -> None:
+    cutoff = time.monotonic() - _SESSION_TTL_SECS
+    stale = [uid for uid, ts in _flow_last_access.items() if ts < cutoff]
+    for uid in stale:
+        _active_flows.pop(uid, None)
+        _flow_last_access.pop(uid, None)
+
+
+def _pwa_command_context(request: Request) -> CommandContext:
+    """Build a CommandContext for the cookie-authenticated PWA user."""
+    user_id = _require_user_cookie(request)
+    profile = get_user_profile(user_id)
+    if not profile or profile.account_status != AccountStatus.ACTIVE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Account is not active.")
+    return CommandContext(
+        user=profile,
+        lang=profile.language if profile.language in ("en", "he") else "en",
+        channel="pwa",
+        email=profile.email,
+    )
+
+
+class PwaCommandRequest(BaseModel):
+    command: str
+    args: List[str] = []
+
+
+class PwaFlowStartRequest(BaseModel):
+    flow: str
+
+
+class PwaFlowMessageRequest(BaseModel):
+    kind: str = "text"   # 'text' or 'choice'
+    value: str
+
+
+def _flow_replies_json(replies) -> list:
+    return [
+        {"text": r.text, "parse_mode": r.parse_mode,
+         "choices": r.choices, "progress_text": r.progress_text}
+        for r in replies
+    ]
+
+
+@app.get("/pwa/commands", response_model=dict,
+         summary="List shared-core commands and flows (PWA)")
+def pwa_commands(request: Request) -> dict:
+    _pwa_command_context(request)
+    return {"commands": command_names(), "flows": flow_names()}
+
+
+@app.post("/pwa/command", response_model=dict,
+          summary="Run a shared-core command (PWA)")
+@limiter.limit("30/minute")
+async def pwa_command(request: Request, req: PwaCommandRequest) -> dict:
+    ctx = _pwa_command_context(request)
+    ctx.args = req.args
+    try:
+        result = await commands_dispatch(req.command, ctx)
+    except KeyError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Unknown command: {req.command}")
+    return {"text": result.text, "parse_mode": result.parse_mode,
+            "action": result.action}
+
+
+@app.post("/pwa/flow/start", response_model=dict,
+          summary="Start a shared-core flow (PWA)")
+@limiter.limit("5/minute")
+async def pwa_flow_start(request: Request, req: PwaFlowStartRequest) -> dict:
+    ctx = _pwa_command_context(request)
+    _prune_stale_flows()
+    try:
+        replies, state = await start_flow(req.flow, ctx)
+    except KeyError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Unknown flow: {req.flow}")
+    if state is not None:
+        _active_flows[ctx.user.user_id] = state
+        _touch_flow(ctx.user.user_id)
+    return {"replies": _flow_replies_json(replies), "active": state is not None}
+
+
+@app.post("/pwa/flow/message", response_model=dict,
+          summary="Send input to the active flow (PWA)")
+@limiter.limit("30/minute")
+async def pwa_flow_message(request: Request, req: PwaFlowMessageRequest) -> dict:
+    ctx = _pwa_command_context(request)
+    state = _active_flows.get(ctx.user.user_id)
+    if not state:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="No active flow.")
+    _touch_flow(ctx.user.user_id)
+    kind = req.kind if req.kind in ("text", "choice") else "text"
+    replies, new_state = await continue_flow(state, FlowInput(kind, req.value), ctx)
+    if new_state is None:
+        _active_flows.pop(ctx.user.user_id, None)
+        _flow_last_access.pop(ctx.user.user_id, None)
+    else:
+        _active_flows[ctx.user.user_id] = new_state
+    return {"replies": _flow_replies_json(replies),
+            "active": new_state is not None}
+
+
+@app.post("/pwa/flow/cancel", response_model=dict,
+          summary="Cancel the active flow (PWA)")
+def pwa_flow_cancel(request: Request) -> dict:
+    ctx = _pwa_command_context(request)
+    cancelled = _active_flows.pop(ctx.user.user_id, None) is not None
+    _flow_last_access.pop(ctx.user.user_id, None)
+    return {"cancelled": cancelled}
+
+
+@app.get("/pwa/state", response_model=dict,
+         summary="Current PWA session/flow state")
+def pwa_state(request: Request) -> dict:
+    ctx = _pwa_command_context(request)
+    flow = _active_flows.get(ctx.user.user_id)
+    session_active = any(s.user_id == ctx.user.user_id
+                         for s in _active_sessions.values())
+    return {
+        "lang": ctx.lang,
+        "session_active": session_active,
+        "flow": ({"name": flow.get("flow"), "step": flow.get("step")}
+                 if flow else None),
+    }
 
 
 class DemoStartRequest(BaseModel):

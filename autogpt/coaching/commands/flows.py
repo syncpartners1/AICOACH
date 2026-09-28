@@ -96,6 +96,8 @@ def _plan_prompt(state: dict, lang: str) -> FlowReply:
 async def plan_handle(state: dict, inp: FlowInput,
                       ctx: CommandContext) -> Tuple[List[FlowReply], Optional[dict]]:
     lang = ctx.lang
+    if inp.value.strip() == "/done":
+        return await plan_finish(state, ctx)
     field_idx = state["field_idx"]
     kr_id = state["krs"][state["kr_index"]]["kr_id"]
     state["entries"].setdefault(kr_id, {})[_PLAN_FIELDS[field_idx]] = _skip_or_text(inp.value)
