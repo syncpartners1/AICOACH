@@ -202,7 +202,9 @@ def _persist_session(tg_id: int) -> None:
         from autogpt.coaching.storage import save_telegram_session
         save_telegram_session(tg_id, session)
     except Exception:
-        logger.exception("Failed to persist telegram session for user %s", tg_id)
+        # storage logged a single-line structured event; never log raw SQL params
+        # or a transcript here. Let the caller decide whether to send a reply.
+        raise
 
 
 # ── Long-running model calls ─────────────────────────────────────────────────
