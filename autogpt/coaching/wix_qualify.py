@@ -12,7 +12,7 @@ from autogpt.coaching.gmail_service import send_qualify_notification, send_lead_
 logger = logging.getLogger(__name__)
 
 CLICKUP_API_KEY = os.getenv("CLICKUP_API_KEY")
-SCHEDULER_URL   = os.getenv("SCHEDULER_URL", "https://abn-sch.up.railway.app")
+SCHEDULER_URL   = os.getenv("SCHEDULER_URL", "https://change-navigator-scheduler-972564781508.me-west1.run.app")
 
 CLICKUP_LISTS = {
     "PASS":       "901816800057",   # 3 - Qualified
