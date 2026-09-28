@@ -83,7 +83,7 @@ def test_admin_table_shows_saved_program_and_same_origin_view_link():
     user = UserProgressSummary(user_id="u1", name="Dana", phone_number="+1",
                                program_type="base_financial", phase="meeting_4")
     page = render_admin([user], [], public_url="https://app.changenavigator.colil", lang="he")
-    assert 'href="/dashboard/u1"' in page
+    assert 'href="/dashboard/u1?lang=he"' in page  # same-origin, carries admin UI lang
     assert "app.changenavigator.colil/dashboard" not in page
     assert "בסיס + מעטפת כלכלית" in page
     assert "מפגש 4" in page
