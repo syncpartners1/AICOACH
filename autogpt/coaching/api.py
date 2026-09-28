@@ -11,7 +11,7 @@ import random
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
@@ -73,7 +73,6 @@ from autogpt.coaching.storage import (
     save_coaching_plan,
     set_coaching_program,
     get_user_objectives,
-    get_user_by_phone,
     get_user_profile,
     get_weekly_plan,
     google_auth,
@@ -286,6 +285,42 @@ def _set_user_cookie(response: Response, user_id: str) -> None:
     )
     # Clear an old direct-host session so admin login/logout cannot reveal it.
     response.delete_cookie(_LEGACY_USER_COOKIE, path="/")
+
+
+# ── Magic login link (admin-issued) ─────────────────────────────────────────
+# A stateless, time-limited HMAC token that lets the admin hand a ready-made
+# sign-in link to a user who has no login path of their own (phone-form /
+# web-only accounts). Domain-separated from the session-cookie signature so a
+# login-link token can never be replayed as a cookie value, and vice versa.
+_LOGIN_LINK_TTL_SECS = 48 * 3600  # a link stays redeemable for 48 hours
+
+
+def _login_link_token(user_id: str, exp: int) -> str:
+    secret = (coaching_config.api_key or "user-fallback-secret").encode()
+    msg = f"login-link:{user_id}:{exp}".encode()
+    sig = hmac.new(secret, msg, hashlib.sha256).hexdigest()
+    raw = f"{user_id}:{exp}:{sig}".encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _verify_login_link_token(token: str) -> tuple:
+    """Return (user_id, None) on success, else (None, 'invalid' | 'expired')."""
+    if not token:
+        return None, "invalid"
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
+        user_id, exp_s, sig = raw.split(":")
+        exp = int(exp_s)
+    except (ValueError, TypeError):
+        return None, "invalid"
+    secret = (coaching_config.api_key or "user-fallback-secret").encode()
+    msg = f"login-link:{user_id}:{exp}".encode()
+    expected = hmac.new(secret, msg, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None, "invalid"
+    if time.time() > exp:
+        return None, "expired"
+    return user_id, None
 
 
 # ── In-memory active session store ───────────────────────────────────────────
@@ -994,6 +1029,53 @@ def dashboard_root(request: Request) -> Response:
     return RedirectResponse(url="/login", status_code=302)
 
 
+def _login_link_notice(request: Request, title_key: str, msg_key: str, http_status: int) -> HTMLResponse:
+    """Minimal notice page for an invalid / expired / inactive magic login link."""
+    from autogpt.coaching.i18n import t as _t
+    lang = _detect_lang_from_header(request.headers.get("accept-language", ""))
+    dir_attr = 'dir="rtl"' if lang == "he" else ''
+    title = _t(lang, title_key)
+    msg = _t(lang, msg_key)
+    return HTMLResponse(status_code=http_status, content=f"""<!DOCTYPE html>
+<html lang="{lang}" {dir_attr}><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+     background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
+.card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:420px;width:100%;
+      box-shadow:0 4px 20px rgba(0,0,0,.1);text-align:center}}
+h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:10px}}
+p{{color:#6b7280;font-size:14px;line-height:1.5}}
+</style></head>
+<body><div class="card"><h1>{title}</h1><p>{msg}</p></div></body></html>""")
+
+
+@app.get("/auth/login-link", response_class=HTMLResponse, include_in_schema=False)
+def auth_login_link(request: Request, token: str = Query(default="")) -> Response:
+    """Redeem an admin-issued magic login link: set the user session cookie.
+
+    Redeemable only for ACTIVE accounts — a link never bypasses pending
+    approval or a suspension. Multi-use within its 48-hour lifetime.
+    """
+    user_id, err = _verify_login_link_token(token)
+    if err == "expired":
+        return _login_link_notice(request, "login_link_expired_title", "login_link_expired_msg", 410)
+    if err or not user_id:
+        return _login_link_notice(request, "login_link_invalid_title", "login_link_invalid_msg", 403)
+    user = get_user_profile(user_id)
+    if not user:
+        return _login_link_notice(request, "login_link_invalid_title", "login_link_invalid_msg", 403)
+    st = user.account_status.value if hasattr(user.account_status, "value") else str(user.account_status)
+    if st != "active":
+        return _login_link_notice(request, "login_link_inactive_title", "login_link_inactive_msg", 403)
+    logger.info("Magic login link redeemed for user %s", user_id)
+    resp = RedirectResponse(url="/dashboard", status_code=303)
+    _set_user_cookie(resp, user_id)
+    return resp
+
+
 @app.get("/dashboard/{user_id}", response_class=HTMLResponse, include_in_schema=False)
 def user_dashboard(
     user_id: str,
@@ -1495,6 +1577,29 @@ def admin_set_user_status(
     return {"user_id": user_id, "account_status": req.status.value}
 
 
+@app.post("/admin/users/{user_id}/login-link", response_model=dict,
+          summary="Admin: issue a time-limited magic login link for a user")
+def admin_create_login_link(
+    user_id: str,
+    request: Request,
+    _: None = Depends(verify_admin_or_api_key),
+) -> dict:
+    user = get_user_profile(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    exp = int(time.time()) + _LOGIN_LINK_TTL_SECS
+    token = _login_link_token(user_id, exp)
+    logger.info("Admin issued a magic login link for user %s", user_id)
+    return {
+        "user_id": user_id,
+        # Relative path — the admin UI prefixes the current origin, so a stale
+        # PUBLIC_URL can never leak into a handed-out link.
+        "login_path": f"/auth/login-link?token={token}",
+        "expires_at": datetime.fromtimestamp(exp, tz=timezone.utc).isoformat(),
+        "ttl_hours": _LOGIN_LINK_TTL_SECS // 3600,
+    }
+
+
 @app.post("/admin/invites", response_model=Invite, summary="Create a program invite link (admin)")
 def admin_create_invite(req: InviteRequest, request: Request, _: None = Depends(verify_admin_or_api_key)) -> Invite:
     # Reject reserved example/test recipient domains before creating anything
@@ -1871,21 +1976,11 @@ def public_register_phone(
 ) -> AuthResponse:
     """Register by phone. With a valid invite token the account is immediately active;
     without one the account is created with 'pending' status awaiting admin approval."""
-    existing = get_user_by_phone(req.phone_number)
-    if existing:
-        # Idempotent retry: a previous successful registration already consumed the
-        # invite; return the existing account instead of a misleading token error.
-        return AuthResponse(user_id=existing.user_id, name=existing.name,
-                            email=existing.email, phone_number=existing.phone_number,
-                            account_status=existing.account_status)
     if invite_token:
         invite = get_invite(invite_token)
-        if not invite:
+        if not invite or invite.used_at:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Invite token is invalid.")
-        if invite.used_at:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Invite link was already used.")
+                                detail="Invite token is invalid or already used.")
         new_status = AccountStatus.ACTIVE
     else:
         new_status = AccountStatus.PENDING
@@ -1925,30 +2020,6 @@ def _detect_lang_from_header(accept_language: str) -> str:
     return "en"
 
 
-def _register_link_notice(request: Request, invite_lang: Optional[str], title_key: str, msg_key: str) -> HTMLResponse:
-    """Minimal notice page for an invalid or already-used invite link."""
-    from autogpt.coaching.i18n import t as _t
-    lang = invite_lang if invite_lang in ("en", "he") else _detect_lang_from_header(
-        request.headers.get("accept-language", ""))
-    dir_attr = 'dir="rtl"' if lang == "he" else ''
-    title = _t(lang, title_key)
-    msg = _t(lang, msg_key)
-    return HTMLResponse(content=f"""<!DOCTYPE html>
-<html lang="{lang}" {dir_attr}><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} – ABN Consulting</title>
-<style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-     background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
-.card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:420px;width:100%;
-      box-shadow:0 4px 20px rgba(0,0,0,.1);text-align:center}}
-h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:10px}}
-p{{color:#6b7280;font-size:14px;line-height:1.5}}
-</style></head>
-<body><div class="card"><h1>{title}</h1><p>{msg}</p></div></body></html>""")
-
-
 @app.get(
     "/register",
     response_class=HTMLResponse,
@@ -1958,10 +2029,6 @@ def register_page(request: Request, token: Optional[str] = Query(default=None)) 
     """Landing page for invited users — pre-fills name/phone from the invite token."""
     from autogpt.coaching.i18n import t as _t, get_coach_name as _coach_name
     invite = get_invite(token) if token else None
-    if token and invite is None:
-        return _register_link_notice(request, None, "reg_link_invalid_title", "reg_link_invalid_msg")
-    if invite is not None and invite.used_at:
-        return _register_link_notice(request, invite.language, "reg_link_used_title", "reg_link_used_msg")
     name_val = invite.name or "" if invite else ""
     phone_val = invite.phone or "" if invite else ""
     invite_lang = invite.language if invite and invite.language else None

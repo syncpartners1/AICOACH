@@ -109,6 +109,9 @@ def render_admin(
     <a href="/admin/users/{u.user_id}/program/manage" style="display:inline-block;font-size:12px;
        color:#1a2b4a;background:#d1fae5;padding:3px 10px;border-radius:12px;
        text-decoration:none;margin:4px 6px">ניהול תוכנית</a>
+    <button onclick="loginLink('{u.user_id}', this)" style="font-size:11px;cursor:pointer;
+       padding:2px 8px;border-radius:6px;background:#e0e7ff;color:#1a2b4a;
+       border:1px solid #a5b4fc;margin-right:4px">{t(lang, "admin_btn_login_link")}</button>
     {actions}
   </td>
 </tr>"""
@@ -416,6 +419,21 @@ async function copyInviteLink(input, button) {{
     input.focus();
     input.select();
     // Older browsers / denied clipboard: leave the URL selected for manual copying.
+  }}
+}}
+
+async function loginLink(userId, button) {{
+  const res = await fetch(`/admin/users/${{userId}}/login-link`, {{method: 'POST', credentials: 'include'}});
+  if (!res.ok) {{ alert({t(lang, 'admin_login_link_failed')!r}); return; }}
+  const data = await res.json();
+  const url = new URL(data.login_path, location.origin).href;
+  try {{
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+    await navigator.clipboard.writeText(url);
+    button.textContent = {t(lang, 'admin_login_link_copied_js')!r};
+    setTimeout(() => button.textContent = {t(lang, 'admin_btn_login_link')!r}, 2000);
+  }} catch (_) {{
+    window.prompt({t(lang, 'admin_login_link_prompt_js')!r}, url);
   }}
 }}
 
