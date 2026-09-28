@@ -336,6 +336,138 @@ def _book_confirm_reply(state: dict, lang: str) -> FlowReply:
     )
 
 
+# ── /weekly ──────────────────────────────────────────────────────────────────
+
+def _meeting_seven_or_later(phase: str) -> bool:
+    if phase == "ongoing":
+        return True
+    if not phase.startswith("meeting_"):
+        return False
+    try:
+        return int(phase.split("_", 1)[1]) >= 7
+    except ValueError:
+        return False
+
+
+def _tasks_from_plan(plan: dict) -> List[str]:
+    import json as _json
+    data = plan.get("plan_json") or {}
+    if isinstance(data, str):
+        try:
+            data = _json.loads(data)
+        except ValueError:
+            return []
+    from autogpt.coaching.weekly_reports import MAX_TASKS
+    raw = data.get("weekly_actions", []) if isinstance(data, dict) else []
+    if not isinstance(raw, list):
+        return []
+    return [s.strip() for s in raw if isinstance(s, str) and s.strip()][:MAX_TASKS]
+
+
+async def weekly_start(ctx: CommandContext) -> Tuple[List[FlowReply], Optional[dict]]:
+    lang = ctx.lang
+    if ctx.user is None:
+        return [FlowReply(text=t(lang, "weekly_link_first"))], None
+    if getattr(ctx.user.account_status, "value", ctx.user.account_status) != "active":
+        return [FlowReply(text=t(lang, "weekly_not_active"))], None
+
+    from autogpt.coaching.storage import get_coaching_program
+    from autogpt.coaching.weekly_reports import (get_weekly_report,
+                                                 previous_week_tasks,
+                                                 week_start)
+    start = week_start()
+    try:
+        existing = get_weekly_report(ctx.user.user_id, start)
+        program = get_coaching_program(ctx.user.user_id)
+        planned = _tasks_from_plan(program) if _meeting_seven_or_later(program.get("phase", "")) else []
+        if not planned:
+            planned = previous_week_tasks(ctx.user.user_id, start)
+        if existing and existing.get("submitted_at"):
+            planned = [task["description"] for task in existing["tasks"]]
+    except Exception:
+        logger.exception("Weekly report setup failed for user %s", ctx.user.user_id)
+        return [FlowReply(text=t(lang, "weekly_unavailable"))], None
+
+    state = {"flow": "weekly", "step": "tasks", "user_id": ctx.user.user_id,
+             "week": start.isoformat(), "tasks": planned, "done": [], "update": ""}
+    return [_weekly_tasks_prompt(state, lang)], state
+
+
+def _weekly_tasks_prompt(state: dict, lang: str) -> FlowReply:
+    import html
+    prompt = t(lang, "weekly_ask_tasks")
+    if state["tasks"]:
+        suggested = "\n".join(f"{i}. {html.escape(task)}"
+                               for i, task in enumerate(state["tasks"], 1))
+        prompt += "\n" + t(lang, "weekly_suggested_header") + suggested + "\n" + t(lang, "weekly_use_same")
+    return FlowReply(text=prompt)
+
+
+async def weekly_handle(state: dict, inp: FlowInput,
+                        ctx: CommandContext) -> Tuple[List[FlowReply], Optional[dict]]:
+    import html
+    lang = ctx.lang
+    step = state["step"]
+    text = inp.value.strip()
+
+    if step == "tasks":
+        if text.lower() in ("same", "אותן") and state["tasks"]:
+            tasks = state["tasks"]
+        else:
+            tasks = [line.strip() for line in text.splitlines() if line.strip()]
+            from autogpt.coaching.weekly_reports import MAX_TASKS
+            if not tasks or len(tasks) > MAX_TASKS or any(len(item) > 200 for item in tasks):
+                return [FlowReply(text=t(lang, "weekly_tasks_invalid"))], state
+        state["tasks"] = tasks
+        state["step"] = "done"
+        labels = "\n".join(f"{i}. {html.escape(task)}" for i, task in enumerate(tasks, 1))
+        return [FlowReply(text=t(lang, "weekly_which_done") + labels)], state
+
+    if step == "done":
+        try:
+            numbers = set() if text == "0" else {int(item.strip()) for item in text.split(",")}
+            if not text or any(n < 1 or n > len(state["tasks"]) for n in numbers):
+                raise ValueError
+        except (ValueError, TypeError):
+            return [FlowReply(text=t(lang, "weekly_done_invalid"))], state
+        state["done"] = sorted(numbers)
+        state["step"] = "update"
+        return [FlowReply(text=t(lang, "weekly_ask_update"))], state
+
+    if step == "update":
+        if len(text) > 2000:
+            return [FlowReply(text=t(lang, "weekly_update_too_long"))], state
+        state["update"] = "" if text == "-" else text
+        state["step"] = "confirm"
+        labels = "\n".join(f"{'✓' if i in state['done'] else '○'} {html.escape(task)}"
+                            for i, task in enumerate(state["tasks"], 1))
+        preview = t(lang, "weekly_preview_header")
+        preview += f" ({state['week']}):\n{labels}\n" + html.escape(state["update"])
+        preview += "\n" + t(lang, "weekly_confirm_hint")
+        return [FlowReply(text=preview)], state
+
+    if step == "confirm":
+        if text.lower() not in ("confirm", "מאשר", "מאשרת"):
+            return [FlowReply(text=t(lang, "weekly_not_saved"))], state
+        from autogpt.coaching.weekly_reports import week_start
+        if (ctx.user is None or ctx.user.user_id != state["user_id"]
+                or getattr(ctx.user.account_status, "value", ctx.user.account_status) != "active"
+                or week_start().isoformat() != state["week"]):
+            return [FlowReply(text=t(lang, "weekly_restart"))], None
+        from autogpt.coaching.weekly_reports import save_participant_report
+        from datetime import date as _date
+        try:
+            save_participant_report(state["user_id"], _date.fromisoformat(state["week"]),
+                                    [(task, i in state["done"]) for i, task in enumerate(state["tasks"], 1)],
+                                    state["update"])
+        except Exception:
+            logger.exception("Weekly report save failed for user %s", state["user_id"])
+            return [FlowReply(text=t(lang, "weekly_save_failed"))], None
+        return [FlowReply(text=t(lang, "weekly_saved"))], None
+
+    return [FlowReply(text=t(lang, "weekly_unavailable"))], None
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 _FLOWS = {}
@@ -367,3 +499,4 @@ async def continue_flow(state: dict, inp: FlowInput, ctx: CommandContext):
 register_flow("plan", plan_start, plan_handle)
 register_flow("highlight", highlight_start, highlight_handle)
 register_flow("book", book_start, book_handle)
+register_flow("weekly", weekly_start, weekly_handle)
