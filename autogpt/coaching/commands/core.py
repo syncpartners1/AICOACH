@@ -69,6 +69,19 @@ def current_week_label(lang: str = "en") -> str:
     return f"{sunday.strftime('%d-%m-%Y')} – {saturday.strftime('%d-%m-%Y')}"
 
 
+def today_day_name(lang: str = "en") -> str:
+    """Return today's localised day name for highlight prompts."""
+    from datetime import date
+    from autogpt.coaching.i18n import t as _t
+    day_key = f"db_day_{date.today().strftime('%A').lower()}"
+    return _t(lang, day_key)
+
+
+def today_day_of_week() -> str:
+    from datetime import date
+    return date.today().strftime("%A").lower()
+
+
 def scheduler_ok() -> bool:
     """True when the external scheduler integration is configured."""
     from autogpt.coaching.config import coaching_config

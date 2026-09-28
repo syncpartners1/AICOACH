@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager, suppress
 import html
+from types import SimpleNamespace
 import logging
 import re
 from datetime import date, timedelta
@@ -56,6 +57,9 @@ warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*per_messag
 
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.commands import CommandContext, dispatch as commands_dispatch
+from autogpt.coaching.commands.flows import (
+    FlowInput, continue_flow, plan_finish, start_flow,
+)
 from autogpt.coaching.i18n import detect_lang, t
 from autogpt.coaching.utils import markdown_to_html
 
@@ -283,16 +287,6 @@ def _lang(user=None, text: str = "") -> str:
 def _current_week_label(lang: str = "en") -> str:
     from autogpt.coaching.commands.core import current_week_label
     return current_week_label(lang)
-
-
-def _today_day_name(lang: str = "en") -> str:
-    """Return today's localised day name for highlight prompts."""
-    day_key = f"db_day_{date.today().strftime('%A').lower()}"
-    return t(lang, day_key)
-
-
-def _today_day_of_week() -> str:
-    return date.today().strftime("%A").lower()
 
 
 def _check_active(user, lang: str = "en") -> Optional[str]:
@@ -900,124 +894,49 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
-    if not user:
-        await update.message.reply_text(t(lang, "link_first"))
+    ctx = CommandContext(user=user, lang=lang, channel="telegram")
+    replies, state = await start_flow("plan", ctx)
+    for r in replies:
+        await update.message.reply_text(r.text, parse_mode=r.parse_mode)
+    if state is None:
         return ConversationHandler.END
-
-    from autogpt.coaching.storage import get_user_objectives
-    objectives = get_user_objectives(user.user_id)
-    all_krs = [
-        (obj.title, kr)
-        for obj in objectives
-        for kr in obj.key_results
-    ]
-    if not all_krs:
-        await update.message.reply_text(t(lang, "no_krs"))
-        return ConversationHandler.END
-
-    context.user_data["plan_user_id"] = user.user_id
-    context.user_data["plan_krs"] = all_krs
-    context.user_data["plan_kr_index"] = 0
-    context.user_data["plan_entries"] = {}
+    context.user_data["plan_state"] = state
     context.user_data["lang"] = lang
-
-    await update.message.reply_text(
-        t(lang, "plan_header", week=_current_week_label(lang)),
-        parse_mode="HTML",
-    )
-    return await _ask_plan_activities(update, context)
-
-
-async def _ask_plan_activities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    krs = context.user_data["plan_krs"]
-    idx = context.user_data["plan_kr_index"]
-    lang = context.user_data.get("lang", "en")
-    obj_title, kr = krs[idx]
-    total = len(krs)
-    await update.message.reply_text(
-        t(lang, "plan_kr_prompt",
-          idx=idx + 1, total=total, obj=obj_title,
-          kr=kr.description, pct=kr.current_pct),
-        parse_mode="HTML",
-    )
     return PLAN_ACTIVITIES
 
 
-async def plan_receive_activities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+_PLAN_STATE_BY_FIELD = [PLAN_ACTIVITIES, PLAN_PROGRESS, PLAN_INSIGHTS,
+                        PLAN_GAPS, PLAN_CORRECTIONS]
+
+
+async def _plan_route(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", "en")
-    text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
-    idx = context.user_data["plan_kr_index"]
-    kr_id = context.user_data["plan_krs"][idx][1].kr_id
-    context.user_data["plan_entries"].setdefault(kr_id, {})["planned_activities"] = text
-    await update.message.reply_text(t(lang, "ask_progress"), parse_mode="HTML")
-    return PLAN_PROGRESS
+    state = context.user_data.get("plan_state")
+    if not state:
+        return ConversationHandler.END
+    ctx = CommandContext(lang=lang, channel="telegram")
+    replies, new_state = await continue_flow(
+        state, FlowInput("text", update.message.text or ""), ctx)
+    for r in replies:
+        await update.message.reply_text(r.text, parse_mode=r.parse_mode)
+    if new_state is None:
+        context.user_data.clear()
+        return ConversationHandler.END
+    context.user_data["plan_state"] = new_state
+    return _PLAN_STATE_BY_FIELD[new_state["field_idx"]]
 
 
-async def plan_receive_progress(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def _plan_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", "en")
-    text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
-    idx = context.user_data["plan_kr_index"]
-    kr_id = context.user_data["plan_krs"][idx][1].kr_id
-    context.user_data["plan_entries"][kr_id]["progress_update"] = text
-    await update.message.reply_text(t(lang, "ask_insights"), parse_mode="HTML")
-    return PLAN_INSIGHTS
-
-
-async def plan_receive_insights(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", "en")
-    text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
-    idx = context.user_data["plan_kr_index"]
-    kr_id = context.user_data["plan_krs"][idx][1].kr_id
-    context.user_data["plan_entries"][kr_id]["insights"] = text
-    await update.message.reply_text(t(lang, "ask_gaps"), parse_mode="HTML")
-    return PLAN_GAPS
-
-
-async def plan_receive_gaps(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", "en")
-    text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
-    idx = context.user_data["plan_kr_index"]
-    kr_id = context.user_data["plan_krs"][idx][1].kr_id
-    context.user_data["plan_entries"][kr_id]["gaps"] = text
-    await update.message.reply_text(t(lang, "ask_corrections"), parse_mode="HTML")
-    return PLAN_CORRECTIONS
-
-
-async def plan_receive_corrections(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = "" if update.message.text.strip() == "/skip" else update.message.text.strip()
-    idx = context.user_data["plan_kr_index"]
-    krs = context.user_data["plan_krs"]
-    kr_id = krs[idx][1].kr_id
-    context.user_data["plan_entries"][kr_id]["corrective_actions"] = text
-
-    next_idx = idx + 1
-    if next_idx < len(krs):
-        context.user_data["plan_kr_index"] = next_idx
-        return await _ask_plan_activities(update, context)
-    else:
-        return await _save_plan(update, context)
-
-
-async def _save_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    from autogpt.coaching.storage import upsert_kr_activity
-    lang = context.user_data.get("lang", "en")
-    user_id = context.user_data["plan_user_id"]
-    entries = context.user_data["plan_entries"]
-    saved = 0
-    for kr_id, fields in entries.items():
-        try:
-            upsert_kr_activity(user_id=user_id, kr_id=kr_id, **fields)
-            saved += 1
-        except Exception:
-            logger.exception("Failed to save plan entry for kr %s", kr_id)
-
-    await update.message.reply_text(
-        t(lang, "plan_saved", count=saved),
-        parse_mode="HTML",
-    )
+    state = context.user_data.get("plan_state")
+    if not state:
+        return ConversationHandler.END
+    ctx = CommandContext(lang=lang, channel="telegram")
+    replies, _ = await plan_finish(state, ctx)
+    for r in replies:
+        await update.message.reply_text(r.text, parse_mode=r.parse_mode)
     context.user_data.clear()
     return ConversationHandler.END
-
 
 # ── /highlight — add daily highlight ──────────────────────────────────────────
 
@@ -1025,44 +944,32 @@ async def highlight_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
-    if not user:
-        await update.message.reply_text(t(lang, "link_first"))
+    ctx = CommandContext(user=user, lang=lang, channel="telegram")
+    replies, state = await start_flow("highlight", ctx)
+    for r in replies:
+        await update.message.reply_text(r.text, parse_mode=r.parse_mode)
+    if state is None:
         return ConversationHandler.END
-
-    day_name = _today_day_name(lang)
-    context.user_data["highlight_user_id"] = user.user_id
+    context.user_data["highlight_state"] = state
     context.user_data["lang"] = lang
-    await update.message.reply_text(
-        t(lang, "ask_highlight", day=day_name),
-        parse_mode="HTML",
-    )
     return HIGHLIGHT_WAITING
 
 
-async def highlight_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def _highlight_route(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", "en")
-    text = update.message.text.strip()
-    if not text:
-        await update.message.reply_text(t(lang, "highlight_empty"))
-        return HIGHLIGHT_WAITING
-
-    user_id = context.user_data["highlight_user_id"]
-    day = _today_day_of_week()
-    day_name = _today_day_name(lang)
-    try:
-        from autogpt.coaching.models import DayOfWeek
-        from autogpt.coaching.storage import upsert_daily_highlight
-        upsert_daily_highlight(user_id=user_id, day_of_week=DayOfWeek(day), highlight=text)
-        await update.message.reply_text(
-            t(lang, "highlight_saved", day=day_name),
-            parse_mode="HTML",
-        )
-    except Exception:
-        logger.exception("Failed to save highlight for user %s", user_id)
-        await update.message.reply_text(t(lang, "highlight_error"))
-    context.user_data.pop("highlight_user_id", None)
-    return ConversationHandler.END
-
+    state = context.user_data.get("highlight_state")
+    if not state:
+        return ConversationHandler.END
+    ctx = CommandContext(lang=lang, channel="telegram")
+    replies, new_state = await continue_flow(
+        state, FlowInput("text", update.message.text or ""), ctx)
+    for r in replies:
+        await update.message.reply_text(r.text, parse_mode=r.parse_mode)
+    if new_state is None:
+        context.user_data.pop("highlight_state", None)
+        return ConversationHandler.END
+    context.user_data["highlight_state"] = new_state
+    return HIGHLIGHT_WAITING
 
 # ── /myplan — show current week plan ──────────────────────────────────────────
 
@@ -1467,25 +1374,9 @@ def _format_summary(summary) -> str:
 
 # ── Scheduling helpers ─────────────────────────────────────────────────────────
 
-_MEETING_TYPES = {
-    "intro":    {"label_key": "book_type_intro",    "subject": "Free 30-min Introduction & Evaluation",  "duration": 30},
-    "coaching": {"label_key": "book_type_coaching", "subject": "Coaching / Advisory Session (60 min)",   "duration": 60},
-}
-
-
 def _scheduler_ok() -> bool:
     from autogpt.coaching.commands.core import scheduler_ok
     return scheduler_ok()
-
-
-def _slot_label(slot: dict) -> str:
-    """Return a human-readable time label for a slot dict."""
-    if slot.get("label"):
-        return slot["label"]
-    start = slot.get("startISO") or slot.get("start") or ""
-    if "T" in start:
-        return start.split("T")[1][:5]
-    return start
 
 
 def _user_email(user) -> Optional[str]:
@@ -1493,222 +1384,98 @@ def _user_email(user) -> Optional[str]:
     return getattr(user, "email", None) or None
 
 
-# ── /book conversation ─────────────────────────────────────────────────────────
+# ── /book conversation (core flow: commands.flows "book") ─────────────────────
+
+_BOOK_STEP_STATE = {"type": BOOK_TYPE, "date": BOOK_DATE, "slot": BOOK_SLOT,
+                    "email": BOOK_EMAIL, "confirm": BOOK_CONFIRM}
+_BOOK_STEP_PREFIX = {"type": "book_type", "date": "book_date",
+                     "slot": "book_slot", "confirm": "book_confirm"}
+
+
+def _choices_kb(choices, prefix: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(label, callback_data=f"{prefix}:{cid}")]
+         for cid, label in choices])
+
+
+def _book_guest(user, update) -> object:
+    """Linked user, or a shim carrying the telegram first name as .name."""
+    if user is not None:
+        return user
+    first = getattr(update.effective_user, "first_name", None)
+    return SimpleNamespace(name=first or "Guest", user_id=None, language=None)
+
 
 async def book_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
-
-    if not _scheduler_ok():
-        await update.message.reply_text(t(lang, "book_not_configured"))
+    ctx = CommandContext(user=user, lang=lang, channel="telegram",
+                         email=_user_email(user))
+    replies, state = await start_flow("book", ctx)
+    for r in replies:
+        kb = _choices_kb(r.choices, "book_type") if r.choices else None
+        await update.message.reply_text(r.text, reply_markup=kb,
+                                        parse_mode=r.parse_mode)
+    if state is None:
         return ConversationHandler.END
-
+    context.user_data["book_state"] = state
     context.user_data["book_lang"] = lang
-    if user:
-        # Registered users → paid 60-min session only
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "book_type_coaching"), callback_data="book_type:coaching")],
-        ])
-    else:
-        # Unregistered users → free intro only
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "book_type_intro"), callback_data="book_type:intro")],
-        ])
-    await update.message.reply_text(t(lang, "book_choose_type"), reply_markup=keyboard, parse_mode="HTML")
     return BOOK_TYPE
 
 
-async def book_receive_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def _book_route_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
     lang = context.user_data.get("book_lang", "en")
-    mtype = query.data.split(":", 1)[1]  # "intro" or "coaching"
-    if mtype not in _MEETING_TYPES:
-        return BOOK_TYPE
-
-    context.user_data["book_type"] = mtype
-    label = t(lang, _MEETING_TYPES[mtype]["label_key"])
-    await query.edit_message_text(
-        t(lang, "book_choose_date", type=label),
-        reply_markup=_date_keyboard(),
-        parse_mode="HTML",
-    )
-    return BOOK_DATE
-
-
-def _date_keyboard() -> InlineKeyboardMarkup:
-    from datetime import date, timedelta
-    rows = []
-    today = date.today()
-    for i in range(1, 8):
-        d = today + timedelta(days=i)
-        label = d.strftime("%a, %b %-d")
-        rows.append([InlineKeyboardButton(label, callback_data=f"book_date:{d.isoformat()}")])
-    return InlineKeyboardMarkup(rows)
-
-
-async def book_receive_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    import asyncio
-    query = update.callback_query
-    await query.answer()
-    lang = context.user_data.get("book_lang", "en")
-    date_str = query.data.split(":", 1)[1]
-    context.user_data["book_date"] = date_str
-
-    mtype = context.user_data.get("book_type", "coaching")
-    duration = _MEETING_TYPES[mtype]["duration"]
-
-    await query.edit_message_text("⏳ Checking available slots…")
-    slots = await asyncio.get_event_loop().run_in_executor(
-        None,
-        lambda: __import__("autogpt.coaching.scheduler_client", fromlist=["get_slots"]).get_slots(
-            coaching_config.scheduler_url,
-            coaching_config.scheduler_api_key,
-            date_str,
-            coaching_config.scheduler_timezone,
-            duration,
-        ),
-    )
-
-    if not slots:
-        await query.edit_message_text(
-            t(lang, "book_no_slots", date=date_str),
-            reply_markup=_date_keyboard(),
-            parse_mode="HTML",
-        )
-        return BOOK_DATE
-
-    context.user_data["book_slots"] = slots
-    rows = []
-    for i, slot in enumerate(slots[:10]):
-        rows.append([InlineKeyboardButton(_slot_label(slot), callback_data=f"book_slot:{i}")])
-    keyboard = InlineKeyboardMarkup(rows)
-    await query.edit_message_text(
-        t(lang, "book_choose_slot", date=date_str),
-        reply_markup=keyboard,
-        parse_mode="HTML",
-    )
-    return BOOK_SLOT
-
-
-async def book_receive_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    lang = context.user_data.get("book_lang", "en")
-    idx = int(query.data.split(":", 1)[1])
-    slots = context.user_data.get("book_slots", [])
-    if idx >= len(slots):
-        return BOOK_SLOT
-
-    slot = slots[idx]
-    context.user_data["book_slot"] = slot
-
-    tg_id = update.effective_user.id
-    user = _get_linked_user(tg_id)
+    state = context.user_data.get("book_state")
+    if not state:
+        return ConversationHandler.END
+    user = _book_guest(_get_linked_user(update.effective_user.id), update)
     email = _user_email(user) or context.user_data.get("book_email")
-
-    if not email:
-        await query.edit_message_text(t(lang, "book_ask_email"), parse_mode="HTML")
-        return BOOK_EMAIL
-
-    context.user_data["book_email"] = email
-    return await _show_booking_confirm(query, context, lang)
-
-
-async def book_receive_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    import re
-    lang = context.user_data.get("book_lang", "en")
-    email = update.message.text.strip() if update.message else ""
-
-    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-        await update.message.reply_text(t(lang, "book_invalid_email"))
-        return BOOK_EMAIL
-
-    context.user_data["book_email"] = email
-    return await _show_booking_confirm(update, context, lang)
-
-
-async def _show_booking_confirm(msg_or_query, context, lang: str) -> int:
-    slot = context.user_data.get("book_slot", {})
-    mtype = context.user_data.get("book_type", "coaching")
-    subject = _MEETING_TYPES[mtype]["subject"]
-    email = context.user_data.get("book_email", "")
-    start_iso = slot.get("startISO") or slot.get("start") or ""
-    date_part = start_iso.split("T")[0] if "T" in start_iso else start_iso
-    time_part = start_iso.split("T")[1][:5] if "T" in start_iso else ""
-
-    text = t(lang, "book_confirm_prompt",
-             subject=subject, date=date_part, time=time_part, email=email)
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton(t(lang, "book_btn_confirm"), callback_data="book_confirm:yes"),
-        InlineKeyboardButton(t(lang, "book_btn_cancel"),  callback_data="book_confirm:no"),
-    ]])
-
-    if hasattr(msg_or_query, "edit_message_text"):
-        await msg_or_query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
-    else:
-        await msg_or_query.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
-    return BOOK_CONFIRM
-
-
-async def book_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    import asyncio
-    query = update.callback_query
-    await query.answer()
-    lang = context.user_data.get("book_lang", "en")
-    action = query.data.split(":", 1)[1]
-
-    if action == "no":
-        await query.edit_message_text(t(lang, "book_aborted"))
+    ctx = CommandContext(user=user, lang=lang, channel="telegram", email=email)
+    value = query.data.split(":", 1)[1]
+    replies, new_state = await continue_flow(state, FlowInput("choice", value), ctx)
+    for r in replies:
+        if r.progress_text:
+            await query.edit_message_text(r.progress_text)
+        kb = None
+        if r.choices and new_state is not None:
+            kb = _choices_kb(r.choices, _BOOK_STEP_PREFIX[new_state["step"]])
+        await query.edit_message_text(r.text, reply_markup=kb,
+                                      parse_mode=r.parse_mode)
+    if new_state is None:
         context.user_data.clear()
         return ConversationHandler.END
+    if new_state.get("email"):
+        context.user_data["book_email"] = new_state["email"]
+    context.user_data["book_state"] = new_state
+    return _BOOK_STEP_STATE[new_state["step"]]
 
-    slot  = context.user_data.get("book_slot", {})
-    mtype = context.user_data.get("book_type", "coaching")
-    mt    = _MEETING_TYPES[mtype]
-    email = context.user_data.get("book_email", "")
 
-    tg_id = update.effective_user.id
-    user  = _get_linked_user(tg_id)
-    name  = (user.name if user else None) or update.effective_user.first_name or "Guest"
-
-    start_iso = slot.get("startISO") or slot.get("start") or ""
-    await query.edit_message_text("⏳ Confirming your booking…")
-
-    from autogpt.coaching.scheduler_client import book_meeting
-    result = await asyncio.get_event_loop().run_in_executor(
-        None,
-        lambda: book_meeting(
-            coaching_config.scheduler_url,
-            coaching_config.scheduler_api_key,
-            name,
-            email,
-            mt["subject"],
-            start_iso,
-            mt["duration"],
-            coaching_config.scheduler_timezone,
-        ),
-    )
-
-    if not result.get("ok"):
-        await query.edit_message_text(t(lang, "book_failed"), parse_mode="HTML")
+async def _book_route_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.user_data.get("book_lang", "en")
+    state = context.user_data.get("book_state")
+    if not state:
         return ConversationHandler.END
-
-    meet_link = result.get("meetLink") or ""
-    start_fmt = result.get("startISO") or start_iso
-    if "T" in start_fmt:
-        start_fmt = start_fmt.replace("T", " ").replace("Z", " UTC")[:16]
-
-    if meet_link:
-        msg = t(lang, "book_confirmed", subject=mt["subject"], start=start_fmt, meet_link=meet_link)
-    else:
-        msg = t(lang, "book_confirmed_no_meet", subject=mt["subject"], start=start_fmt)
-
-    await query.edit_message_text(msg, parse_mode="HTML")
-    context.user_data.clear()
-    return ConversationHandler.END
-
+    user = _book_guest(_get_linked_user(update.effective_user.id), update)
+    ctx = CommandContext(user=user, lang=lang, channel="telegram",
+                         email=context.user_data.get("book_email"))
+    replies, new_state = await continue_flow(
+        state, FlowInput("text", update.message.text or ""), ctx)
+    for r in replies:
+        kb = None
+        if r.choices and new_state is not None:
+            kb = _choices_kb(r.choices, _BOOK_STEP_PREFIX[new_state["step"]])
+        await update.message.reply_text(r.text, reply_markup=kb,
+                                        parse_mode=r.parse_mode)
+    if new_state is None:
+        context.user_data.clear()
+        return ConversationHandler.END
+    if new_state.get("email"):
+        context.user_data["book_email"] = new_state["email"]
+    context.user_data["book_state"] = new_state
+    return _BOOK_STEP_STATE[new_state["step"]]
 
 # ── /mybookings command ────────────────────────────────────────────────────────
 
@@ -1923,28 +1690,28 @@ def _build_app(token: str) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, link_receive_phone),
             ],
             PLAN_ACTIVITIES: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, plan_receive_activities),
-                CommandHandler("skip", plan_receive_activities),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, _plan_route),
+                CommandHandler("skip", _plan_route),
             ],
             PLAN_PROGRESS: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, plan_receive_progress),
-                CommandHandler("skip", plan_receive_progress),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, _plan_route),
+                CommandHandler("skip", _plan_route),
             ],
             PLAN_INSIGHTS: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, plan_receive_insights),
-                CommandHandler("skip", plan_receive_insights),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, _plan_route),
+                CommandHandler("skip", _plan_route),
             ],
             PLAN_GAPS: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, plan_receive_gaps),
-                CommandHandler("skip", plan_receive_gaps),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, _plan_route),
+                CommandHandler("skip", _plan_route),
             ],
             PLAN_CORRECTIONS: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, plan_receive_corrections),
-                CommandHandler("skip", plan_receive_corrections),
-                CommandHandler("done", _save_plan),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, _plan_route),
+                CommandHandler("skip", _plan_route),
+                CommandHandler("done", _plan_done),
             ],
             HIGHLIGHT_WAITING: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, highlight_receive),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, _highlight_route),
             ],
             MSG_WAITING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, msg_receive),
@@ -1955,19 +1722,19 @@ def _build_app(token: str) -> Application:
             weekly_chat.WEEKLY_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, weekly_chat.weekly_confirm)],
             # ── Booking flow ────────────────────────────────────────────────
             BOOK_TYPE: [
-                CallbackQueryHandler(book_receive_type, pattern=r"^book_type:"),
+                CallbackQueryHandler(_book_route_query, pattern=r"^book_type:"),
             ],
             BOOK_DATE: [
-                CallbackQueryHandler(book_receive_date, pattern=r"^book_date:"),
+                CallbackQueryHandler(_book_route_query, pattern=r"^book_date:"),
             ],
             BOOK_SLOT: [
-                CallbackQueryHandler(book_receive_slot, pattern=r"^book_slot:"),
+                CallbackQueryHandler(_book_route_query, pattern=r"^book_slot:"),
             ],
             BOOK_EMAIL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, book_receive_email),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, _book_route_text),
             ],
             BOOK_CONFIRM: [
-                CallbackQueryHandler(book_confirm_handler, pattern=r"^book_confirm:"),
+                CallbackQueryHandler(_book_route_query, pattern=r"^book_confirm:"),
             ],
             # ── Cancel meeting flow ─────────────────────────────────────────
             CANCEL_SELECT: [
