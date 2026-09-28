@@ -281,10 +281,8 @@ def _lang(user=None, text: str = "") -> str:
 
 
 def _current_week_label(lang: str = "en") -> str:
-    today = date.today()
-    sunday = today - timedelta(days=(today.weekday() + 1) % 7)
-    saturday = sunday + timedelta(days=6)
-    return f"{sunday.strftime('%d-%m-%Y')} – {saturday.strftime('%d-%m-%Y')}"
+    from autogpt.coaching.commands.core import current_week_label
+    return current_week_label(lang)
 
 
 def _today_day_name(lang: str = "en") -> str:
@@ -1072,39 +1070,11 @@ async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
-    if not user:
-        await update.message.reply_text(t(lang, "link_first"))
-        return
-
-    from autogpt.coaching.storage import get_weekly_plan, get_user_objectives
-    objectives = get_user_objectives(user.user_id)
-    plan = get_weekly_plan(user.user_id)
-    kr_map = {a.kr_id: a for a in plan.kr_activities}
-    hl_map = {h.day_of_week.value: h.highlight for h in plan.daily_highlights}
-
-    lines = [f"📋 <b>{html.escape(t(lang, 'plan_header', week=_current_week_label(lang)).split(chr(10))[0][5:])}</b>\n"]
-    for obj in objectives:
-        lines.append(f"🎯 <b>{html.escape(obj.title)}</b>")
-        for kr in obj.key_results:
-            act = kr_map.get(kr.kr_id)
-            dot = "🟢" if kr.current_pct >= 70 else "🟡" if kr.current_pct >= 40 else "🔴"
-            lines.append(f"  {dot} <b>{html.escape(kr.description)}</b> — {kr.current_pct}%")
-            if act and act.planned_activities:
-                lines.append(f"    📌 {t(lang, 'db_field_planned')}: {html.escape(act.planned_activities)}")
-            if act and act.progress_update:
-                lines.append(f"    📊 {t(lang, 'db_field_progress')}: {html.escape(act.progress_update)}")
-            if act and act.gaps:
-                lines.append(f"    ⚠️ {t(lang, 'db_field_gaps')}: {html.escape(act.gaps)}")
-        lines.append("")
-
-    if hl_map:
-        lines.append(f"<b>{t(lang, 'db_section_highlights')}:</b>")
-        for day in ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]:
-            if day in hl_map:
-                day_label = t(lang, f"db_day_{day}")
-                lines.append(f"  {day_label}: {html.escape(hl_map[day])}")
-
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    result = await commands_dispatch(
+        "myplan",
+        CommandContext(user=user, lang=lang, channel="telegram"),
+    )
+    await update.message.reply_text(result.text, parse_mode=result.parse_mode)
 
 
 # ── /message — send message to coach ─────────────────────────────────────────
@@ -1250,6 +1220,17 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     lang = _lang(user, update.message.text or "")
     result = await commands_dispatch(
         "lang",
+        CommandContext(user=user, lang=lang, args=list(context.args or []), channel="telegram"),
+    )
+    await update.message.reply_text(result.text, parse_mode=result.parse_mode)
+
+
+async def goal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
+    result = await commands_dispatch(
+        "goal",
         CommandContext(user=user, lang=lang, args=list(context.args or []), channel="telegram"),
     )
     await update.message.reply_text(result.text, parse_mode=result.parse_mode)
@@ -1493,7 +1474,8 @@ _MEETING_TYPES = {
 
 
 def _scheduler_ok() -> bool:
-    return bool(coaching_config.scheduler_url and coaching_config.scheduler_api_key)
+    from autogpt.coaching.commands.core import scheduler_ok
+    return scheduler_ok()
 
 
 def _slot_label(slot: dict) -> str:
@@ -1735,48 +1717,15 @@ async def mybookings_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user  = _get_linked_user(tg_id)
     lang  = _lang(user, update.message.text or "")
 
-    if not _scheduler_ok():
-        await update.message.reply_text(t(lang, "mybookings_not_configured"))
-        return
-
     email = _user_email(user) or context.user_data.get("book_email")
-    if not email:
-        await update.message.reply_text(t(lang, "mybookings_ask_email"))
+    result = await commands_dispatch(
+        "mybookings",
+        CommandContext(user=user, lang=lang, channel="telegram", email=email),
+    )
+    if result.action == "await_bookings_email":
         context.user_data["mybookings_lang"] = lang
         context.user_data["awaiting_mybookings_email"] = True
-        return
-
-    await _send_bookings(update.message, email, lang)
-
-
-async def _send_bookings(message, email: str, lang: str) -> None:
-    import asyncio
-    from autogpt.coaching.scheduler_client import get_bookings
-    bookings = await asyncio.get_event_loop().run_in_executor(
-        None,
-        lambda: get_bookings(
-            coaching_config.scheduler_url,
-            coaching_config.scheduler_api_key,
-            email,
-        ),
-    )
-
-    if not bookings:
-        await message.reply_text(t(lang, "mybookings_none"))
-        return
-
-    lines = [t(lang, "mybookings_header")]
-    for b in bookings:
-        subject   = b.get("subject", "Meeting")
-        start_raw = b.get("start_time") or b.get("startISO") or ""
-        if "T" in start_raw:
-            start_raw = start_raw.replace("T", " ").replace("Z", " UTC")[:16]
-        meet_link = b.get("meet_link") or b.get("meetLink") or ""
-        if meet_link:
-            lines.append(t(lang, "mybookings_item", subject=subject, start=start_raw, meet_link=meet_link))
-        else:
-            lines.append(t(lang, "mybookings_item_no_meet", subject=subject, start=start_raw))
-    await message.reply_text("".join(lines), parse_mode="HTML")
+    await update.message.reply_text(result.text, parse_mode=result.parse_mode)
 
 
 # ── /cancelmeeting conversation ────────────────────────────────────────────────
@@ -2043,6 +1992,7 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("suspend", suspend_self))
     app.add_handler(CommandHandler("resume", resume_self))
     app.add_handler(CommandHandler("lang", set_language))
+    app.add_handler(CommandHandler("goal", goal_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("refresh", refresh_command))
 
