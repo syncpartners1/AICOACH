@@ -182,6 +182,7 @@ class TestSessionFlow(unittest.TestCase):
 
     def test_end_saves_summary_and_cleans_up(self):
         fake_session = MagicMock()
+        fake_session.full_message_history = [{"role": "user", "content": "hi"}] * 4
         fake_summary = MagicMock()
         fake_session.extract_summary.return_value = fake_summary
         with patch("autogpt.coaching.telegram_bot._get_or_restore_session",
