@@ -11,7 +11,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "office@ben-nesher.com")
 SMTP_PASS = os.getenv("SMTP_PASSWORD")
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
-BOOKING_URL = os.getenv("SCHEDULER_URL", "https://abn-sch.up.railway.app")
+BOOKING_URL = os.getenv("SCHEDULER_URL", "https://change-navigator-scheduler-972564781508.me-west1.run.app")
 
 
 def _send(msg: MIMEMultipart) -> None:
