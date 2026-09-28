@@ -416,3 +416,110 @@ CREATE POLICY service_only ON weekly_report_tasks USING (auth.role() = 'service_
 
 -- M013: retain malformed extraction responses for coach diagnosis after one retry.
 ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS extraction_raw TEXT;
+
+-- M015: channel-aware session state. Additive, dormant until the service cutover.
+-- Existing telegram_sessions remains the active source for the legacy bot and bridge.
+CREATE TABLE IF NOT EXISTS active_coaching_sessions (
+  session_id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+  channel TEXT NOT NULL CHECK (channel IN ('telegram', 'pwa')),
+  channel_user_id TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  client_name TEXT NOT NULL,
+  lang TEXT NOT NULL DEFAULT 'he',
+  system_prompt TEXT NOT NULL DEFAULT '',
+  transcript JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'finalizing', 'completed', 'cancelled')),
+  version BIGINT NOT NULL DEFAULT 1 CHECK (version > 0),
+  lease_token UUID,
+  lease_until TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((status = 'finalizing') = (lease_token IS NOT NULL)),
+  CHECK (lease_token IS NULL OR lease_until IS NOT NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_active_coaching_one_per_user
+  ON active_coaching_sessions (user_id) WHERE status IN ('active', 'finalizing');
+CREATE INDEX IF NOT EXISTS idx_active_coaching_stale
+  ON active_coaching_sessions (status, updated_at, lease_until);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_active_coaching_channel_identity
+  ON active_coaching_sessions (channel, channel_user_id) WHERE status IN ('active', 'finalizing');
+ALTER TABLE active_coaching_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS service_only ON active_coaching_sessions;
+CREATE POLICY service_only ON active_coaching_sessions USING (auth.role() = 'service_role');
+
+-- Best-effort additive import of linked Telegram sessions, oldest active session
+-- wins per user. Do not alter or delete telegram_sessions. Unlinked IDs remain
+-- in the legacy store until an explicit identity policy is approved.
+WITH candidates AS (
+  SELECT t.*, p.user_id AS linked_user_id,
+         row_number() OVER (PARTITION BY p.user_id ORDER BY t.updated_at DESC, t.session_id DESC) AS rn
+  FROM telegram_sessions t JOIN user_profiles p ON p.telegram_user_id = t.telegram_user_id
+), selected AS (
+  SELECT * FROM candidates WHERE rn = 1
+)
+INSERT INTO active_coaching_sessions
+  (session_id, user_id, channel, channel_user_id, client_id, client_name,
+   lang, system_prompt, transcript, updated_at, created_at)
+SELECT s.session_id, s.linked_user_id, 'telegram', s.telegram_user_id::text,
+       s.client_id, s.client_name, s.lang, s.system_prompt, s.message_history,
+       s.updated_at, s.created_at
+FROM selected s
+WHERE NOT EXISTS (SELECT 1 FROM active_coaching_sessions a
+                  WHERE a.user_id = s.linked_user_id AND a.status IN ('active', 'finalizing'))
+ON CONFLICT DO NOTHING;
+
+-- Preparation is outside the transaction, but publication is all-or-nothing.
+-- A new message cannot sneak in between lease validation and the summary save:
+-- both are guarded by the same row lock and one database transaction. Session
+-- snapshots are not changes to the participant's master OKR/plan (see 6.2).
+CREATE OR REPLACE FUNCTION finalize_claimed_coaching_session(
+  p_session_id TEXT, p_version BIGINT, p_lease_token UUID,
+  p_summary JSONB, p_key_results JSONB DEFAULT '[]'::jsonb,
+  p_obstacles JSONB DEFAULT '[]'::jsonb
+) RETURNS BOOLEAN LANGUAGE plpgsql AS $$
+DECLARE
+  claimed active_coaching_sessions%ROWTYPE;
+BEGIN
+  SELECT * INTO claimed FROM active_coaching_sessions
+   WHERE session_id = p_session_id FOR UPDATE;
+  IF NOT FOUND OR claimed.status <> 'finalizing'
+     OR claimed.version <> p_version OR claimed.lease_token IS DISTINCT FROM p_lease_token
+     OR claimed.lease_until <= NOW() THEN
+    RETURN FALSE;
+  END IF;
+  IF p_summary->>'session_id' IS DISTINCT FROM p_session_id
+     OR p_summary->>'user_id' IS DISTINCT FROM claimed.user_id::text
+     OR p_summary->>'client_id' IS DISTINCT FROM claimed.client_id
+     OR p_summary->'raw_conversation' IS DISTINCT FROM claimed.transcript THEN
+    RAISE EXCEPTION 'Summary does not match claimed session';
+  END IF;
+  INSERT INTO coaching_sessions
+      (session_id, client_id, user_id, timestamp, focus_goal, environmental_changes,
+       mood_indicator, alert_level, alert_reason, summary_for_coach, raw_conversation,
+       extraction_raw)
+  VALUES (p_session_id, claimed.client_id, claimed.user_id,
+          COALESCE((p_summary->>'timestamp')::timestamptz, NOW()),
+          p_summary->>'focus_goal', p_summary->>'environmental_changes',
+          p_summary->>'mood_indicator', p_summary->>'alert_level',
+          p_summary->>'alert_reason', p_summary->>'summary_for_coach',
+          claimed.transcript, p_summary->>'extraction_raw')
+  ON CONFLICT (session_id) DO NOTHING;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Session summary already exists';
+  END IF;
+  INSERT INTO key_results (session_id, kr_id, description, status_pct, status_color)
+    SELECT p_session_id, x.kr_id, x.description, x.status_pct, x.status_color
+      FROM jsonb_to_recordset(p_key_results) AS x(
+        kr_id INTEGER, description TEXT, status_pct INTEGER, status_color TEXT);
+  INSERT INTO obstacles (session_id, description, reported_at, resolved)
+    SELECT p_session_id, x.description, x.reported_at, COALESCE(x.resolved, FALSE)
+      FROM jsonb_to_recordset(p_obstacles) AS x(
+        description TEXT, reported_at TIMESTAMPTZ, resolved BOOLEAN);
+  UPDATE active_coaching_sessions
+     SET status = 'completed', version = version + 1,
+         lease_token = NULL, lease_until = NULL, updated_at = NOW()
+   WHERE session_id = p_session_id;
+  RETURN TRUE;
+END;
+$$;
