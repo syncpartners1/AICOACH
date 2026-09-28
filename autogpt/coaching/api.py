@@ -1590,9 +1590,9 @@ def admin_approve_user(user_id: str, request: Request,
     set_account_status(user_id, AccountStatus.ACTIVE, None)
 
     # Notify the user via Telegram bot if they have a linked Telegram account
+    from autogpt.coaching.i18n import t
+    lang = user.language or "en"
     if user.telegram_user_id and coaching_config.telegram_bot_token:
-        from autogpt.coaching.i18n import t
-        lang = user.language or "en"
         try:
             http_requests.post(
                 f"https://api.telegram.org/bot{coaching_config.telegram_bot_token}/sendMessage",
@@ -1605,6 +1605,11 @@ def admin_approve_user(user_id: str, request: Request,
             )
         except Exception:
             logger.warning("Could not send Telegram welcome to user %s", user_id)
+
+    # Email leg in parallel - every notification reaches every channel
+    from autogpt.coaching.notifications import notify_email_leg
+    notify_email_leg(user, subject=t(lang, "notif_subject_approved"),
+                     html_body=t(lang, "welcome_activated", name=user.name), lang=lang)
 
     return {"user_id": user_id, "account_status": "active"}
 
