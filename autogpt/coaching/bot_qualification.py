@@ -163,7 +163,7 @@ async def update_qualification(session_id: str, user_input: str) -> str:
     try:
         result  = await handle_coaching_qualify(payload)
         verdict = result["verdict"]
-        booking = result.get("booking_url", "https://abn-sch.up.railway.app")
+        booking = result.get("booking_url", "https://change-navigator-scheduler-972564781508.me-west1.run.app")
     except Exception as e:
         logger.error(f"Qualification error for session {session_id}: {e}")
         return "⚠️ אירעה שגיאה. פנה/י ישירות לעדי: abn@ben-nesher.com"
