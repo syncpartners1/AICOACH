@@ -50,6 +50,7 @@ def render_admin(
         last_sess = u.last_session.strftime("%d-%m-%Y") if u.last_session else "—"
         last_plan = u.last_weekly_plan.strftime("%d-%m-%Y") if u.last_weekly_plan else "—"
         contact = u.phone_number or u.email or "—"
+        email_cell = escape(u.email) if u.email else "—"
         # Use the current host instead of a potentially stale PUBLIC_URL.
         dashboard_url = f"/dashboard/{u.user_id}?lang={lang}"
         track_key = f"admin_track_{u.program_type}"
@@ -93,6 +94,7 @@ def render_admin(
     <a href="{dashboard_url}" style="color:#1a2b4a;text-decoration:none">{u.name}</a>
   </td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
+  <td style="padding:10px 12px;font-size:12px;color:#6b7280">{email_cell}</td>
   <td style="padding:10px 12px;text-align:center">{status_pill}</td>
   <td style="padding:10px 12px;font-size:12px">{track_label}</td>
   <td style="padding:10px 12px;font-size:12px">{phase_txt}</td>
@@ -103,7 +105,7 @@ def render_admin(
   </td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{last_sess}</td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{last_plan}</td>
-  <td style="padding:10px 12px;white-space:nowrap">
+  <td class="col-actions" style="padding:10px 12px;white-space:nowrap">
     <a href="{dashboard_url}" style="font-size:12px;color:#1a2b4a;background:#e0e7ff;
        padding:3px 10px;border-radius:12px;text-decoration:none;margin-right:6px">{t(lang, "admin_btn_view")}</a>
     <a href="/admin/users/{u.user_id}/program/manage" style="display:inline-block;font-size:12px;
@@ -117,7 +119,7 @@ def render_admin(
 </tr>"""
 
     if not user_rows:
-        user_rows = f'<tr><td colspan="10" style="padding:20px;color:#9ca3af;text-align:center">{t(lang, "admin_no_users")}</td></tr>'
+        user_rows = f'<tr><td colspan="11" style="padding:20px;color:#9ca3af;text-align:center">{t(lang, "admin_no_users")}</td></tr>'
 
     # ── Pending registration rows ─────────────────────────────────────────────
     pending_rows = ""
@@ -208,6 +210,11 @@ body{{font-family:{font_family},sans-serif;background:#f0f4f8;color:#111827}}
 .card{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;
        overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}}
 table{{width:100%;border-collapse:collapse}}
+.tbl-wrap{{overflow-x:auto;-webkit-overflow-scrolling:touch}}
+.col-actions{{position:sticky;inset-inline-end:0;background:#fff;
+  border-inline-start:1px solid #e5e7eb;z-index:1}}
+thead th.col-actions{{background:#f9fafb}}
+tbody tr:hover td.col-actions{{background:#f9fafb}}
 thead th{{background:#f9fafb;padding:10px 12px;text-align:{th_align};font-size:12px;
           font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;
           border-bottom:1px solid #e5e7eb}}
@@ -252,23 +259,28 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 
   <div class="section-title">{t(lang, "admin_section_pending")} ({len(pending_users)})</div>
   <div class="card">
+    <div class="tbl-wrap">
     <table>
       <thead><tr><th>{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th><th>{t(lang, "admin_col_actions")}</th></tr></thead>
       <tbody>{pending_rows}</tbody>
     </table>
+    </div>
   </div>
 
   <div class="section-title">{t(lang, "admin_section_members")} ({len(users)})</div>
   <div class="card">
+    <div class="tbl-wrap">
     <table>
       <thead><tr>
         <th>{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th>
+        <th>{t(lang, "admin_col_email")}</th>
         <th>{t(lang, "admin_col_status")}</th><th>מסלול</th><th>שלב</th><th>{t(lang, "admin_col_okrs")}</th>
         <th>{t(lang, "admin_col_progress")}</th><th>{t(lang, "admin_col_last_session")}</th>
-        <th>{t(lang, "admin_col_last_plan")}</th><th>{t(lang, "admin_col_actions")}</th>
+        <th>{t(lang, "admin_col_last_plan")}</th><th class="col-actions">{t(lang, "admin_col_actions")}</th>
       </tr></thead>
       <tbody>{user_rows}</tbody>
     </table>
+    </div>
   </div>
 
   <div class="section-title">{t(lang, "admin_section_register")}</div>
@@ -325,10 +337,12 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 
   <div class="section-title">{t(lang, "admin_section_invites")}</div>
   <div class="card">
+    <div class="tbl-wrap">
     <table>
       <thead><tr><th>{t(lang, "admin_col_for")}</th><th>{t(lang, "admin_col_note")}</th><th>{t(lang, "admin_col_link")}</th><th>{t(lang, "admin_col_actions")}</th></tr></thead>
       <tbody>{invite_rows}</tbody>
     </table>
+    </div>
   </div>
 
 </div>
