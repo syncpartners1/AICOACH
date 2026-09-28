@@ -466,6 +466,7 @@ S_EN = {
         "<i>Ready to evaluate your current strategic position?</i>"
     ),
     "funnel_btn_start": "🎯 Start Strategic Alignment Check",
+    "funnel_btn_register": "📝 Register",
     "funnel_q1_title": "🎯 <b>Question 1 of 3</b>",
     "funnel_q1_desc": (
         "<b>How aligned is your team with your current strategic vision?</b>\n\n"
