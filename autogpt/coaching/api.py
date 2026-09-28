@@ -482,6 +482,28 @@ def google_oauth_callback(
         return _oauth_error_redirect(redirect_to, "incomplete_profile")
 
     is_web_flow = redirect_to.startswith("/")
+
+    # Invite token rides the return URL from the /register page (?token=...).
+    # A valid, unused, unexpired invite is required to activate a NEW account
+    # via Google; without one a new account is created as pending (same model
+    # as phone registration). Existing users always just sign in.
+    from datetime import datetime as _dt
+    from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
+    invite_token = ""
+    try:
+        invite_token = (_parse_qs(_urlparse(redirect_to).query).get("token") or [""])[0].strip()
+    except Exception:
+        invite_token = ""
+    invite = None
+    if invite_token:
+        try:
+            invite = get_invite(invite_token)
+        except Exception as inv_exc:
+            logger.warning("OAuth callback invite lookup failed: %s", inv_exc)
+            invite = None
+    invite_valid = bool(invite) and not invite.used_at and not (
+        invite.expires_at and invite.expires_at < _dt.utcnow())
+
     existing = []
     try:
         from autogpt.coaching.storage import _get_client as _supa
@@ -494,30 +516,43 @@ def google_oauth_callback(
                 "email", email
             ).execute().data
     except Exception as db_exc:
-        logger.warning("OAuth callback DB query warning (continuing auto-provisioning): %s", db_exc)
+        logger.warning("OAuth callback DB query warning (no auto-provisioning on error): %s", db_exc)
         existing = []
 
     user_id = f"google_{google_id}"
     if existing:
         row = existing[0]
         user_id = row["user_id"]
+        final_status = row.get("account_status") or AccountStatus.ACTIVE.value
+        # A pending participant arriving with a valid invite is activated.
+        if invite_valid and final_status == AccountStatus.PENDING.value:
+            try:
+                set_account_status(user_id, AccountStatus.ACTIVE,
+                                   reason="valid invite on Google sign-in")
+                use_invite(invite_token, user_id)
+                final_status = AccountStatus.ACTIVE.value
+            except Exception as act_exc:
+                logger.warning("OAuth invite activation failed for %s: %s", user_id, act_exc)
     else:
+        final_status = AccountStatus.ACTIVE.value if invite_valid else AccountStatus.PENDING.value
         try:
             from autogpt.coaching.db import get_db_cursor
             with get_db_cursor(commit=True) as cur:
                 cur.execute(
                     """
                     INSERT INTO user_profiles (user_id, name, email, google_id, account_status)
-                    VALUES (%s, %s, %s, %s, 'active')
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO NOTHING
                     """,
-                    (user_id, name, email, google_id)
+                    (user_id, name, email, google_id, final_status)
                 )
+            if invite_valid:
+                use_invite(invite_token, user_id)
         except Exception as insert_err:
             logger.warning("OAuth user_profiles auto-insert notice: %s", insert_err)
 
     if is_web_flow:
-        dest = f"/dashboard/{user_id}"
+        dest = f"/dashboard/{user_id}" if final_status == AccountStatus.ACTIVE.value else "/pending"
         resp = RedirectResponse(url=dest, status_code=302)
         _set_user_cookie(resp, user_id)
         return resp
@@ -685,17 +720,35 @@ def complete_google_signup(body: _GooglePhoneBody) -> AuthResponse:
         google_id, name, email = decoded.split("|", 2)
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token.")
-    new_status = AccountStatus.ACTIVE if body.invite_token else AccountStatus.PENDING
+    invite = None
+    if body.invite_token:
+        from datetime import datetime as _dt
+        invite = get_invite(body.invite_token)
+        if not invite:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Invite token is invalid.")
+        if invite.used_at:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Invite link was already used.")
+        if invite.expires_at and invite.expires_at < _dt.utcnow():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Invite link has expired.")
+    new_status = AccountStatus.ACTIVE if invite else AccountStatus.PENDING
     try:
         user = google_auth(google_id=google_id, name=name, email=email,
                            phone_number=body.phone_number, account_status=new_status)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    if body.invite_token:
+    out_status = user.account_status
+    if invite is not None:
+        if user.account_status != AccountStatus.ACTIVE:
+            set_account_status(user.user_id, AccountStatus.ACTIVE,
+                               reason="valid invite on Google sign-up")
+            out_status = AccountStatus.ACTIVE
         use_invite(body.invite_token, user.user_id)
     return AuthResponse(user_id=user.user_id, name=user.name,
                         email=user.email, phone_number=user.phone_number,
-                        account_status=user.account_status)
+                        account_status=out_status)
 
 
 @app.get("/auth/google/config", summary="Show the redirect URI to register in Google Cloud Console")
@@ -1972,7 +2025,7 @@ const _i18n = {{
   error:       {json.dumps(js_error)},
 }};
 function signInGoogle() {{
-  const returnTo = location.href;
+  const returnTo = location.pathname + location.search;
   window.location = '/auth/google/url?redirect_to=' + encodeURIComponent(returnTo);
 }}
 document.getElementById('phoneForm').addEventListener('submit', async function(e) {{
