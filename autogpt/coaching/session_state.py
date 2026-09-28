@@ -131,3 +131,43 @@ def commit_finalization(*, session_id: str, expected_version: int, lease_token: 
         fetch_one=True, commit=True,
     )
     return bool(row and row["committed"])
+
+
+def find_active(user_id: str) -> Optional[dict]:
+    """Read the single active meeting for a linked profile, regardless of channel."""
+    return execute_query(
+        """SELECT * FROM active_coaching_sessions WHERE user_id = %(uid)s
+             AND status IN ('active', 'finalizing')""",
+        {"uid": user_id}, fetch_one=True,
+    )
+
+
+def claim_one(*, session_id: str, user_id: str, channel: str) -> Optional[dict]:
+    """Claim an explicit end with CAS; no subsequent turn may be committed."""
+    if channel not in ("telegram", "pwa"):
+        raise ValueError("Invalid channel")
+    return execute_query(
+        """UPDATE active_coaching_sessions
+              SET status = 'finalizing', lease_token = gen_random_uuid(),
+                  lease_until = NOW() + INTERVAL '20 minutes'
+            WHERE session_id = %(sid)s AND user_id = %(uid)s
+              AND channel = %(channel)s AND status = 'active'
+            RETURNING *""",
+        {"sid": session_id, "uid": user_id, "channel": channel},
+        fetch_one=True, commit=True,
+    )
+
+
+def cancel_active(*, session_id: str, user_id: str, channel: str) -> Optional[dict]:
+    """Cancel a session only while active; a claimed finalizer wins its race."""
+    if channel not in ("telegram", "pwa"):
+        raise ValueError("Invalid channel")
+    return execute_query(
+        """UPDATE active_coaching_sessions
+              SET status = 'cancelled', version = version + 1, updated_at = NOW()
+            WHERE session_id = %(sid)s AND user_id = %(uid)s
+              AND channel = %(channel)s AND status = 'active'
+            RETURNING *""",
+        {"sid": session_id, "uid": user_id, "channel": channel},
+        fetch_one=True, commit=True,
+    )

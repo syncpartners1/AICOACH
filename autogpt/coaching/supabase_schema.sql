@@ -523,3 +523,17 @@ BEGIN
   RETURN TRUE;
 END;
 $$;
+
+-- M016: exact reply cache for idempotent message delivery across bot/bridge retries.
+-- No user-facing route uses the new service until the 3.3 cutover.
+CREATE TABLE IF NOT EXISTS coaching_message_receipts (
+  session_id TEXT NOT NULL REFERENCES active_coaching_sessions(session_id) ON DELETE CASCADE,
+  request_id TEXT NOT NULL,
+  reply TEXT NOT NULL,
+  request_sha256 TEXT NOT NULL CHECK (length(request_sha256) = 64),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (session_id, request_id),
+  CHECK (length(request_id) BETWEEN 1 AND 200)
+);
+-- Cloud SQL access is controlled by the application database role; verify its
+-- table grants before connecting a route. Do not grant access to PUBLIC.
