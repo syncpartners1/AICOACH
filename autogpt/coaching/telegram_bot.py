@@ -128,7 +128,8 @@ async def _auto_finalize_session(bot, chat_id: int, tg_id: int, lang: str) -> No
     try:
         from autogpt.coaching.storage import delete_telegram_session, save_session
         async with _typing_while(bot, chat_id):
-            summary = await asyncio.to_thread(session.extract_summary)
+            summary = (session.brief_summary() if len(session.full_message_history) < 4
+                       else await asyncio.to_thread(session.extract_summary))
         save_session(summary)
         _sessions.pop(tg_id, None)
         delete_telegram_session(tg_id)
@@ -834,7 +835,8 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         from autogpt.coaching.storage import delete_telegram_session, save_session
         async with _typing_while(context.bot, update.effective_chat.id):
-            summary = await asyncio.to_thread(session.extract_summary)
+            summary = (session.brief_summary() if len(session.full_message_history) < 4
+                       else await asyncio.to_thread(session.extract_summary))
         save_session(summary)
         _cancel_inactivity_timer(tg_id)
         del _sessions[tg_id]
