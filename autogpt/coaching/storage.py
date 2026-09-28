@@ -1108,6 +1108,19 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
     return summaries
 
 
+def _log_telegram_persist_error(telegram_user_id: int, exc: Exception) -> None:
+    """One-line structured error, without user messages, SQL params, or credentials."""
+    logger.error(json.dumps({
+        "event": "telegram_session_persist_failed",
+        "telegram_user_id": telegram_user_id,
+        "error_type": type(exc).__name__,
+        "pgcode": getattr(exc, "pgcode", None),
+        "constraint": getattr(getattr(exc, "diag", None), "constraint_name", None),
+        "status_code": getattr(exc, "status_code", None),
+        "table": "telegram_sessions",
+    }, ensure_ascii=False))
+
+
 def save_telegram_session(telegram_user_id: int, session) -> None:
     """Persist an active CoachingSession to Supabase so it survives restarts."""
     db = _get_client()
@@ -1124,11 +1137,8 @@ def save_telegram_session(telegram_user_id: int, session) -> None:
             "updated_at": datetime.utcnow().isoformat(),
         }, on_conflict="telegram_user_id").execute()
     except Exception as e:
-        # Gracefully handle missing table (PGRST205) or other DB hiccups
-        if "PGRST205" in str(e):
-            logger.warning("Active session persistence skipped: 'telegram_sessions' table missing.")
-        else:
-            logger.exception("Failed to persist telegram session for user %s", telegram_user_id)
+        _log_telegram_persist_error(telegram_user_id, e)
+        raise  # the caller owns the response; persistence failure must not look successful
 
 
 def load_telegram_session(telegram_user_id: int):
