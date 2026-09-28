@@ -941,6 +941,7 @@ def user_dashboard(
     request: Request,
     week_start: Optional[str] = Query(default=None, description="ISO date of week start (Sunday)"),
     api_key: Optional[str] = Query(default=None, alias="api_key"),
+    lang: Optional[str] = Query(default=None, description="UI language override, admin view only"),
 ) -> HTMLResponse:
     """Personal progress dashboard for a coaching program user."""
     is_admin_view = False
@@ -988,6 +989,12 @@ def user_dashboard(
         general_goal = general_goal or general_form.get("g_general_objective", "")
         leading_value = leading_value or general_form.get("g_leading_value", "")
 
+    # The trainee's own view always uses their profile language; an
+    # authenticated admin may override it (?lang=he|en) so the coach sees
+    # the dashboard in their own UI language regardless of the trainee's.
+    render_lang = user.language
+    if is_admin_view and lang in ("en", "he"):
+        render_lang = lang
     html = render_dashboard(
         user=user,
         objectives=objectives,
@@ -995,7 +1002,7 @@ def user_dashboard(
         past_sessions=past_sessions,
         week_start=parsed_week,
         week_end=_week_end(parsed_week),
-        language=user.language,
+        language=render_lang,
         is_admin_view=is_admin_view,
         weekly_reports=weekly_reports,
         general_goal=general_goal,
