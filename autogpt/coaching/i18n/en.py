@@ -420,6 +420,7 @@ S_EN = {
     "admin_section_invites": "Pending Invites",
     "admin_col_name": "Name",
     "admin_col_contact": "Contact",
+    "admin_col_email": "Email",
     "admin_col_status": "Status",
     "admin_col_okrs": "OKRs",
     "admin_col_progress": "Avg KR Progress",
