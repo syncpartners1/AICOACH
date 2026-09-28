@@ -420,6 +420,7 @@ S_HE = {
     "admin_section_invites": "הזמנות ממתינות",
     "admin_col_name": "שם",
     "admin_col_contact": "פרטי קשר",
+    "admin_col_email": "אימייל",
     "admin_col_status": "סטטוס",
     "admin_col_okrs": "OKRs",
     "admin_col_progress": "התקדמות ממוצעת",
