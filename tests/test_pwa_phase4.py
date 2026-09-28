@@ -58,7 +58,7 @@ def test_pwa_requires_auth():
 def test_pwa_commands_lists_registry(client):
     d = client.get("/pwa/commands").json()
     assert d["commands"] == ["goal", "help", "lang", "mybookings", "myplan"]
-    assert d["flows"] == ["book", "highlight", "plan"]
+    assert d["flows"] == ["book", "highlight", "plan", "weekly"]
 
 
 def test_pwa_command_dispatch(client):

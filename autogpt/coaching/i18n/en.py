@@ -123,6 +123,24 @@ S_EN = {
         "✅ <b>Weekly plan saved!</b> ({count} key result(s) updated)\n\n"
         "Use /myplan to view your full plan, or /highlight to add today's highlights."
     ),
+    # ── Bot: /weekly ──────────────────────────────────────────────────────
+    "weekly_link_first": "Link your account with /link first.",
+    "weekly_not_active": "Your account is not active.",
+    "weekly_unavailable": "Report unavailable right now. Please try again.",
+    "weekly_ask_tasks": "Reply with this week's tasks, one per line (up to 10).",
+    "weekly_suggested_header": "Suggested tasks:\n",
+    "weekly_use_same": "Reply 'same' to use these.",
+    "weekly_tasks_invalid": "Enter 1-10 tasks, each at most 200 characters.",
+    "weekly_which_done": "Which tasks were completed? Reply with numbers separated by commas, or 0 for none:\n",
+    "weekly_done_invalid": "Reply with valid task numbers, or 0.",
+    "weekly_ask_update": "Write a short weekly update (up to 2000 characters). Reply '-' if none.",
+    "weekly_update_too_long": "Please shorten the update to 2000 characters.",
+    "weekly_preview_header": "Weekly report preview",
+    "weekly_confirm_hint": "Reply 'confirm' to save, or /cancel.",
+    "weekly_not_saved": "Not saved. Reply 'confirm' to save, or /cancel.",
+    "weekly_restart": "Week or account changed. Start /weekly again.",
+    "weekly_save_failed": "Save failed. Report was not confirmed. Please retry /weekly.",
+    "weekly_saved": "Weekly report saved.",
     # ── Bot: /highlight ───────────────────────────────────────────────────
     "ask_highlight": "📝 What's your key highlight for <b>{day}</b>? (one line is great)",
     "highlight_empty": "Please type your highlight and send it.",

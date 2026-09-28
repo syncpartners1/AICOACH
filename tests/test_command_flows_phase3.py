@@ -39,7 +39,7 @@ def _two_kr_objectives():
 # ── plan ────────────────────────────────────────────────────────────────────
 
 def test_flow_registry():
-    assert flow_names() == ["book", "highlight", "plan"]
+    assert flow_names() == ["book", "highlight", "plan", "weekly"]
     with pytest.raises(KeyError):
         _run(start_flow("nope", CommandContext()))
     with pytest.raises(KeyError):
