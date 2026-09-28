@@ -201,7 +201,8 @@ def end_session(req: SessionRequest, _: str = Depends(verify_bridge_secret)) -> 
     if session is None:
         raise HTTPException(status_code=409, detail="no_active_session")
 
-    summary = session.extract_summary()
+    summary = (session.brief_summary() if len(session.full_message_history) < 4
+               else session.extract_summary())
     save_session(summary)
     tb._sessions.pop(req.telegram_id, None)
     delete_telegram_session(req.telegram_id)
