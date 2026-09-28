@@ -62,6 +62,8 @@ S_EN = {
     "session_cleared": "Sorry, I couldn't generate your summary. Your session has been cleared.",
     "inactivity_reminder": "Still there? 🙂 Take your time — I'm here.",
     "inactivity_timeout": "Looks like you stepped away. Whenever you're ready, just write to me and we'll pick up where we left off.",
+    "notif_subject_approved": "Your account is active \u2705",
+    "notif_subject_broadcast": "Message from Adi Ben-Nesher \U0001F4E2",
     # ── Bot: account status ───────────────────────────────────────────────
     "suspended_msg": (
         "⏸ Your coaching is currently <b>paused</b>. "

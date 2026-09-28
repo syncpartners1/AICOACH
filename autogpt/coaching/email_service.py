@@ -56,6 +56,10 @@ _SIGNATURE_PLAIN = (
     "אישי | כלכלי | עסקי"
 )
 
+class RawHtml(str):
+    """A template value inserted unescaped (trusted, pre-rendered HTML)."""
+
+
 _IF_BLOCK_RE = re.compile(r"{{#if\s+(\w+)}}(.*?){{/if}}", re.DOTALL)
 _VAR_RE = re.compile(r"{{(\w+)}}")
 _STYLE_SCRIPT_RE = re.compile(r"(?is)<(style|script).*?</\1>")
@@ -99,7 +103,10 @@ def render_template(template_name: str, params: dict) -> str:
     rendered = _IF_BLOCK_RE.sub(_if_sub, raw)
 
     def _var_sub(match: re.Match) -> str:
-        return html.escape(str(params.get(match.group(1), "")), quote=True)
+        value = params.get(match.group(1), "")
+        if isinstance(value, RawHtml):
+            return str(value)
+        return html.escape(str(value), quote=True)
 
     return _VAR_RE.sub(_var_sub, rendered)
 
@@ -168,6 +175,38 @@ def send_invite_email(
     return _send_message(
         to_email=to_email,
         subject=_INVITE_SUBJECTS[lang].format(program_name=program_name),
+        html_body=html_body,
+        plain_body=plain_body,
+    )
+
+
+def send_notification_email(
+    *,
+    to_email: str,
+    to_name: str,
+    subject: str,
+    body_html: str,
+    language: str = "en",
+) -> bool:
+    """Send a generic trainee notification email (the email leg of a
+    multi-channel notification). ``body_html`` is trusted HTML, typically
+    the same content sent on Telegram; it is inserted unescaped while
+    every other template value is escaped."""
+    validate_recipient_address(to_email)
+    direction = "rtl" if language == "he" else "ltr"
+    params = {
+        "to_name": to_name or "",
+        "to_email": to_email,
+        "subject": subject,
+        "body_html": RawHtml(body_html.replace("\n", "<br/>\n")),
+        "direction": direction,
+        "language": language if language in ("en", "he") else "en",
+    }
+    html_body = render_template("notification.html", params)
+    plain_body = _html_to_text(html_body) + _SIGNATURE_PLAIN
+    return _send_message(
+        to_email=to_email,
+        subject=subject,
         html_body=html_body,
         plain_body=plain_body,
     )
