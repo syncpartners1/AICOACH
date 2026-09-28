@@ -55,6 +55,7 @@ import warnings
 warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*per_message=False.*")
 
 from autogpt.coaching.config import coaching_config
+from autogpt.coaching.commands import CommandContext, dispatch as commands_dispatch
 from autogpt.coaching.i18n import detect_lang, t
 from autogpt.coaching.utils import markdown_to_html
 
@@ -1247,22 +1248,11 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
-    args = context.args
-
-    if not args or args[0] not in ("en", "he"):
-        await update.message.reply_text(t(lang, "lang_usage"))
-        return
-
-    new_lang = args[0]
-    if user:
-        try:
-            from autogpt.coaching.storage import set_user_language
-            set_user_language(user.user_id, new_lang)
-        except Exception:
-            logger.exception("Could not save language preference for user %s", user.user_id)
-
-    msg_key = "lang_set_he" if new_lang == "he" else "lang_set_en"
-    await update.message.reply_text(t(new_lang, msg_key), parse_mode="HTML")
+    result = await commands_dispatch(
+        "lang",
+        CommandContext(user=user, lang=lang, args=list(context.args or []), channel="telegram"),
+    )
+    await update.message.reply_text(result.text, parse_mode=result.parse_mode)
 
 
 # ── Admin commands ────────────────────────────────────────────────────────────
@@ -1411,11 +1401,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
-    admin_extra = t(lang, "help_admin") if _is_admin(tg_id) else ""
-    await update.message.reply_text(
-        t(lang, "help_text") + admin_extra,
-        parse_mode="HTML",
+    result = await commands_dispatch(
+        "help",
+        CommandContext(user=user, lang=lang, is_admin=_is_admin(tg_id), channel="telegram"),
     )
+    await update.message.reply_text(result.text, parse_mode=result.parse_mode)
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
