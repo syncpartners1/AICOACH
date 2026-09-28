@@ -164,7 +164,33 @@ class CoachingSession:
             thinking_level="low",  # structured extraction: fast, low-effort thinking
         )
 
-        weekly_log, summary_text = self._parse_summary_json(raw)
+        extraction_raw = None
+        try:
+            weekly_log, summary_text = self._parse_summary_json(raw)
+        except (ValueError, TypeError):
+            weekly_log, summary_text = WeeklyLog(), "Could not extract structured summary from this session."
+        if summary_text == "Could not extract structured summary from this session.":
+            first_raw = raw
+            try:
+                raw = chat_completion(
+                    messages=extraction_messages + [{"role": "assistant", "content": first_raw},
+                                                     {"role": "user", "content":
+                                                      "Return only a valid JSON object for the requested session summary. "
+                                                      "No markdown or extra text."}],
+                    model=coaching_config.llm_model,
+                    temperature=0.0,
+                    thinking_level="low",
+                )
+            except Exception:
+                # The first model response is still worth retaining when the retry fails.
+                raw = ""
+            try:
+                weekly_log, summary_text = self._parse_summary_json(raw)
+            except (ValueError, TypeError):
+                weekly_log, summary_text = WeeklyLog(), "Could not extract structured summary from this session."
+            if summary_text == "Could not extract structured summary from this session.":
+                extraction_raw = json.dumps({"first": first_raw, "retry": raw}, ensure_ascii=False)
+                raw = ""  # never apply proposed OKR/plan changes from malformed output
         okr_changes = self._parse_okr_changes(raw)
         alert = self._compute_alerts(weekly_log)
 
@@ -180,6 +206,7 @@ class CoachingSession:
             okr_changes=okr_changes,
             success_plan_changes=self._parse_success_plan_changes(raw),
             raw_conversation=list(self.full_message_history),
+            extraction_raw=extraction_raw,
         )
 
     # ── Parsers ────────────────────────────────────────────────────────────────

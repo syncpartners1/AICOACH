@@ -561,6 +561,7 @@ def save_session(summary: SessionSummary) -> None:
         "raw_conversation": json.dumps(summary.raw_conversation, ensure_ascii=False)
         if summary.raw_conversation
         else None,
+        "extraction_raw": summary.extraction_raw,
     }
     if summary.user_id:
         session_row["user_id"] = summary.user_id
@@ -670,6 +671,7 @@ def load_session(session_id: str) -> Optional[SessionSummary]:
             reason=row.get("alert_reason", ""),
         ),
         summary_for_coach=row.get("summary_for_coach", ""),
+        extraction_raw=row.get("extraction_raw"),
     )
 
 

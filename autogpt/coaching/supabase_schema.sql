@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS coaching_sessions (
   alert_level           TEXT    CHECK (alert_level IN ('green', 'yellow', 'red')),
   alert_reason          TEXT,
   summary_for_coach     TEXT,
-  raw_conversation      JSONB
+  raw_conversation      JSONB,
+  extraction_raw        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_client_id ON coaching_sessions(client_id);
@@ -412,3 +413,6 @@ DROP POLICY IF EXISTS service_only ON weekly_reports;
 DROP POLICY IF EXISTS service_only ON weekly_report_tasks;
 CREATE POLICY service_only ON weekly_reports USING (auth.role() = 'service_role');
 CREATE POLICY service_only ON weekly_report_tasks USING (auth.role() = 'service_role');
+
+-- M013: retain malformed extraction responses for coach diagnosis after one retry.
+ALTER TABLE coaching_sessions ADD COLUMN IF NOT EXISTS extraction_raw TEXT;
