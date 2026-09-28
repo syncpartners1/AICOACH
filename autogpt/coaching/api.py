@@ -2612,6 +2612,28 @@ def _require_user_cookie(request: Request) -> str:
     return uid
 
 
+@app.get("/chat/manifest.webmanifest", include_in_schema=False)
+def chat_manifest() -> Response:
+    """Public install metadata only; never put a user profile or session in it."""
+    manifest = {
+        "name": "Change Navigator - Coaching",
+        "short_name": "Change Navigator",
+        "lang": "he",
+        "dir": "rtl",
+        "start_url": "/chat",
+        "scope": "/chat",
+        "display": "standalone",
+        "background_color": "#f0f4f8",
+        "theme_color": "#1a2b4a",
+        "icons": [
+            {"src": "/static/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png"},
+        ],
+    }
+    return JSONResponse(content=manifest, media_type="application/manifest+json",
+                        headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.get("/chat", response_class=HTMLResponse, include_in_schema=False)
 def chat_page(request: Request) -> Response:
     """Web coaching chat for logged-in users."""
@@ -2631,8 +2653,13 @@ def chat_page(request: Request) -> Response:
     scheduler_url = coaching_config.scheduler_url.strip() if coaching_config.scheduler_url else ""
     user_lang = user.language if user.language in ("en", "he") else "en"
     return HTMLResponse(content=f"""<!DOCTYPE html>
-<html lang="en"><head>
+<html lang="{user_lang}" dir="{'rtl' if user_lang == 'he' else 'ltr'}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1a2b4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Change Navigator">
+<link rel="manifest" href="/chat/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/android-chrome-192x192.png">
 <title>AI Coaching Session – ABN Consulting</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
 <link rel="shortcut icon" href="/static/android-chrome-192x192.png">
