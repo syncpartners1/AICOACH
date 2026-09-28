@@ -12,7 +12,7 @@ import re
 from .en import S_EN
 from .he import S_HE
 
-__all__ = ["t", "detect_lang", "get_coach_name", "S_EN", "S_HE"]
+__all__ = ["t", "detect_lang", "get_coach_name", "phase_label", "S_EN", "S_HE"]
 
 # Match Hebrew unicode blocks (Hebrew, Hebrew Presentation Forms)
 _HE_RE = re.compile(r"[\u0590-\u05FF\uFB1D-\uFB4F]")
@@ -41,6 +41,16 @@ def t(lang: str, key: str, **kwargs: object) -> str:
     if text is None:
         return key
     return text.format(**kwargs) if kwargs else text
+
+
+def phase_label(lang: str, phase: str) -> str:
+    """Human label for a coaching-program phase in the given language."""
+    if phase.startswith("meeting_"):
+        return t(lang, "admin_phase_meeting_n", n=phase.split("_", 1)[1])
+    key = f"admin_phase_{phase}"
+    label = t(lang, key)
+    # t() echoes the key when it is missing everywhere - fall back to "unset".
+    return label if label != key else t(lang, "admin_phase_unassigned")
 
 
 def get_coach_name(lang: str = "en") -> str:
