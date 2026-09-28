@@ -2557,7 +2557,6 @@ const UI = {{
     btnWeekly:   'Weekly report',
     btnHelp:     'Help',
     cancelled:   'Cancelled.',
-    weeklySoon:  'Weekly report through the app is coming soon - for now it arrives on Telegram from the scheduler.',
   }},
   he: {{
     startTitle:  'מוכן לפגישת הקואצ׳ינג שלך?',
@@ -2577,7 +2576,6 @@ const UI = {{
     btnWeekly:   'דיווח שבועי',
     btnHelp:     'עזרה',
     cancelled:   'בוטל.',
-    weeklySoon:  'הדיווח השבועי דרך האפליקציה יגיע בקרוב - כרגע הוא מגיע בטלגרם מהסקד׳ולר.',
   }},
 }};
 
@@ -2807,7 +2805,7 @@ async function cancelAll() {{
 }}
 
 function weeklyReport() {{
-  addMsg(UI[lang].weeklySoon, 'sys');
+  startFlowWeb('weekly');
 }}
 
 function sendSlash(c) {{
