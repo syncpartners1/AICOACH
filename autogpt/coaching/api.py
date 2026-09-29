@@ -3493,6 +3493,23 @@ def budget_coach_service_worker() -> Response:
 
 # ── HTML Form Pages (iFrame-embeddable on Wix) ────────────────────────────────
 
+@app.get("/coaching-interest", response_class=HTMLResponse, include_in_schema=False)
+def coaching_interest_page() -> HTMLResponse:
+    """Coaching-only entry page; CRM intake remains the existing questionnaire."""
+    return HTMLResponse(content="""<!doctype html><html lang="he" dir="rtl"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אימון עם עדי בן נשר | Change Navigator</title>
+<style>body{font:18px system-ui,sans-serif;background:#f8fafc;color:#1e293b;margin:0}
+main{max-width:720px;margin:8vh auto;padding:36px;background:white;border-radius:16px;line-height:1.7;box-sizing:border-box}
+h1{color:#1a2b4a}a.button{display:inline-block;background:#1a2b4a;color:white;padding:12px 20px;
+text-decoration:none;border-radius:8px}small{color:#526174}@media(max-width:750px){main{margin:0;padding:22px}h1{font-size:1.6em}}
+</style></head><body><main><h1>אימון עם עדי בן נשר</h1>
+<p>מתעניינים בתהליך אימון? השאלון הקצר יעזור לעדי להכיר את האתגר שלכם ואת מה שתרצו להשיג.</p>
+<p><a class="button" href="/qualify-form">לשאלון ההיכרות</a></p>
+<small>שליחת השאלון אינה הרשמה לתוכנית ואינה קובעת פגישה.</small>
+</main></body></html>""")
+
+
 @app.get("/qualify-form", response_class=HTMLResponse, include_in_schema=False)
 def coaching_qualify_form() -> HTMLResponse:
     """Self-contained coaching qualification form — embed as iFrame on Wix."""
@@ -3601,7 +3618,7 @@ textarea{resize:vertical;min-height:70px}
 </div>
 <div class="thanks" id="thanksMsg">
   <h2>תודה! ✓</h2>
-  <p>השאלון התקבל.<br>עדי יחזור אליך תוך 24 שעות עם השלב הבא.</p>
+  <p>השאלון התקבל. עדי יבדוק את הפנייה ויחזור אליך לגבי השלב הבא.</p>
 </div>
 <script>
 var answers={q3:'',q4:'',q5:'',q6:'',q7:''};
@@ -3622,7 +3639,8 @@ function submitForm(){
   var u=Object.keys(answers).filter(function(k){return answers[k]==='';});
   if(u.length>0){err.textContent='יש לענות על כל שאלות הכן/לא';err.style.display='block';return;}
   var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='שולח...';
-  var payload={q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
+  var submissionId=window._coachingSubmissionId||(window._coachingSubmissionId=crypto.randomUUID());
+  var payload={submission_id:submissionId,q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
     q5_commit_tasks:answers.q5,q6_coaching:answers.q6,q7_capability:answers.q7,
     q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
   fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
@@ -3769,7 +3787,8 @@ function submitForm(){
   var u=Object.keys(answers).filter(function(k){return answers[k]==='';});
   if(u.length>0){err.textContent='Please answer all Yes/No questions';err.style.display='block';return;}
   var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='Submitting...';
-  var payload={q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
+  var submissionId=window._coachingSubmissionId||(window._coachingSubmissionId=crypto.randomUUID());
+  var payload={submission_id:submissionId,q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
     q5_commit_tasks:answers.q5,q6_coaching:answers.q6,q7_capability:answers.q7,
     q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
   fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
