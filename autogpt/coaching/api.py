@@ -189,6 +189,8 @@ app.include_router(_bridge_router)
 # Private, draft-only work order preparation. Signing/delivery are later PRs.
 from autogpt.coaching.work_orders import router as _work_orders_router  # noqa: E402
 app.include_router(_work_orders_router)
+from autogpt.coaching.admin_lead_orders import router as _admin_lead_orders_router  # noqa: E402
+app.include_router(_admin_lead_orders_router)
 
 # ── Rate limiting (slowapi) ───────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)

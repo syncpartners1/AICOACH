@@ -267,7 +267,7 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
     </div>
   </div>
 
-  <p style="margin:12px 0"><a href="/admin/work-orders">טיוטות הזמנת עבודה</a></p>
+  <p style="margin:12px 0"><a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a></p>
   <div class="section-title">{t(lang, "admin_section_members")} ({len(users)})</div>
   <div class="card">
     <div class="tbl-wrap">

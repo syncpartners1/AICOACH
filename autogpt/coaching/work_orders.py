@@ -152,6 +152,14 @@ const data=await res.json();out.replaceChildren();for(const row of data.drafts){
 const p=document.createElement('p');p.textContent=row.customer_name+' | '+row.track+' | '+row.plan+' | '+(row.amount_agorot/100).toFixed(2)+' ₪ | '+row.status;out.append(p)}}
 if(!data.drafts.length)out.textContent='אין טיוטות';}}catch(err){{out.textContent='לא ניתן לטעון טיוטות: '+err.message}}}}
 recentDrafts();
+const leadId=new URLSearchParams(location.search).get('lead');
+if(leadId){{fetch('/admin/coaching-leads/'+encodeURIComponent(leadId)).then(r=>{{if(!r.ok)throw Error('Lead not found');return r.json()}}).then(lead=>{{
+form.elements.customer_name.value=lead.contact_name||lead.name||'';
+form.elements.customer_email.value=lead.contact_email||lead.email||'';
+form.elements.customer_phone.value=lead.mobile_phone||'';
+const p=document.createElement('p');p.textContent='פרטי ליד מוצעים לעריכה לאחר QMark. יש לבדוק אותם ולהשלים כתובת, מזהה ותנאי הזמנה לפני שמירה.';
+document.getElementById('order').before(p);
+}}).catch(()=>{{document.getElementById('message').textContent='לא ניתן לטעון פרטי ליד; מלא ידנית.'}})}}
 form.addEventListener('submit',async e=>{{e.preventDefault();const data=Object.fromEntries(new FormData(form));
 const out=document.getElementById('message');out.textContent='שומר...';
 try{{const res=await fetch('/admin/work-orders/drafts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
