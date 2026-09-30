@@ -2638,6 +2638,29 @@ def chat_manifest() -> Response:
                         headers={"Cache-Control": "public, max-age=3600"})
 
 
+@app.get("/chat/offline", response_class=HTMLResponse, include_in_schema=False)
+def chat_offline() -> HTMLResponse:
+    """Public, generic offline shell: no private chat or profile is embedded."""
+    return HTMLResponse(content='''<!DOCTYPE html><html lang="he" dir="rtl"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Change Navigator - offline</title>
+<style>body{font-family:system-ui,sans-serif;background:#f0f4f8;color:#1a2b4a;
+min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px}
+main{max-width:420px}button{padding:12px 20px;background:#1a2b4a;color:#fff;
+border:0;border-radius:8px;font:inherit}</style></head><body><main>
+<h1>אין חיבור לאינטרנט</h1><p>הצ'אט אינו זמין כרגע. ההודעות שלך אינן נשמרות למצב לא מקוון.</p>
+<button onclick="location.reload()">נסה שוב</button>
+</main></body></html>''', headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/chat/sw.js", include_in_schema=False)
+def chat_service_worker() -> Response:
+    """Offline-only shell. Never cache authenticated HTML or API responses."""
+    from autogpt.coaching.chat_pwa import CHAT_SW
+    return Response(content=CHAT_SW, media_type="application/javascript",
+                    headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/chat"})
+
+
 @app.get("/chat", response_class=HTMLResponse, include_in_schema=False)
 def chat_page(request: Request) -> Response:
     """Web coaching chat for logged-in users."""
@@ -2743,7 +2766,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   <div class="hdr-right">
     <button class="lang-btn" id="langBtn" onclick="toggleLang()">עב</button>
     <a href="/dashboard/{user.user_id}" id="dashLink">Dashboard</a>
-    <a href="/user/logout" id="logoutLink">Sign out</a>
+    <a href="/user/logout" id="logoutLink" onclick="logoutChat(event)">Sign out</a>
   </div>
 </div>
 
@@ -3063,6 +3086,20 @@ document.getElementById('msg-input').addEventListener('input', function() {{
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 }});
 
+// /chat HTML is private and network-only; the worker stores only public assets.
+if ('serviceWorker' in navigator) {{
+  navigator.serviceWorker.register('/chat/sw.js', {{ scope: '/chat' }}).catch(() => {{}});
+}}
+async function logoutChat(event) {{
+  event.preventDefault();
+  try {{
+    const registrations = await navigator.serviceWorker?.getRegistrations();
+    await Promise.all((registrations || []).filter(r => new URL(r.scope).pathname === '/chat')
+      .map(r => r.unregister()));
+    await caches.delete('chat-shell-v1');
+  }} catch(e) {{ /* Logout must proceed even if storage is unavailable. */ }}
+  location.assign('/user/logout');
+}}
 applyLang();
 refreshState();
 </script>
