@@ -2317,6 +2317,7 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
   {error_html}{sign_in_block}
   <div class="divider">New to the program?</div>
   <div class="register-link"><a href="/register">Register here</a></div>
+  <a href="/chat/install" class="back-link">הוספה למסך הבית / Install app</a>
   <a href="/" class="back-link">← Back to home</a>
 </div>
 </body></html>""")
@@ -2671,6 +2672,12 @@ def chat_service_worker() -> Response:
     from autogpt.coaching.chat_pwa import CHAT_SW
     return Response(content=CHAT_SW, media_type="application/javascript",
                     headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/chat"})
+
+
+@app.get("/chat/install", response_class=HTMLResponse, include_in_schema=False)
+def pwa_install_guide() -> HTMLResponse:
+    from autogpt.coaching.pwa_install_ui import INSTALL_HTML
+    return HTMLResponse(content=INSTALL_HTML)
 
 
 @app.get("/chat", response_class=HTMLResponse, include_in_schema=False)
