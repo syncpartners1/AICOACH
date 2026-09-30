@@ -283,10 +283,11 @@ def render_dashboard(
     style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;
            padding:6px 8px;margin-bottom:8px">
   <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">{t(lang, 'db_session_notes_label')}</label>
-  <label>{t(lang, "db_meeting_number")} <input type="number" id="new_sess_number" min="1" max="7"></label>
+  <label>{t(lang, "db_meeting_number")} <input type="number" id="new_sess_number" min="1"></label>
   <label style="display:block">{t(lang, "db_assignments_entry")}</label>
   <textarea id="new_sess_actions" maxlength="5010" style="width:100%;min-height:80px;box-sizing:border-box"></textarea>
   <label>{t(lang, "db_leading_value")} <input id="new_sess_value" maxlength="500"></label>
+  <label style="display:block">{t(lang, "db_session_focus_entry")} <input id="new_sess_focus" maxlength="500" style="width:100%;box-sizing:border-box"></label>
   <p>{t(lang, "db_coach_agreement_notice")}</p>
   <textarea id="new_sess_notes" placeholder="{t(lang, 'db_session_notes_placeholder')}"
     style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
@@ -476,6 +477,7 @@ async function addSession(userId) {{
   const actionLines = document.getElementById('new_sess_actions').value.split('\\n').map(x => x.trim()).filter(Boolean);
   const meeting = document.getElementById('new_sess_number').value;
   const value = document.getElementById('new_sess_value').value;
+  const focus = document.getElementById('new_sess_focus').value;
   if (actionLines.length > 10 || actionLines.some(x => x.length > 500) || (actionLines.length && !meeting)) {{ alert('{t(lang, "db_assignment_invalid")}'); return; }}
   if (!date) {{ alert('{t(lang, "db_session_date_required")}'); return; }}
   const res = await fetch('/admin/users/' + userId + '/sessions', {{
@@ -483,9 +485,10 @@ async function addSession(userId) {{
     headers: {{'Content-Type':'application/json'}},
     credentials: 'include',
     body: JSON.stringify({{session_date: date, summary_for_coach: summary, coach_notes: notes, meeting_number: meeting ? Number(meeting) : null,
-      leading_value_snapshot: value, assignments: actionLines.map(description => ({{description}}))}}),
+      leading_value_snapshot: value, focus_goal: focus,
+      assignments: actionLines.map(description => ({{description}}))}}),
   }});
-  if (!res.ok) {{ alert('{t(lang, "db_session_save_failed")}'); return; }}
+  if (!res.ok) {{ let errDetail = ''; try {{ const errData = await res.json(); errDetail = String(errData.detail || ''); }} catch (e) {{}} alert('{t(lang, "db_session_save_failed")}' + (errDetail ? ' - ' + errDetail.slice(0,200) : '')); return; }}
   const data = await res.json();
   if (data.proposed_okr_changes && data.proposed_okr_changes.length > 0) {{
     pendingOkrChanges = data.proposed_okr_changes;
