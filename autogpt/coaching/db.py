@@ -6,7 +6,6 @@ import logging
 import os
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
@@ -19,15 +18,8 @@ _pool: Optional[ThreadedConnectionPool] = None
 
 
 def get_db_url() -> str:
-    """Get the active PostgreSQL connection URL."""
-    url = (coaching_config.database_url or os.getenv("DATABASE_URL", "")).strip()
-    if not url and coaching_config.supabase_url:
-        # Construct direct postgres URL from Supabase URL if database_url not set
-        parsed = urlparse(coaching_config.supabase_url)
-        project_ref = parsed.netloc.split('.')[0]
-        password = coaching_config.supabase_service_key
-        url = f"postgresql://postgres:{password}@db.{project_ref}.supabase.co:5432/postgres"
-    return url.strip()
+    """Cloud SQL is the sole runtime DB target; never derive a Supabase URL."""
+    return (coaching_config.database_url or os.getenv("DATABASE_URL", "")).strip()
 
 
 def get_pool() -> ThreadedConnectionPool:

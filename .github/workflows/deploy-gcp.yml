@@ -134,6 +134,7 @@ jobs:
             --allow-unauthenticated
             --service-account=main-app-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
             --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:change-navigator-db
+            --remove-secrets=SUPABASE_URL,SUPABASE_SERVICE_KEY
           secrets: |
             GEMINI_API_KEY=GEMINI_API_KEY:latest
             COACHING_API_KEY=COACHING_API_KEY:latest
