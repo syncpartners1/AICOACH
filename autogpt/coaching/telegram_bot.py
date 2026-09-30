@@ -62,6 +62,7 @@ from autogpt.coaching.commands.flows import (
 )
 from autogpt.coaching.i18n import detect_lang, t
 from autogpt.coaching.utils import markdown_to_html
+from autogpt.coaching.telegram_format import telegram_html
 
 logger = logging.getLogger(__name__)
 
@@ -674,7 +675,7 @@ async def _start_coaching_session(
     async with _typing_while(context.bot, update.effective_chat.id):
         opening = await asyncio.to_thread(session.open)
     _persist_session(tg_id)  # save immediately so restart doesn't lose the new session
-    await update.message.reply_text(markdown_to_html(opening), parse_mode="HTML")
+    await update.message.reply_text(telegram_html(opening), parse_mode="HTML")
     await update.message.reply_text(t(lang, "session_tip"), parse_mode="HTML")
 
 
@@ -815,7 +816,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             _save_session_from_reply(tg_id, session, reply)
         reply_clean = _strip_json_blocks(reply)
         if reply_clean:
-            html_reply = markdown_to_html(reply_clean)
+            html_reply = telegram_html(reply_clean)
             await update.message.reply_text(html_reply, parse_mode="HTML")
         _start_inactivity_timer(context.bot, update.effective_chat.id, tg_id, lang)
     except Exception:
