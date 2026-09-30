@@ -344,23 +344,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await _start_coaching_session(update, context, tg_id, user.user_id, user.name, lang)
         return CHATTING
 
-    # Non-registered users → sales funnel (strategic micro-assessment)
+    # Non-registered users → invite to the lead questionnaire (self-hosted qualify form)
     try:
         from autogpt.coaching.storage import upsert_funnel_lead
         upsert_funnel_lead(tg_id, update.effective_user.username or "")
     except Exception:
         logger.exception("Failed to upsert funnel lead for tg_id=%s", tg_id)
+    qualify_path = "qualify-form" if lang == "he" else "qualify-form-en"
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "funnel_btn_start"), callback_data="funnel_start")],
+        [InlineKeyboardButton(t(lang, "start_qualify_btn"),
+                              url=f"{coaching_config.public_url}/{qualify_path}")],
         [InlineKeyboardButton(t(lang, "funnel_btn_register"),
                               url=f"{coaching_config.public_url}/register")],
     ])
     await update.message.reply_text(
-        t(lang, "funnel_welcome"),
+        t(lang, "start_qualify_invite"),
         reply_markup=keyboard,
         parse_mode="HTML",
     )
-    return FUNNEL_Q1
+    return ConversationHandler.END
 
 
 async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -371,7 +373,7 @@ async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if not user:
         await update.message.reply_text(
-            "🎯 Use /start for your Strategic Alignment Check.",
+            "🎯 Use /start to get started.",
         )
         return ConversationHandler.END
 
@@ -1854,7 +1856,7 @@ async def register_command_menu(application: Application) -> None:
     try:
         from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
         _user_commands = [
-            BotCommand("start",       "Begin Strategic Alignment Check"),
+            BotCommand("start",       "Get started"),
             BotCommand("new_session", "Start a new coaching session"),
             BotCommand("done",        "End & save current session"),
             BotCommand("tasks", "Show agreed assignments"),
