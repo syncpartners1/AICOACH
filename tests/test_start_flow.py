@@ -1,5 +1,5 @@
 """Start-flow decisions: /start opens a session for linked trainees;
-strangers keep the alignment quiz and also get a web-register button."""
+strangers get the lead-questionnaire invite and a web-register button."""
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -55,17 +55,30 @@ def test_start_pending_user_gets_status_message_not_session():
     begin.assert_not_awaited()
 
 
-def test_start_stranger_gets_quiz_and_register_button():
+def test_start_stranger_gets_qualify_invite_and_register_button():
     with patch.object(telegram_bot, "_get_linked_user", return_value=None), \
          patch("autogpt.coaching.storage.upsert_funnel_lead"), \
          patch.object(telegram_bot, "_start_coaching_session", new=AsyncMock()) as begin:
         event = _event(tg_id=999)
         result = asyncio.run(telegram_bot.start(event, _ctx()))
-    assert result == telegram_bot.FUNNEL_Q1
+    assert result == ConversationHandler.END
     begin.assert_not_awaited()
     markup = event.message.reply_text.call_args.kwargs["reply_markup"]
     buttons = [btn for row in markup.inline_keyboard for btn in row]
     assert len(buttons) == 2
-    assert buttons[0].callback_data == "funnel_start"
+    assert "/qualify-form" in buttons[0].url
+    assert buttons[0].url.startswith("http")
     assert buttons[1].url.endswith("/register")
     assert buttons[1].url.startswith("http")
+
+
+def test_start_stranger_hebrew_gets_hebrew_qualify_form():
+    with patch.object(telegram_bot, "_get_linked_user", return_value=None), \
+         patch("autogpt.coaching.storage.upsert_funnel_lead"), \
+         patch.object(telegram_bot, "detect_lang", return_value="he"), \
+         patch.object(telegram_bot, "_start_coaching_session", new=AsyncMock()):
+        event = _event(tg_id=999)
+        asyncio.run(telegram_bot.start(event, _ctx()))
+    markup = event.message.reply_text.call_args.kwargs["reply_markup"]
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    assert buttons[0].url.endswith("/qualify-form")

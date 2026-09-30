@@ -497,6 +497,14 @@ S_EN = {
         "Before we start — 3 short questions to help me understand where you are and what matters to you.\n\n"
         "<i>Ready to start?</i>"
     ),
+    "start_qualify_invite": (
+        "👋 <b>Change Navigator - Adi Ben Nesher's personal, financial and business coaching program</b>\n\n"
+        "I'm Adi Ben Nesher — a personal and business coach, guiding people through meaningful change for over 25 years.\n\n"
+        "The first step is a short questionnaire (4 minutes, 7 questions) so I can get to know you and where you stand. "
+        "Once you complete it, I'll review your answers and get back to you about the next step.\n\n"
+        "<i>Ready to start?</i>"
+    ),
+    "start_qualify_btn": "🎯 Take the readiness questionnaire",
     "funnel_btn_start": "🎯 Let's begin",
     "funnel_q1_title": "🎯 <b>Question 1 of 3</b>",
     "funnel_q1_desc": (
