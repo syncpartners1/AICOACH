@@ -185,7 +185,11 @@ def render_dashboard(
             '<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;'
             'border-radius:6px;margin-left:6px">1:1</span>'
         ) if s.is_manual else ""
-        excerpt = (s.summary_for_coach[:160] + "…") if len(s.summary_for_coach) > 160 else s.summary_for_coach
+        # Admins need the complete stored summary, not the trainee preview.
+        excerpt = (html.escape(s.summary_for_coach) if is_admin_view else
+                   (s.summary_for_coach[:160] + "…") if len(s.summary_for_coach) > 160
+                   else s.summary_for_coach)
+        summary_style = "white-space:pre-wrap;overflow-wrap:anywhere;" if is_admin_view else ""
         # Coach notes — shown read-only on user view, editable on admin view
         notes_html = ""
         if s.coach_notes and not is_admin_view:
@@ -221,7 +225,7 @@ def render_dashboard(
                      background:{dot_color}22;color:{dot_color}">{alert_label}</span>
         {session_type_badge}
       </div>
-      <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.5">{excerpt}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.5;{summary_style}">{excerpt}</div>
       {notes_html}
     </div>"""
     if not sess_html:
