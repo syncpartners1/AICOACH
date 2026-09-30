@@ -402,6 +402,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
   {hdr_actions}
 </div>
 <div class="container">
+  {'' if is_admin_view else '<p><a href="/chat/install">הוספה למסך הבית / Install app</a></p>'}
   {suspended_banner}{archived_banner}
 
   <div class="section-title">{t(lang, "db_section_week")} &mdash; {week_label}</div>

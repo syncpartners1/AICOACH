@@ -99,6 +99,7 @@ footer a{{color:#6b7280;text-decoration:none}}
   </p>
 
   <div class="cta-group">
+    <a href="/chat/install" class="btn btn-webchat" dir="rtl">הוספה למסך הבית (PWA)</a>
     {google_button}
     {telegram_button}
     <a href="/chat" class="btn btn-webchat">
