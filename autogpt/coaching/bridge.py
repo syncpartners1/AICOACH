@@ -168,8 +168,8 @@ def start_session(req: SessionRequest, _: str = Depends(verify_bridge_secret)) -
     tb._sessions[req.telegram_id] = session
     opening = session.open()
     tb._persist_session(req.telegram_id)
-    from autogpt.coaching.utils import markdown_to_html
-    return {"ok": True, "already_active": False, "message": markdown_to_html(opening)}
+    from autogpt.coaching.telegram_format import telegram_html
+    return {"ok": True, "already_active": False, "message": telegram_html(opening)}
 
 
 @router.post("/telegram/chat")
@@ -186,8 +186,8 @@ def chat(req: ChatRequest, _: str = Depends(verify_bridge_secret)) -> dict:
     tb._persist_session(req.telegram_id)
     if "[SESSION_SUMMARY_JSON]" in reply:
         tb._save_session_from_reply(req.telegram_id, session, reply)
-    from autogpt.coaching.utils import markdown_to_html
-    return {"ok": True, "reply": markdown_to_html(tb._strip_json_blocks(reply))}
+    from autogpt.coaching.telegram_format import telegram_html
+    return {"ok": True, "reply": telegram_html(tb._strip_json_blocks(reply))}
 
 
 @router.post("/telegram/session/end")
