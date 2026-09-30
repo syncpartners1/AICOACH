@@ -3,6 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, PropertyMock, patch
 
 from telegram import Update
+from telegram.ext import ConversationHandler
 
 from autogpt.coaching.telegram_bot import _build_app
 
@@ -24,7 +25,9 @@ def _update(app, text, commands):
 
 def test_pasted_commands_rejected_before_conversation():
     app = _build_app("123456789:AAE" + "x" * 32)
-    guard, conv = app.handlers[0][:2]
+    guard = app.handlers[0][0]
+    conv = next(h for h in app.handlers[0] if isinstance(h, ConversationHandler))
+    assert app.handlers[0].index(guard) < app.handlers[0].index(conv)
     with patch.object(type(app.bot), "username", new_callable=PropertyMock, return_value="testbot"):
         for text, cmds in (("/weekly\n/new_session", ["/weekly", "/new_session"]),
                            ("/weekly\n  /plan", ["/weekly", "/plan"])):

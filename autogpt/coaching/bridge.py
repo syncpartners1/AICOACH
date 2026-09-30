@@ -65,6 +65,12 @@ class ChatRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
+class TaskCommandRequest(BaseModel):
+    telegram_id: int
+    text: str = Field(min_length=1, max_length=4000)
+    update_id: Optional[int] = Field(default=None, ge=0)
+
+
 class SessionRequest(BaseModel):
     telegram_id: int
 
@@ -300,3 +306,19 @@ def admin_broadcast_targets(_: str = Depends(verify_bridge_secret)) -> dict:
         for r in rows
     ]
     return {"ok": True, "targets": targets}
+
+
+@router.post("/telegram/tasks")
+async def task_command_endpoint(req: TaskCommandRequest, _: str = Depends(verify_bridge_secret)) -> dict:
+    """External bot must explicitly route task queries here; no session required."""
+    from autogpt.coaching.commands.task_handlers import task_command
+    from autogpt.coaching.commands import CommandContext, dispatch
+    from autogpt.coaching.storage import get_user_by_telegram
+    parsed = task_command(req.text)
+    if not parsed:
+        raise HTTPException(status_code=400, detail="Unknown task command")
+    user = get_user_by_telegram(req.telegram_id)
+    ctx = CommandContext(user=user, lang=user.language if user else "he", args=parsed[1],
+                         channel="telegram", request_id=f"tg:{req.update_id}" if req.update_id is not None else None)
+    result = await dispatch(parsed[0],ctx)
+    return {"ok": True, "reply": result.text, "parse_mode": result.parse_mode}

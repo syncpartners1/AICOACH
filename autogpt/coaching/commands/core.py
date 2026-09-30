@@ -23,6 +23,7 @@ class CommandContext:
     """Words after the command, e.g. ['he'] for '/lang he'."""
     channel: str = "telegram"
     """Source channel: 'telegram' or 'pwa'."""
+    request_id: Optional[str] = None
     email: Optional[str] = None
     """Resolved contact email for commands that need it (e.g. mybookings)."""
 
@@ -96,3 +97,8 @@ register("lang", _handlers.lang_handler)
 register("myplan", _handlers.myplan_handler)
 register("mybookings", _handlers.mybookings_handler)
 register("goal", _handlers.goal_handler)
+
+from autogpt.coaching.commands import task_handlers as _tasks
+register("tasks", _tasks.tasks_handler)
+register("task_done", _tasks.task_done_handler)
+register("task_not_done", _tasks.task_not_done_handler)

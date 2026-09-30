@@ -2950,6 +2950,7 @@ async function sendMsg() {{
   input.value = '';
   input.style.height = 'auto';
   if (text.startsWith('/')) {{ handleSlash(text); return; }}
+  if (['מה המשימה שלי', 'מה המשימות שלי', 'סיימתי', 'השלמתי', 'לא השלמתי', 'לא סיימתי', 'what is my task', 'what are my tasks', 'i finished', 'i completed it'].includes(text.toLowerCase().replace(/[?!.]+$/, ''))) {{ addMsg(text, 'user'); runCommand('tasks', []); return; }}
   addMsg(text, 'user');
   if (flowActive) {{ flowMsg('text', text); return; }}
   if (!sid) return;
@@ -3006,7 +3007,7 @@ async function refreshState() {{
 async function runCommand(cmd, args) {{
   document.getElementById('sendBtn').disabled = true;
   try {{
-    const d = await api('/pwa/command', {{command: cmd, args: args}});
+    const d = await api('/pwa/command', {{command: cmd, args: args, request_id: crypto.randomUUID()}});
     addMsg(d.text, 'bot');
   }} catch(e) {{
     addMsg('Error: ' + e.message, 'sys');
@@ -3226,6 +3227,7 @@ def _pwa_command_context(request: Request) -> CommandContext:
 class PwaCommandRequest(BaseModel):
     command: str
     args: List[str] = []
+    request_id: Optional[str] = None
 
 
 class PwaFlowStartRequest(BaseModel):
@@ -3258,6 +3260,7 @@ def pwa_commands(request: Request) -> dict:
 async def pwa_command(request: Request, req: PwaCommandRequest) -> dict:
     ctx = _pwa_command_context(request)
     ctx.args = req.args
+    ctx.request_id = req.request_id
     try:
         result = await commands_dispatch(req.command, ctx)
     except KeyError:

@@ -796,11 +796,27 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 # ── Free-form chat ─────────────────────────────────────────────────────────────
 
+async def assignment_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from autogpt.coaching.commands.task_handlers import task_command
+    parsed = task_command(update.message.text or "")
+    if not parsed:
+        return
+    user = _get_linked_user(update.effective_user.id)
+    ctx = CommandContext(user=user, lang=_lang(user), args=parsed[1], channel="telegram",
+                         request_id=f"tg:{update.update_id}")
+    result = await commands_dispatch(parsed[0], ctx)
+    await update.message.reply_text(result.text, parse_mode=result.parse_mode)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     _cancel_inactivity_timer(tg_id)  # user responded — cancel any pending reminder
     user = _get_linked_user(tg_id)
     lang = _lang(user, update.message.text or "")
+    from autogpt.coaching.commands.task_handlers import task_intent
+    if task_intent(update.message.text or ""):
+        await assignment_command(update, context)
+        return CHATTING if tg_id in _sessions else ConversationHandler.END
     session = _get_or_restore_session(tg_id)
     if not session:
         await update.message.reply_text(t(lang, "no_active_session"))
@@ -1785,6 +1801,11 @@ def _build_app(token: str) -> Application:
     # Handle pasted command lists before the ConversationHandler sees the first
     # slash command. One handler per group prevents the conversation from running.
     app.add_handler(MessageHandler(filters.COMMAND & ~_SINGLE_COMMAND, reject_multi_command))
+    # Task commands are independent of chat/flow state and must not start a session.
+    app.add_handler(CommandHandler(["tasks", "task_done", "task_not_done"], assignment_command))
+    from autogpt.coaching.commands.task_handlers import TASK_QUERIES, REPORT_QUERIES
+    task_pattern = r"(?i)^(?:" + "|".join(re.escape(q) for q in TASK_QUERIES | REPORT_QUERIES) + r")[?!.]*$"
+    app.add_handler(MessageHandler(filters.Regex(task_pattern), assignment_command))
     app.add_handler(conv)
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("myplan", myplan))
@@ -1836,6 +1857,9 @@ async def register_command_menu(application: Application) -> None:
             BotCommand("start",       "Begin Strategic Alignment Check"),
             BotCommand("new_session", "Start a new coaching session"),
             BotCommand("done",        "End & save current session"),
+            BotCommand("tasks", "Show agreed assignments"),
+            BotCommand("task_done", "Report an assignment completed"),
+            BotCommand("task_not_done", "Report an assignment not completed"),
             BotCommand("plan",        "Submit your weekly plan"),
             BotCommand("weekly",      "Report weekly tasks and progress"),
             BotCommand("myplan",      "View your current week plan"),
