@@ -149,7 +149,7 @@ out.textContent='מחירון עודכן להזמנות עתידיות';}}catch(
 async function recentDrafts(){{const out=document.getElementById('drafts');
 try{{const res=await fetch('/admin/work-orders/drafts');if(!res.ok)throw Error('אין גישה');
 const data=await res.json();out.replaceChildren();for(const row of data.drafts){{
-const p=document.createElement('p');p.textContent=row.customer_name+' | '+row.track+' | '+row.plan+' | '+(row.amount_agorot/100).toFixed(2)+' ₪ | '+row.status;out.append(p)}}
+const p=document.createElement('p');p.textContent=row.customer_name+' | '+row.track+' | '+row.plan+' | '+(row.amount_agorot/100).toFixed(2)+' ₪ | '+row.status+' | ';const a=document.createElement('a');a.href='/admin/work-orders/drafts/'+row.order_id+'/prepare';a.textContent='בדיקה והכנת קישור';p.append(a);out.append(p)}}
 if(!data.drafts.length)out.textContent='אין טיוטות';}}catch(err){{out.textContent='לא ניתן לטעון טיוטות: '+err.message}}}}
 recentDrafts();
 const leadId=new URLSearchParams(location.search).get('lead');

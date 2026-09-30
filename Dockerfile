@@ -5,6 +5,11 @@ LABEL version="2.1.0"
 
 WORKDIR /app
 
+# WeasyPrint needs Pango and a Hebrew font for real RTL PDF output in slim.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 libpangoft2-1.0-0 fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install only the coaching module dependencies
 RUN pip install --no-cache-dir \
     "fastapi>=0.100.0" \
@@ -23,7 +28,8 @@ RUN pip install --no-cache-dir \
     "charset-normalizer>=3.0.0" \
     "python-telegram-bot>=20.0" \
     "APScheduler>=3.10.0" \
-    "slowapi>=0.1.5"
+    "slowapi>=0.1.5" \
+    "weasyprint>=68,<69"
 
 # Copy only what the coaching API needs
 COPY autogpt/singleton.py ./autogpt/singleton.py
