@@ -30,4 +30,4 @@ def test_chat_markup_adapts_language_without_cached_private_html():
     assert '<html lang="he" dir="rtl">' in response.text
     assert '<link rel="manifest" href="/chat/manifest.webmanifest">' in response.text
     assert 'rel="apple-touch-icon"' in response.text
-    assert "serviceWorker.register" not in response.text
+    assert "register('/chat/sw.js', { scope: '/chat' })" in response.text
