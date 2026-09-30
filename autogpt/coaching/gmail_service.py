@@ -16,8 +16,7 @@ BOOKING_URL = os.getenv("SCHEDULER_URL", "https://change-navigator-scheduler-972
 
 def _send(msg: MIMEMultipart) -> None:
     if not SMTP_PASS:
-        logger.error("SMTP_PASSWORD not set — email skipped")
-        return
+        raise RuntimeError("SMTP_PASSWORD not configured")
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as smtp:
         smtp.ehlo(); smtp.starttls(); smtp.ehlo()
         smtp.login(SMTP_USER, SMTP_PASS)
@@ -29,7 +28,7 @@ def _send(msg: MIMEMultipart) -> None:
 def send_qualify_notification(
     lead_name: str, lead_email: str, challenge: str, outcome: str,
     yes_count: int, verdict: str, clickup_url: str, booking_url: str
-) -> None:
+) -> bool:
     """Notify Adi when a coaching lead submits the qualification form."""
     label = {
         "PASS":       "? PASS — all 5 Yes — send booking link",
@@ -58,9 +57,11 @@ ClickUp:    {clickup_url or 'FAILED — check logs'}
     msg.attach(MIMEText(body, "plain", "utf-8"))
     try:
         _send(msg)
-        logger.info(f"Adi notification sent: {lead_name} ({verdict})")
+        logger.info("Coach notification accepted by SMTP")
+        return True
     except Exception as e:
-        logger.error(f"Adi notification failed: {e}")
+        logger.error("Coach notification SMTP failed (%s)", type(e).__name__)
+        return False
 
 
 def send_lead_response(lead_name: str, lead_email: str, verdict: str) -> None:

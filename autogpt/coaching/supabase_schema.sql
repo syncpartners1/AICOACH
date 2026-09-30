@@ -555,3 +555,8 @@ CREATE TABLE IF NOT EXISTS coaching_lead_submissions (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_coaching_leads_state ON coaching_lead_submissions(clickup_state, created_at);
+
+-- Track coach notification separately from ClickUp. "accepted" means SMTP accepted,
+-- not mailbox delivery. Pending rows need manual reconciliation after a process loss.
+ALTER TABLE coaching_lead_submissions
+  ADD COLUMN IF NOT EXISTS coach_email_state TEXT NOT NULL DEFAULT 'pending';

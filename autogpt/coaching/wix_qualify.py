@@ -172,6 +172,40 @@ def notify_clickup_failure(submission_id: str) -> bool:
         return False
 
 
+def _record_coach_email_result(submission_id: str, state: str) -> None:
+    from autogpt.coaching.db import execute_query
+    execute_query("""
+        UPDATE coaching_lead_submissions
+        SET coach_email_state = %(state)s, updated_at = now()
+        WHERE submission_id = %(id)s
+    """, {'id': submission_id, 'state': state}, commit=True)
+
+
+def notify_coach_email_failure(submission_id: str) -> bool:
+    """Alert the existing admin Telegram chat; do not include lead details."""
+    token, admin_id = os.getenv('TELEGRAM_BOT_TOKEN', ''), os.getenv('ADMIN_TELEGRAM_ID', '')
+    if not token or not admin_id:
+        logger.error('Coach email failure alert not configured for submission %s', submission_id)
+        return False
+    try:
+        response = requests.post(
+            f'https://api.telegram.org/bot{token}/sendMessage',
+            json={'chat_id': admin_id,
+                  'text': f'מייל התראה על ליד אימון לא אושר לשליחה. בדקו ידנית. מזהה פנייה: {submission_id}'},
+            timeout=10,
+        )
+        response.raise_for_status()
+        if not response.json().get('ok'):
+            raise ValueError('Telegram rejected alert')
+        logger.info('Coach email failure alert delivered for submission %s', submission_id)
+        return True
+    except Exception as exc:
+        # Never log the request URL or response body: they may include the bot token.
+        logger.error('Coach email failure alert failed for submission %s (%s)',
+                     submission_id, type(exc).__name__)
+        return False
+
+
 def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: str, submission_id: str):
     """Slow network work. The saved row survives process loss and can be reconciled."""
     logger.info("Processing coaching submission %s", submission_id)
@@ -188,8 +222,9 @@ def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: 
 
     from autogpt.coaching.gmail_service import send_qualify_notification, send_lead_response
 
+    email_accepted = False
     try:
-        send_qualify_notification(
+        email_accepted = send_qualify_notification(
             lead_name    = payload.q8_name,
             lead_email   = payload.q9_email,
             challenge    = payload.q1_challenge,
@@ -201,9 +236,18 @@ def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: 
             clickup_url  = clickup or "",
             booking_url  = SCHEDULER_URL,
         )
-        logger.info(f"Coach notification sent for {payload.q8_name}")
-    except Exception as e:
-        logger.error(f"Failed to send coach notification for {payload.q8_name}: {e}")
+    except Exception as exc:
+        logger.error('Coach notification failed for submission %s (%s)',
+                     submission_id, type(exc).__name__)
+    try:
+        _record_coach_email_result(submission_id, 'accepted' if email_accepted else 'failed')
+    except Exception:
+        logger.exception('Could not record coach email status for submission %s', submission_id)
+    if email_accepted:
+        logger.info('Coach notification accepted by SMTP for submission %s', submission_id)
+    else:
+        logger.error('Coach notification failed for submission %s; no automatic resend', submission_id)
+        notify_coach_email_failure(submission_id)
 
     try:
         send_lead_response(
