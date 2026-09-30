@@ -383,6 +383,9 @@ class TestManualSessionEndpoint(unittest.TestCase):
             session_date="2026-04-05",
             coach_notes="Discussed Q2 OKRs",
             summary_for_coach="Strong session",
+            assignments=[],
+            meeting_number=None,
+            leading_value_snapshot="",
         )
 
     def test_requires_auth(self):

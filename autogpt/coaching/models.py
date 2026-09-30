@@ -233,6 +233,11 @@ class PastSession(BaseModel):
     summary_for_coach: str
     coach_notes: str = ""
     is_manual: bool = False
+    focus_goal: str = ""
+    key_results: List[KeyResult] = []
+    assignments: List[Dict[str, Any]] = []
+    leading_value_snapshot: str = ""
+    meeting_number: Optional[int] = None
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────

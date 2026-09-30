@@ -190,6 +190,34 @@ def render_dashboard(
                    (s.summary_for_coach[:160] + "…") if len(s.summary_for_coach) > 160
                    else s.summary_for_coach)
         summary_style = "white-space:pre-wrap;overflow-wrap:anywhere;" if is_admin_view else ""
+        structured_html = ""
+        if is_admin_view:
+            focus = html.escape(s.focus_goal) if s.focus_goal else t(lang, "db_session_missing")
+            kr_items = "".join(
+                f'<li>{html.escape(kr.description)} <bdi>{kr.status_pct}%</bdi></li>'
+                for kr in s.key_results
+            )
+            kr_html = (f'<ul style="padding-inline-start:20px">{kr_items}</ul>' if kr_items
+                       else f'<p>{t(lang, "db_session_missing")}</p>')
+            action_items = "".join(
+                f'<li>{html.escape(a["description"])}'
+                f' <small>({t(lang, "db_agreement_" + a["agreement_source"])})</small>'
+                f'<br>{t(lang, "db_action_" + ("done" if a.get("completed") else "not_done")) if a.get("completed") is not None else t(lang, "db_action_unreported")}'
+                f'{(" · " + html.escape(str(a["reported_at"]))) if a.get("reported_at") else ""}'
+                f'{(" · " + html.escape(str(a["due_date"]))) if a.get("due_date") else ""}</li>'
+                for a in s.assignments
+            )
+            action_html = (f'<ul style="padding-inline-start:20px">{action_items}</ul>' if action_items
+                           else f'<p>{t(lang, "db_session_snapshot_missing")}</p>')
+            value_html = html.escape(s.leading_value_snapshot) if s.leading_value_snapshot else t(lang, "db_session_missing")
+            structured_html = f'''<section style="margin-top:10px;padding:10px;background:#eef2ff;border-radius:6px;overflow-wrap:anywhere">
+<strong>{t(lang, "db_session_structured")}</strong>
+<p style="white-space:pre-wrap"><strong>{t(lang, "db_session_focus")}:</strong> {focus}</p>
+<strong>{t(lang, "db_session_krs")}</strong>{kr_html}
+<strong>{t(lang, "db_session_actions_value")}</strong>{action_html}
+<p>{t(lang, "db_leading_value")}: {value_html}</p>
+<p>{t(lang, "db_reminders_off")}</p>
+</section>'''
         # Coach notes — shown read-only on user view, editable on admin view
         notes_html = ""
         if s.coach_notes and not is_admin_view:
@@ -203,6 +231,7 @@ def render_dashboard(
             escaped_notes = html.escape(s.coach_notes)
             notes_html = f"""
 <div style="margin-top:8px">
+  <label for="notes_{s.session_id}" style="display:block;font-size:12px;margin-bottom:4px">{t(lang, "db_session_coach_notes")}</label>
   <textarea id="notes_{s.session_id}"
     style="width:100%;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
            resize:vertical;min-height:56px;color:#374151"
@@ -226,6 +255,7 @@ def render_dashboard(
         {session_type_badge}
       </div>
       <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.5;{summary_style}">{excerpt}</div>
+      {structured_html}
       {notes_html}
     </div>"""
     if not sess_html:
@@ -253,6 +283,11 @@ def render_dashboard(
     style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;
            padding:6px 8px;margin-bottom:8px">
   <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">{t(lang, 'db_session_notes_label')}</label>
+  <label>{t(lang, "db_meeting_number")} <input type="number" id="new_sess_number" min="1" max="7"></label>
+  <label style="display:block">{t(lang, "db_assignments_entry")}</label>
+  <textarea id="new_sess_actions" maxlength="5010" style="width:100%;min-height:80px;box-sizing:border-box"></textarea>
+  <label>{t(lang, "db_leading_value")} <input id="new_sess_value" maxlength="500"></label>
+  <p>{t(lang, "db_coach_agreement_notice")}</p>
   <textarea id="new_sess_notes" placeholder="{t(lang, 'db_session_notes_placeholder')}"
     style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;
            resize:vertical;min-height:72px;margin-bottom:10px"></textarea>
@@ -437,12 +472,17 @@ async function addSession(userId) {{
   const date = document.getElementById('new_sess_date').value;
   const summary = document.getElementById('new_sess_summary').value;
   const notes = document.getElementById('new_sess_notes').value;
+  const actionLines = document.getElementById('new_sess_actions').value.split('\\n').map(x => x.trim()).filter(Boolean);
+  const meeting = document.getElementById('new_sess_number').value;
+  const value = document.getElementById('new_sess_value').value;
+  if (actionLines.length > 10 || actionLines.some(x => x.length > 500) || (actionLines.length && !meeting)) {{ alert('{t(lang, "db_assignment_invalid")}'); return; }}
   if (!date) {{ alert('{t(lang, "db_session_date_required")}'); return; }}
   const res = await fetch('/admin/users/' + userId + '/sessions', {{
     method: 'POST',
     headers: {{'Content-Type':'application/json'}},
     credentials: 'include',
-    body: JSON.stringify({{session_date: date, summary_for_coach: summary, coach_notes: notes}}),
+    body: JSON.stringify({{session_date: date, summary_for_coach: summary, coach_notes: notes, meeting_number: meeting ? Number(meeting) : null,
+      leading_value_snapshot: value, assignments: actionLines.map(description => ({{description}}))}}),
   }});
   if (!res.ok) {{ alert('{t(lang, "db_session_save_failed")}'); return; }}
   const data = await res.json();
