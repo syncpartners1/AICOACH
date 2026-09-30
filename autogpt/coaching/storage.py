@@ -431,18 +431,30 @@ def _as_date(value: str | date) -> date:
 
 # ── History ───────────────────────────────────────────────────────────────────
 
-def get_past_sessions(user_id: str, limit: int = 5) -> List[PastSession]:
+def get_past_sessions(user_id: str, limit: int = 5, include_structured: bool = False) -> List[PastSession]:
     """Return the most recent session summaries for a user."""
     db = _get_client()
     rows = (
         db.table("coaching_sessions")
-        .select("session_id,timestamp,alert_level,summary_for_coach,coach_notes,is_manual")
+        .select("session_id,timestamp,alert_level,summary_for_coach,coach_notes,is_manual"
+                + (",focus_goal,meeting_number,leading_value_snapshot" if include_structured else ""))
         .eq("user_id", user_id)
         .order("timestamp", desc=True)
         .limit(limit)
         .execute()
         .data or []
     )
+    # Session-specific KR snapshots, never the current master OKR values.
+    snapshots = {}
+    if include_structured:
+        from autogpt.coaching.session_assignments import list_actions
+        for row in rows:
+            snapshots[row["session_id"]] = [
+                KeyResult(**kr) for kr in (
+                    db.table("key_results").select("kr_id,description,status_pct,status_color")
+                    .eq("session_id", row["session_id"]).order("kr_id").execute().data or []
+                )
+            ]
     return [
         PastSession(
             session_id=r["session_id"],
@@ -451,6 +463,11 @@ def get_past_sessions(user_id: str, limit: int = 5) -> List[PastSession]:
             summary_for_coach=r.get("summary_for_coach") or "",
             coach_notes=r.get("coach_notes") or "",
             is_manual=r.get("is_manual") or False,
+            focus_goal=(r.get("focus_goal") or "") if include_structured else "",
+            key_results=snapshots.get(r["session_id"], []),
+            assignments=list_actions(user_id, r["session_id"]) if include_structured else [],
+            leading_value_snapshot=(r.get("leading_value_snapshot") or "") if include_structured else "",
+            meeting_number=r.get("meeting_number") if include_structured else None,
         )
         for r in rows
     ]
@@ -467,8 +484,31 @@ def create_manual_session(
     session_date: str,
     coach_notes: str = "",
     summary_for_coach: str = "",
+    assignments=None, meeting_number=None, leading_value_snapshot="",
 ) -> str:
     """Create a manual coaching session record (in-person / video call) without a bot conversation."""
+    from autogpt.coaching.session_assignments import validate_actions, insert_actions
+    actions = validate_actions(assignments or [])
+    if meeting_number is not None and (type(meeting_number) is not int or not 1 <= meeting_number <= 7):
+        raise ValueError("Meeting number must be 1 to 7")
+    if actions and meeting_number is None:
+        raise ValueError("Meeting number required for 1:1 assignments")
+    if actions:
+        # Save the meeting and its coach-recorded agreements atomically.
+        from autogpt.coaching.db import get_db_cursor
+        session_id = str(uuid.uuid4())
+        client_id = f"admin_manual_{user_id}"
+        with get_db_cursor(commit=True) as cur:
+            cur.execute("INSERT INTO clients(client_id,name) VALUES (%s,%s) ON CONFLICT(client_id) DO NOTHING",
+                        (client_id, "Admin Manual"))
+            cur.execute("""INSERT INTO coaching_sessions(session_id,user_id,client_id,timestamp,is_manual,
+                coach_notes,summary_for_coach,alert_level,alert_reason,focus_goal,mood_indicator,
+                environmental_changes,meeting_number,leading_value_snapshot)
+                VALUES (%s,%s,%s,%s,true,%s,%s,'green','','','','',%s,%s)""",
+                (session_id,user_id,client_id,f"{session_date}T12:00:00",coach_notes,summary_for_coach,
+                 meeting_number,leading_value_snapshot))
+            insert_actions(cur,session_id,user_id,actions,"coach_recorded")
+        return session_id
     db = _get_client()
     session_id = str(uuid.uuid4())
     client_id = f"admin_manual_{user_id}"
@@ -593,6 +633,10 @@ def save_session(summary: SessionSummary) -> None:
     if summary.okr_changes and summary.user_id:
         apply_okr_changes(summary.user_id, summary.okr_changes)
     if summary.success_plan_changes and summary.user_id:
+        from autogpt.coaching.session_assignments import save_bot_actions
+        save_bot_actions(summary.session_id, summary.user_id,
+                         summary.success_plan_changes.get("weekly_actions") or [],
+                         summary.success_plan_changes.get("leading_value"))
         current = get_coaching_program(summary.user_id).get("plan_json") or {}
         if isinstance(current, str):
             current = json.loads(current)

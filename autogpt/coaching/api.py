@@ -1,5 +1,6 @@
 """FastAPI application for the ABN Consulting AI Co-Navigator."""
 from __future__ import annotations
+from datetime import date
 
 import asyncio
 import base64
@@ -21,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import Field, BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -1121,7 +1122,7 @@ def user_dashboard(
     parsed_week = _date.fromisoformat(week_start) if week_start else _current_week_start()
     objectives = get_user_objectives(user_id)
     weekly_plan = get_weekly_plan(user_id, parsed_week)
-    past_sessions = get_past_sessions(user_id, limit=5)
+    past_sessions = get_past_sessions(user_id, limit=5, include_structured=is_admin_view)
     from autogpt.coaching.weekly_reports import list_weekly_reports
     weekly_reports = list_weekly_reports(user_id)
     program = get_coaching_program(user_id)
@@ -1788,10 +1789,18 @@ class _SessionNotesBody(BaseModel):
     coach_notes: str
 
 
+class _AssignmentInput(BaseModel):
+    description: str = Field(min_length=1, max_length=500)
+    due_date: Optional[date] = None
+
+
 class _ManualSessionBody(BaseModel):
     session_date: str  # ISO date string e.g. "2026-04-05"
     coach_notes: str = ""
     summary_for_coach: str = ""
+    meeting_number: Optional[int] = Field(default=None, ge=1, le=7)
+    assignments: List[_AssignmentInput] = Field(default_factory=list, max_length=10)
+    leading_value_snapshot: str = Field(default="", max_length=500)
 
 
 @app.put("/admin/sessions/{session_id}/notes", summary="Admin: add/update coach notes on a session")
@@ -1817,6 +1826,9 @@ def admin_create_manual_session(
         session_date=body.session_date,
         coach_notes=body.coach_notes,
         summary_for_coach=body.summary_for_coach,
+        assignments=[a.model_dump(mode="json") for a in body.assignments],
+        meeting_number=body.meeting_number,
+        leading_value_snapshot=body.leading_value_snapshot,
     )
     # Propose OKR mutations from the coach's summary for dashboard approval.
     # Extraction must never fail the session save - empty means "no proposals".
