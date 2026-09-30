@@ -1,4 +1,4 @@
-"""Supabase storage layer for the ABN Co-Navigator."""
+"""Cloud SQL storage layer for the ABN Co-Navigator."""
 from __future__ import annotations
 
 import json
@@ -36,17 +36,13 @@ from autogpt.coaching.models import (
 )
 
 
-# ── Database client (GCP Cloud SQL / PostgreSQL or Supabase) ─────────────────
+# ── Runtime database client (GCP Cloud SQL / PostgreSQL) ────────────────────
 
 def _get_client():
-    if coaching_config.database_url or os.getenv("DATABASE_URL"):
-        from autogpt.coaching.db import PGClient
-        return PGClient()
-    if coaching_config.supabase_url and coaching_config.supabase_service_key:
-        from supabase import create_client  # lazy import
-        return create_client(coaching_config.supabase_url, coaching_config.supabase_service_key)
-    # Fall back to PGClient
-    from autogpt.coaching.db import PGClient
+    """Fail closed on missing Cloud SQL config; never select a second datastore."""
+    from autogpt.coaching.db import PGClient, get_db_url
+    if not get_db_url():
+        raise RuntimeError("DATABASE_URL is required for coaching storage")
     return PGClient()
 
 

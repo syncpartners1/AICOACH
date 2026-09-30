@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from typing import Any, Dict, List
 
 from supabase import create_client
 
-from autogpt.coaching.config import coaching_config
 from autogpt.coaching.db import execute_query, get_db_cursor, init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -32,7 +32,7 @@ TABLES_IN_ORDER = [
 
 def migrate():
     """Extract all records from Supabase and insert into GCP Cloud SQL."""
-    if not coaching_config.supabase_url or not coaching_config.supabase_service_key:
+    if not os.getenv("SUPABASE_URL", "") or not os.getenv("SUPABASE_SERVICE_KEY", ""):
         logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set to read source data.")
         sys.exit(1)
 
@@ -40,7 +40,7 @@ def migrate():
     init_db()
 
     logger.info("Step 2: Connecting to Supabase source...")
-    sp_client = create_client(coaching_config.supabase_url, coaching_config.supabase_service_key)
+    sp_client = create_client(os.getenv("SUPABASE_URL", ""), os.getenv("SUPABASE_SERVICE_KEY", ""))
 
     total_migrated = 0
 
