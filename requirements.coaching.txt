@@ -17,3 +17,5 @@ charset-normalizer>=3.0.0
 slowapi>=0.1.9
 python-telegram-bot>=20.0
 APScheduler>=3.10.0
+
+weasyprint>=68,<69  # signed work-order PDF, supports Hebrew RTL
