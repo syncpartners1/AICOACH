@@ -485,12 +485,13 @@ def create_manual_session(
     coach_notes: str = "",
     summary_for_coach: str = "",
     assignments=None, meeting_number=None, leading_value_snapshot="",
+    focus_goal: str = "",
 ) -> str:
     """Create a manual coaching session record (in-person / video call) without a bot conversation."""
     from autogpt.coaching.session_assignments import validate_actions, insert_actions
     actions = validate_actions(assignments or [])
-    if meeting_number is not None and (type(meeting_number) is not int or not 1 <= meeting_number <= 7):
-        raise ValueError("Meeting number must be 1 to 7")
+    if meeting_number is not None and (type(meeting_number) is not int or meeting_number < 1):
+        raise ValueError("Meeting number must be a positive integer")
     if actions and meeting_number is None:
         raise ValueError("Meeting number required for 1:1 assignments")
     if actions:
@@ -504,9 +505,9 @@ def create_manual_session(
             cur.execute("""INSERT INTO coaching_sessions(session_id,user_id,client_id,timestamp,is_manual,
                 coach_notes,summary_for_coach,alert_level,alert_reason,focus_goal,mood_indicator,
                 environmental_changes,meeting_number,leading_value_snapshot)
-                VALUES (%s,%s,%s,%s,true,%s,%s,'green','','','','',%s,%s)""",
+                VALUES (%s,%s,%s,%s,true,%s,%s,'green','',%s,'','',%s,%s)""",
                 (session_id,user_id,client_id,f"{session_date}T12:00:00",coach_notes,summary_for_coach,
-                 meeting_number,leading_value_snapshot))
+                 focus_goal,meeting_number,leading_value_snapshot))
             insert_actions(cur,session_id,user_id,actions,"coach_recorded")
         return session_id
     db = _get_client()
@@ -523,9 +524,11 @@ def create_manual_session(
         "summary_for_coach": summary_for_coach,
         "alert_level": "green",
         "alert_reason": "",
-        "focus_goal": "",
+        "focus_goal": focus_goal,
         "mood_indicator": "",
         "environmental_changes": "",
+        "meeting_number": meeting_number,
+        "leading_value_snapshot": leading_value_snapshot,
     }).execute()
     return session_id
 

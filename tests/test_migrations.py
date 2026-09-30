@@ -386,7 +386,54 @@ class TestManualSessionEndpoint(unittest.TestCase):
             assignments=[],
             meeting_number=None,
             leading_value_snapshot="",
+            focus_goal="",
         )
+
+    def test_accepts_meeting_number_above_seven(self):
+        client = self._client()
+        with patch("autogpt.coaching.storage.create_manual_session",
+                   return_value="sess-15") as mock_create, \
+             patch("autogpt.coaching.api.get_coaching_program", return_value={"plan_json": {}}), \
+             patch("autogpt.coaching.api.save_coaching_plan"):
+            resp = client.post(
+                "/admin/users/user-99/sessions",
+                json={"session_date": "2026-09-30", "meeting_number": 15,
+                      "leading_value_snapshot": "Family first",
+                      "focus_goal": "Q4 focus"},
+                headers={"X-API-Key": "test-api-key-xyz"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_create.call_args.kwargs["meeting_number"], 15)
+        self.assertEqual(mock_create.call_args.kwargs["focus_goal"], "Q4 focus")
+
+    def test_non_empty_leading_value_auto_updates_plan(self):
+        client = self._client()
+        with patch("autogpt.coaching.storage.create_manual_session", return_value="sess-1"), \
+             patch("autogpt.coaching.api.get_coaching_program",
+                   return_value={"plan_json": {"general_goal": "Keep me"}}), \
+             patch("autogpt.coaching.api.save_coaching_plan") as mock_save:
+            resp = client.post(
+                "/admin/users/user-99/sessions",
+                json={"session_date": "2026-09-30",
+                      "leading_value_snapshot": "  Family first  "},
+                headers={"X-API-Key": "test-api-key-xyz"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        mock_save.assert_called_once_with(
+            "user-99", {"general_goal": "Keep me", "leading_value": "Family first"})
+
+    def test_blank_leading_value_does_not_clear_plan(self):
+        client = self._client()
+        with patch("autogpt.coaching.storage.create_manual_session", return_value="sess-1"), \
+             patch("autogpt.coaching.api.save_coaching_plan") as mock_save:
+            resp = client.post(
+                "/admin/users/user-99/sessions",
+                json={"session_date": "2026-09-30",
+                      "leading_value_snapshot": "   "},
+                headers={"X-API-Key": "test-api-key-xyz"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        mock_save.assert_not_called()
 
     def test_requires_auth(self):
         client = self._client()

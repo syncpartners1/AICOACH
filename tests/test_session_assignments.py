@@ -69,3 +69,37 @@ def test_manual_assignments_require_meeting_number():
     from autogpt.coaching.storage import create_manual_session
     with pytest.raises(ValueError):
         create_manual_session(UID,"2026-09-30",assignments=[{"description":"Pilot"}])
+
+
+def test_manual_session_accepts_meeting_number_above_seven():
+    from autogpt.coaching.storage import create_manual_session
+    cur=Mock()
+    with patch("autogpt.coaching.db.get_db_cursor") as factory:
+        factory.return_value.__enter__.return_value=cur
+        sid=create_manual_session(UID,"2026-09-30",
+                                  assignments=[{"description":"Pilot"}],meeting_number=15,
+                                  leading_value_snapshot="Value",focus_goal="Topic")
+    assert sid
+    params=cur.execute.call_args_list[1].args[1]
+    assert 15 in params and "Topic" in params and "Value" in params
+
+
+def test_manual_session_without_assignments_persists_structured_fields():
+    from autogpt.coaching import storage
+    db=Mock()
+    with patch.object(storage,"_get_client",return_value=db), \
+         patch.object(storage,"_ensure_client_exists"):
+        sid=storage.create_manual_session(UID,"2026-09-30",
+                                          meeting_number=15,leading_value_snapshot="Value",
+                                          focus_goal="Topic")
+    assert sid
+    payload=db.table.return_value.insert.call_args.args[0]
+    assert payload["meeting_number"]==15
+    assert payload["leading_value_snapshot"]=="Value"
+    assert payload["focus_goal"]=="Topic"
+
+
+def test_manual_session_rejects_non_positive_meeting_number():
+    from autogpt.coaching.storage import create_manual_session
+    with pytest.raises(ValueError):
+        create_manual_session(UID,"2026-09-30",meeting_number=0)

@@ -1798,9 +1798,10 @@ class _ManualSessionBody(BaseModel):
     session_date: str  # ISO date string e.g. "2026-04-05"
     coach_notes: str = ""
     summary_for_coach: str = ""
-    meeting_number: Optional[int] = Field(default=None, ge=1, le=7)
+    meeting_number: Optional[int] = Field(default=None, ge=1)
     assignments: List[_AssignmentInput] = Field(default_factory=list, max_length=10)
     leading_value_snapshot: str = Field(default="", max_length=500)
+    focus_goal: str = Field(default="", max_length=500)
 
 
 @app.put("/admin/sessions/{session_id}/notes", summary="Admin: add/update coach notes on a session")
@@ -1829,7 +1830,21 @@ def admin_create_manual_session(
         assignments=[a.model_dump(mode="json") for a in body.assignments],
         meeting_number=body.meeting_number,
         leading_value_snapshot=body.leading_value_snapshot,
+        focus_goal=body.focus_goal,
     )
+    # A non-empty session value also becomes the participant's current value.
+    # Blank input leaves the current value unchanged.
+    if body.leading_value_snapshot.strip():
+        program = get_coaching_program(user_id)
+        plan = program.get("plan_json") or {}
+        if isinstance(plan, str):
+            try:
+                plan = json.loads(plan)
+            except (ValueError, TypeError):
+                plan = {}
+        if not isinstance(plan, dict):
+            plan = {}
+        save_coaching_plan(user_id, {**plan, "leading_value": body.leading_value_snapshot.strip()})
     # Propose OKR mutations from the coach's summary for dashboard approval.
     # Extraction must never fail the session save - empty means "no proposals".
     proposed: List[Dict[str, Any]] = []
