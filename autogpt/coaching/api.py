@@ -1,5 +1,7 @@
 """FastAPI application for the ABN Consulting AI Co-Navigator."""
 from __future__ import annotations
+
+import uuid
 from datetime import date
 
 import asyncio
@@ -1438,10 +1440,54 @@ def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLRe
     except Exception:
         pending = []
 
+    try:
+        from autogpt.coaching.coach_inbox import unread_count
+        inbox_unread = unread_count()
+    except Exception:
+        logger.exception("Admin dashboard: coach inbox count unavailable")
+        inbox_unread = None
+
     html = render_admin(users=users, pending_invites=pending,
                         public_url=coaching_config.public_url, pending_users=pending_users,
-                        lang=lang)
+                        lang=lang, inbox_unread=inbox_unread)
     return HTMLResponse(content=html)
+
+
+@app.get("/admin/messages", response_class=HTMLResponse, include_in_schema=False)
+def admin_messages(request: Request, page: int = Query(default=1, ge=1, le=10000)):
+    if not _is_admin_authenticated(request):
+        return HTMLResponse(content=_login_page(), status_code=401)
+    from autogpt.coaching.coach_inbox import list_messages, unread_count, render_inbox
+    try:
+        rows, has_next = list_messages(page)
+        count = unread_count()
+    except Exception:
+        logger.exception("Admin coach inbox unavailable")
+        return HTMLResponse(render_inbox([], 0, page=page, error=True), status_code=503)
+    return HTMLResponse(render_inbox(rows, count, page=page, has_next=has_next))
+
+
+@app.post("/admin/messages/{message_id}/read", include_in_schema=False)
+def admin_message_read(message_id: uuid.UUID, request: Request):
+    # Cookie-only write with an explicit same-origin check. The app has broad
+    # CORS settings, so a custom header alone is not a CSRF boundary.
+    if not _is_admin_authenticated(request):
+        raise HTTPException(status_code=403, detail="Admin authentication required")
+    origin = request.headers.get("Origin", "")
+    expected_origin = f"{request.url.scheme}://{request.url.netloc}"
+    if origin != expected_origin:
+        raise HTTPException(status_code=403, detail="Same-origin request required")
+    if request.headers.get("X-Inbox-Action") != "mark-read":
+        raise HTTPException(status_code=403, detail="Inbox action header required")
+    from autogpt.coaching.coach_inbox import mark_read
+    try:
+        found = mark_read(message_id)
+    except Exception:
+        logger.exception("Could not mark inbox message read")
+        raise HTTPException(status_code=503, detail="Inbox update unavailable")
+    if not found:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return {"ok": True}
 
 
 @app.post("/admin/login", include_in_schema=False)
