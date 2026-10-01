@@ -72,21 +72,21 @@ class TestEnsureUser(unittest.TestCase):
         user = _profile()
         with patch("autogpt.coaching.storage.get_user_by_telegram", return_value=None), \
              patch("autogpt.coaching.storage.get_user_by_phone", return_value=user), \
-             patch("autogpt.coaching.storage.link_telegram") as link:
+             patch("autogpt.coaching.storage.link_telegram_verified_contact", return_value=True) as link:
             r = _client().post("/internal/telegram/user/ensure",
                                json={"telegram_id": 42, "name": "Dana",
                                      "phone": "+972500000000"},
                                headers=HEADERS)
         assert r.status_code == 200
         assert r.json()["linked"] is True and r.json()["created"] is False
-        link.assert_called_once_with("u-1", 42)
+        link.assert_called_once_with("u-1", 42, "+972500000000")
 
     def test_new_user_provisioned_with_hebrew_default(self):
         user = _profile()
         with patch("autogpt.coaching.storage.get_user_by_telegram", return_value=None), \
              patch("autogpt.coaching.storage.get_user_by_phone", return_value=None), \
              patch("autogpt.coaching.storage.register_user_by_phone", return_value=user) as reg, \
-             patch("autogpt.coaching.storage.link_telegram"):
+             patch("autogpt.coaching.storage.link_telegram_verified_contact", return_value=True):
             r = _client().post("/internal/telegram/user/ensure",
                                json={"telegram_id": 42, "name": "Dana",
                                      "phone": "+972500000000"},
@@ -103,7 +103,7 @@ class TestEnsureUser(unittest.TestCase):
                    side_effect=[None, user]), \
              patch("autogpt.coaching.storage.register_user_by_phone",
                    side_effect=ValueError("Phone number already registered.")), \
-             patch("autogpt.coaching.storage.link_telegram"):
+             patch("autogpt.coaching.storage.link_telegram_verified_contact", return_value=True):
             r = _client().post("/internal/telegram/user/ensure",
                                json={"telegram_id": 42, "name": "Dana",
                                      "phone": "+972500000000"},
