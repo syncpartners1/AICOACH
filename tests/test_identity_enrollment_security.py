@@ -122,3 +122,18 @@ def test_recovery_mail_is_neutral_hebrew_and_pages_render():
     assert '123456' in p and 'http' not in p and 'אם לא ביקשת' in p
     for u in ('/identity/recover','/identity/link','/identity/confirm?t=x'):
         r=TestClient(app).get(u); assert r.status_code==200 and 'no-store' in r.headers['cache-control']
+
+
+def test_same_origin_accepts_public_origin_behind_proxy_and_rejects_others():
+    from fastapi.testclient import TestClient
+    from autogpt.coaching.api import app
+    c = TestClient(app)  # request URL is http://testserver, like http behind Cloud Run
+    ok = c.post('/identity/confirm', data={'t': 'x'}, headers={'Origin': 'https://app.changenavigator.co.il'})
+    assert ok.status_code == 200
+    own = c.post('/identity/confirm', data={'t': 'x'}, headers={'Origin': 'http://testserver'})
+    assert own.status_code == 200
+    for bad in ({}, {'Origin': 'https://evil.example'}, {'Origin': 'https://app.changenavigator.co.il.evil.example'},
+                {'Origin': 'http://app.changenavigator.co.il'}, {'Origin': 'null'}):
+        assert c.post('/identity/confirm', data={'t': 'x'}, headers=bad).status_code == 403
+    tg = c.post('/identity/link/telegram', json={}, headers={'Origin': 'https://evil.example'})
+    assert tg.status_code == 403

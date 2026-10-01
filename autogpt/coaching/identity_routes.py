@@ -31,8 +31,18 @@ def _page(title, body):
         f'<h1 style="font-size:1.3rem">{html.escape(title)}</h1>{body}</main></body></html>',
         headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
 
+PUBLIC_ORIGIN = 'https://app.changenavigator.co.il'
+
 def same_origin(request):
-    if request.headers.get('Origin','')!=f'{request.url.scheme}://{request.url.netloc}':
+    """Browser Origin must be the public app origin (or the request's own origin).
+
+    Behind Cloud Run/Firebase the request URL is http and may carry the run.app
+    host, so the public origin is accepted explicitly. Forwarded headers are
+    never trusted, a missing or foreign Origin is always rejected.
+    """
+    origin = request.headers.get('Origin', '')
+    own = f'{request.url.scheme}://{request.url.netloc}'
+    if not origin or origin not in (PUBLIC_ORIGIN, own):
         raise HTTPException(status_code=403,detail='Same-origin request required')
 
 def _cookie(response, browser, previous, extra=''):
