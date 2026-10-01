@@ -158,3 +158,40 @@ def test_origin_rejection_is_logged_without_secrets(caplog):
         TestClient(app).post('/identity/confirm', data={'t': 'secret-token'}, headers={'Origin': 'null'})
     text = caplog.text
     assert "origin='null'" in text and '/identity/confirm' in text and 'secret-token' not in text
+
+
+def _recover(send_result, create_side=None):
+    import logging
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from autogpt.coaching import identity_routes as ir
+    app = FastAPI()
+    app.include_router(ir.build_router('__session', lambda r: False, lambda **kw: send_result))
+    with patch.object(ie, 'create_recovery', side_effect=create_side, return_value=('tok', '123456')):
+        r = TestClient(app).post('/identity/recover', data={'email': 'someone@ben-nesher.com'},
+                                 headers={'Origin': 'http://testserver'})
+    return r
+
+
+def test_failed_smtp_send_is_logged_but_page_stays_neutral(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING):
+        r = _recover(False)
+    assert r.status_code == 200 and 'נשלח קוד' in r.text
+    assert 'not accepted by SMTP' in caplog.text and 'someone@' not in caplog.text and '123456' not in caplog.text
+
+
+def test_successful_send_logs_nothing_sensitive(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING):
+        r = _recover(True)
+    assert r.status_code == 200 and caplog.text == ''
+
+
+def test_swallowed_exceptions_are_logged_by_type_only(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING):
+        r = _recover(True, create_side=RuntimeError('db password leaked? someone@ben-nesher.com'))
+        _recover(True, create_side=ie.EnrollmentConflict('Please wait'))
+    assert r.status_code == 200 and 'recovery request failed: RuntimeError' in caplog.text
+    assert 'refused: cooldown' in caplog.text and 'someone@' not in caplog.text and 'leaked' not in caplog.text

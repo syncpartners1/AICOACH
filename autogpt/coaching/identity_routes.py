@@ -124,10 +124,15 @@ def build_router(user_cookie_name, is_admin, send_mail):
             '<button type="submit">אימות</button></form>')
         try:
             token,code=ie.create_recovery(email,browser)
-            h,pl=recovery_mail(code); send_mail(to_email=email,subject=RECOVERY_MAIL_SUBJECT,html_body=h,plain_body=pl)
+            h,pl=recovery_mail(code)
+            sent=send_mail(to_email=email,subject=RECOVERY_MAIL_SUBJECT,html_body=h,plain_body=pl)
+            if sent is False:
+                log.warning('recovery mail not accepted by SMTP (request stored, user sees neutral page)')
             _cookie(resp,browser,oidc.previous_cookie(raw),token)
+        except ie.EnrollmentConflict:
+            log.warning('recovery request refused: cooldown')
         except Exception as exc:  # neutral response, no mailbox/profile oracle
-            log.info('recovery request not issued: %s',type(exc).__name__)
+            log.warning('recovery request failed: %s',type(exc).__name__)
         return resp
 
     def _ctx(request):
