@@ -194,6 +194,8 @@ from autogpt.coaching.work_orders import router as _work_orders_router  # noqa: 
 app.include_router(_work_orders_router)
 from autogpt.coaching.admin_lead_orders import router as _admin_lead_orders_router  # noqa: E402
 app.include_router(_admin_lead_orders_router)
+from autogpt.coaching.booking_notifications import router as _booking_notifications_router
+app.include_router(_booking_notifications_router)
 from autogpt.coaching.work_order_contract import router as _work_order_contract_router  # noqa: E402
 app.include_router(_work_order_contract_router)
 
@@ -1447,9 +1449,16 @@ def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLRe
         logger.exception("Admin dashboard: coach inbox count unavailable")
         inbox_unread = None
 
+    try:
+        from autogpt.coaching.booking_notifications import unread_count as booking_unread_count
+        booking_unread = booking_unread_count()
+    except Exception:
+        logger.exception("Admin dashboard: booking unread count unavailable")
+        booking_unread = None
+
     html = render_admin(users=users, pending_invites=pending,
                         public_url=coaching_config.public_url, pending_users=pending_users,
-                        lang=lang, inbox_unread=inbox_unread)
+                        lang=lang, inbox_unread=inbox_unread, booking_unread=booking_unread)
     return HTMLResponse(content=html)
 
 
