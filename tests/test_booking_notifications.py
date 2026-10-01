@@ -132,3 +132,36 @@ def test_admin_and_bridge_auth_and_origin():
 def test_dashboard_count_link():
     from autogpt.coaching.admin_ui import render_admin
     assert 'פגישות חדשות (4 לא נקראו)' in render_admin([],[],booking_unread=4)
+
+
+@pytest.mark.parametrize('page',['<script>alert(1)</script>','1"><img src=x onerror=alert(1)>',0,10001])
+def test_renderer_rejects_hostile_or_unbounded_page(page):
+    with pytest.raises(ValueError):
+        b.render_bookings([],0,page=page)
+    with pytest.raises(ValueError):
+        b.render_bookings([],0,page=page,error=True)
+
+
+def test_renderer_numeric_string_is_normalized_and_escaped():
+    html=b.render_bookings([],0,page='2',more=True)
+    assert 'עמוד 2' in html and '?page=1' in html and '?page=3' in html
+    error_html=b.render_bookings([],0,page='2',error=True)
+    assert 'עמוד 2' in error_html and 'אין להסיק' in error_html
+
+
+@pytest.mark.parametrize('payload',['<script>alert(1)</script>','1"><img src=x onerror=alert(1)>'])
+def test_hostile_route_query_never_reaches_html_renderer(payload):
+    from autogpt.coaching import api
+    with patch.object(api,'_is_admin_authenticated',return_value=True),patch.object(b,'render_bookings') as render:
+        response=TestClient(api.app).get('/admin/booking-notifications',params={'page':payload})
+    assert response.status_code==422
+    assert response.headers['content-type'].startswith('application/json')
+    render.assert_not_called()
+
+
+def test_error_route_numeric_page_remains_safe_html():
+    from autogpt.coaching import api
+    with patch.object(api,'_is_admin_authenticated',return_value=True),patch.object(b,'list_bookings',side_effect=RuntimeError):
+        response=TestClient(api.app).get('/admin/booking-notifications?page=2')
+    assert response.status_code==503 and 'עמוד 2' in response.text
+    assert 'אין להסיק' in response.text

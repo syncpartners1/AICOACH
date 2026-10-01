@@ -169,6 +169,14 @@ def unread_count():
 
 
 def render_bookings(rows, unread, page=1, more=False, error=False):
+    # Keep the renderer safe independently of FastAPI's query validation.
+    # Explicit output escaping also gives static analyzers a visible boundary.
+    page = int(page)
+    if not 1 <= page <= 10000:
+        raise ValueError('Page out of range')
+    page_label = escape(str(page), quote=True)
+    previous_page = escape(str(page - 1), quote=True)
+    next_page = escape(str(page + 1), quote=True)
     labels={'pending':'מייל ממתין','processing':'תוצאת המייל טרם אושרה - אין שליחה חוזרת אוטומטית',
             'accepted':'המייל התקבל בשרת השליחה','failed':'שליחת המייל נכשלה',
             'uncertain':'תוצאת המייל לא ודאית - נדרשת בדיקה'}
@@ -186,8 +194,8 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
         <p class="state">{escape(labels.get(row['email_state'],'מצב מייל לא זמין'))}</p>{action}</article>''')
     content=''.join(cards) or '<p>אין התראות על פגישות חדשות.</p>'
     if error: content='<p class="error" role="alert">לא ניתן לטעון את ההתראות. אין להסיק שאין פגישות.</p>'
-    prev=f'<a href="?page={page-1}">הקודם</a>' if page>1 else ''
-    nxt=f'<a href="?page={page+1}">הבא</a>' if more else ''
+    prev=f'<a href="?page={previous_page}">הקודם</a>' if page>1 else ''
+    nxt=f'<a href="?page={next_page}">הבא</a>' if more else ''
     count='לא זמין' if error else str(unread)
     return '''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>פגישות חדשות | Change Navigator</title>
@@ -199,7 +207,7 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
     <a href="/admin?lang=he">חזרה למסך האדמין</a><h1>פגישות חדשות</h1>'''+f'''
     <p>לא נקראו: {count}</p><p>התראות על זימונים חדשים בלבד. זה אינו יומן עדכני או סטטוס ליד.
     תוצאות השיחה הראשונית מנוהלות ידנית ב-ClickUp. שינוי או ביטול בהמשך אינו משתקף כאן.</p>
-    <p id="action-error" class="error" role="alert" hidden></p>{content}<nav>{prev}<span>עמוד {page}</span>{nxt}</nav>'''+'''
+    <p id="action-error" class="error" role="alert" hidden></p>{content}<nav>{prev}<span>עמוד {page_label}</span>{nxt}</nav>'''+'''
     <script>async function markRead(b){b.disabled=true;const e=document.getElementById('action-error');e.hidden=true;
     try{const r=await fetch('/admin/booking-notifications/'+b.dataset.id+'/read',{method:'POST'});if(!r.ok)throw Error();location.reload();}
     catch(x){e.textContent='הסימון לא נשמר. נסו שוב.';e.hidden=false;b.disabled=false;}}</script></main></body></html>'''
