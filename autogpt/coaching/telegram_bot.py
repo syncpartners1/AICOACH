@@ -1033,10 +1033,6 @@ async def msg_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text(t(lang, "link_first"))
         return ConversationHandler.END
 
-    if not coaching_config.admin_telegram_id:
-        await update.message.reply_text(t(lang, "msg_not_configured"))
-        return ConversationHandler.END
-
     context.user_data["msg_user_name"] = user.name
     context.user_data["lang"] = lang
     await update.message.reply_text(t(lang, "ask_message"), parse_mode="HTML")
@@ -1051,20 +1047,26 @@ async def msg_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await update.message.reply_text(t(lang, "msg_empty"))
         return MSG_WAITING
 
-    name = context.user_data.get("msg_user_name", "Unknown")
+    # Re-check linkage at receipt instead of trusting transient conversation state.
+    user = _get_linked_user(tg_id)
+    if not user:
+        await update.message.reply_text(t(lang, "link_first"))
+        context.user_data.pop("msg_user_name", None)
+        return ConversationHandler.END
     try:
-        esc_name = html.escape(name)
-        esc_text = html.escape(text)
-        forwarded = await context.bot.send_message(
-            chat_id=coaching_config.admin_telegram_id,
-            text=t(lang, "admin_msg_fmt", name=esc_name, tid=tg_id, text=esc_text),
-            parse_mode="HTML",
+        from autogpt.coaching.coach_inbox import save_message
+        await asyncio.to_thread(
+            save_message, user_id=user.user_id, sender_name=user.name,
+            sender_id=tg_id, chat_id=update.effective_chat.id,
+            source_message_id=update.message.message_id, body=text,
         )
-        _forward_map[forwarded.message_id] = tg_id
-        await update.message.reply_text(t(lang, "msg_sent"))
     except Exception:
-        logger.exception("Failed to forward message to admin from tg user %s", tg_id)
+        logger.exception("Failed to save coach inbox message from tg user %s", tg_id)
         await update.message.reply_text(t(lang, "msg_error"))
+        return MSG_WAITING
+    # Telegram acknowledgement errors must not turn a committed save into a
+    # storage failure. A retry of the same source message is idempotent.
+    await update.message.reply_text(t(lang, "msg_sent"))
     context.user_data.pop("msg_user_name", None)
     return ConversationHandler.END
 

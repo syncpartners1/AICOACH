@@ -29,6 +29,7 @@ def render_admin(
     public_url: str = "",
     pending_users: List[UserProgressSummary] = None,
     lang: str = "en",
+    inbox_unread: int | None = None,
 ) -> str:
     if pending_users is None:
         pending_users = []
@@ -267,7 +268,7 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
     </div>
   </div>
 
-  <p style="margin:12px 0"><a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a></p>
+  <p style="margin:12px 0"><a href="/admin/messages">הודעות למאמן ({inbox_unread if inbox_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a></p>
   <div class="section-title">{t(lang, "admin_section_members")} ({len(users)})</div>
   <div class="card">
     <div class="tbl-wrap">
