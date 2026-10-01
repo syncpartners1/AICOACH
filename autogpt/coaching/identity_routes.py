@@ -29,7 +29,7 @@ def _page(title, body):
         f'<meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title>'
         f'{STYLE}<body style="max-width:420px;margin:24px auto;padding:0 16px"><main>'
         f'<h1 style="font-size:1.3rem">{html.escape(title)}</h1>{body}</main></body></html>',
-        headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
+        headers={'Cache-Control':'no-store','Referrer-Policy':'same-origin'})
 
 PUBLIC_ORIGIN = 'https://app.changenavigator.co.il'
 
@@ -43,6 +43,7 @@ def same_origin(request):
     origin = request.headers.get('Origin', '')
     own = f'{request.url.scheme}://{request.url.netloc}'
     if not origin or origin not in (PUBLIC_ORIGIN, own):
+        log.warning('same_origin rejected: origin=%r path=%s',origin[:80],request.url.path)
         raise HTTPException(status_code=403,detail='Same-origin request required')
 
 def _cookie(response, browser, previous, extra=''):

@@ -137,3 +137,24 @@ def test_same_origin_accepts_public_origin_behind_proxy_and_rejects_others():
         assert c.post('/identity/confirm', data={'t': 'x'}, headers=bad).status_code == 403
     tg = c.post('/identity/link/telegram', json={}, headers={'Origin': 'https://evil.example'})
     assert tg.status_code == 403
+
+
+def test_identity_pages_use_same_origin_referrer_policy_so_form_posts_carry_origin():
+    # Referrer-Policy: no-referrer makes browsers send "Origin: null" on same-origin
+    # form POSTs, which the origin check must keep rejecting. same-origin keeps real Origin.
+    from fastapi.testclient import TestClient
+    from autogpt.coaching.api import app
+    c = TestClient(app)
+    for u in ('/identity/confirm?t=x', '/identity/recover', '/identity/link'):
+        assert c.get(u).headers['referrer-policy'] == 'same-origin'
+    assert c.post('/identity/confirm', data={'t': 'x'}, headers={'Origin': 'null'}).status_code == 403
+
+
+def test_origin_rejection_is_logged_without_secrets(caplog):
+    import logging
+    from fastapi.testclient import TestClient
+    from autogpt.coaching.api import app
+    with caplog.at_level(logging.WARNING):
+        TestClient(app).post('/identity/confirm', data={'t': 'secret-token'}, headers={'Origin': 'null'})
+    text = caplog.text
+    assert "origin='null'" in text and '/identity/confirm' in text and 'secret-token' not in text
