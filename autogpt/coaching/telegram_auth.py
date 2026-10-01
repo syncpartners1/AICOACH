@@ -8,19 +8,30 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import time
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
 
 def verify_telegram_auth(auth_data: Dict[str, Any], bot_token: str) -> bool:
-    """Verify data received from Telegram Login Widget or Web App.
+    """Verify fresh Telegram Login Widget data (not Mini App initData).
 
     auth_data must contain 'hash' along with fields like id, first_name, auth_date, etc.
     Returns True if valid, False otherwise.
     """
     check_hash = auth_data.get("hash")
-    if not check_hash or not bot_token:
+    if not isinstance(check_hash, str) or not bot_token:
+        return False
+    try:
+        auth_date = int(auth_data.get("auth_date", ""))
+        telegram_id = int(auth_data.get("id", ""))
+    except (ValueError, TypeError, OverflowError):
+        return False
+    # Login Widget proof only. Mini App initData has a different signature
+    # format and must not be passed to this verifier.
+    now = time.time()
+    if telegram_id <= 0 or auth_date <= 0 or not 0 <= now - auth_date <= 600:
         return False
 
     # Filter out hash and format key=value\n sorted by key

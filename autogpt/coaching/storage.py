@@ -927,6 +927,28 @@ def link_telegram(user_id: str, telegram_user_id: int) -> None:
     }).eq("user_id", user_id).execute()
 
 
+def link_telegram_verified_contact(user_id: str, telegram_user_id: int, phone: str) -> bool:
+    """Bind only the matched unchanged phone, never overwrite a Telegram binding.
+
+    Caller must validate Telegram's own-contact user_id against the sender first.
+    The unique telegram_user_id constraint also prevents linking a second profile.
+    """
+    from autogpt.coaching.db import get_db_cursor
+    from psycopg2.errors import UniqueViolation
+    try:
+        with get_db_cursor(commit=True) as cur:
+            cur.execute(
+                """UPDATE user_profiles SET telegram_user_id=%s
+                   WHERE user_id=%s AND phone_number=%s
+                     AND (telegram_user_id IS NULL OR telegram_user_id=%s)
+                   RETURNING user_id""",
+                (telegram_user_id, user_id, phone, telegram_user_id),
+            )
+            return cur.fetchone() is not None
+    except UniqueViolation:
+        return False
+
+
 def link_whatsapp(user_id: str, phone: str) -> None:
     """Associate a WhatsApp phone number with a registered user account.
     The phone is stored as the canonical phone_number if not already set."""

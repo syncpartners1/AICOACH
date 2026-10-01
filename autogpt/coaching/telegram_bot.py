@@ -40,7 +40,7 @@ import re
 from datetime import date, timedelta
 from typing import Dict, Optional
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, MessageEntity, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -896,21 +896,42 @@ async def link_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             parse_mode="HTML"
         )
         return ConversationHandler.END
-    await update.message.reply_text(t(lang, "ask_phone_link"), parse_mode="HTML")
+    if update.effective_chat.type != "private":
+        await update.message.reply_text(t(lang, "link_contact_required"))
+        return ConversationHandler.END
+    await update.message.reply_text(
+        t(lang, "ask_phone_link"), parse_mode="HTML",
+        reply_markup=ReplyKeyboardMarkup(
+            [[KeyboardButton(t(lang, "share_own_contact"), request_contact=True)]],
+            resize_keyboard=True, one_time_keyboard=True,
+        ),
+    )
     return LINK_WAITING_PHONE
 
 
 async def link_receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
-    phone = update.message.text.strip()
-    lang = detect_lang(phone) if phone else context.user_data.get("lang", "en")
+    lang = context.user_data.get("lang", "he")
+    contact = update.message.contact
+    if (update.effective_chat.type != "private" or not contact
+            or contact.user_id != tg_id):
+        await update.message.reply_text(t(lang, "link_contact_required"))
+        return LINK_WAITING_PHONE
+    phone = contact.phone_number.strip()
+    if not phone.startswith("+"):
+        phone = "+" + phone
+    if not re.fullmatch(r"\+[1-9]\d{7,14}", phone):
+        await update.message.reply_text(t(lang, "link_contact_required"))
+        return LINK_WAITING_PHONE
     try:
-        from autogpt.coaching.storage import get_user_by_phone, link_telegram
+        from autogpt.coaching.storage import get_user_by_phone, link_telegram_verified_contact
         user = get_user_by_phone(phone)
         if not user:
             await update.message.reply_text(t(lang, "phone_not_found"))
             return LINK_WAITING_PHONE
-        link_telegram(user.user_id, tg_id)
+        if not link_telegram_verified_contact(user.user_id, tg_id, phone):
+            await update.message.reply_text(t(lang, "link_contact_conflict"))
+            return ConversationHandler.END
         # Persist detected language on fresh link
         # Initial greeting for unlinked users
         welcome = t(lang, "welcome_new")
@@ -919,7 +940,7 @@ async def link_receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE)
         esc_name = html.escape(user.name)
         await update.message.reply_text(
             t(linked_lang, "linked_ok", name=esc_name),
-            parse_mode="HTML",
+            parse_mode="HTML", reply_markup=ReplyKeyboardRemove(),
         )
     except Exception:
         logger.exception("Link error for tg user %s", tg_id)
@@ -1740,7 +1761,7 @@ def _build_app(token: str) -> Application:
                 CommandHandler("done", done),
             ],
             LINK_WAITING_PHONE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, link_receive_phone),
+                MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), link_receive_phone),
             ],
             PLAN_ACTIVITIES: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, _plan_route),

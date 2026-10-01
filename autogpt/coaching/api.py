@@ -628,13 +628,12 @@ async def telegram_oauth_callback(payload: dict, response: Response) -> AuthResp
     from autogpt.coaching.telegram_auth import verify_telegram_auth
     from autogpt.coaching.storage import telegram_oauth
 
-    # Verify signature if hash is present
-    if "hash" in payload:
-        if not verify_telegram_auth(payload, bot_token):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Telegram authentication payload.",
-            )
+    # Public login must fail closed, including omitted signatures.
+    if not verify_telegram_auth(payload, bot_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Telegram authentication payload.",
+        )
 
     telegram_user_id = payload.get("id") or payload.get("user_id")
     if not telegram_user_id:
@@ -664,8 +663,9 @@ async def telegram_oauth_callback(payload: dict, response: Response) -> AuthResp
     return AuthResponse(
         user_id=user.user_id,
         name=user.name,
+        phone_number=user.phone_number,
+        email=user.email,
         account_status=user.account_status,
-        language=user.language,
     )
 
 

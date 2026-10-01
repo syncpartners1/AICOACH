@@ -91,10 +91,10 @@ S_EN = {
         "Your Telegram is already linked to <b>{name}</b>. "
         "Use /start to begin a session."
     ),
-    "ask_phone_link": (
-        "Please send your registered phone number (e.g. <b>+972501234567</b>) "
-        "to link your account."
-    ),
+    'ask_phone_link': 'To link your account, use the button to share your own Telegram contact. Do not type a number.',
+    'share_own_contact': 'Share my own contact',
+    'link_contact_required': "Use the contact button in a private chat. Typed numbers or another person's contact are not identity proof.",
+    'link_contact_conflict': 'Cannot link: the account is already linked or has changed. Contact your coach.',
     "phone_not_found": "Phone number not found. Please check and try again, or use /cancel.",
     "linked_ok": (
         "✅ Linked! Welcome, <b>{name}</b>.\n\n"
