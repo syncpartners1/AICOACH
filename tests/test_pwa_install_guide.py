@@ -28,3 +28,19 @@ def test_entry_points_and_privacy():
     assert 'Notification.requestPermission' not in INSTALL_HTML
     from autogpt.coaching.chat_pwa import CHAT_SW
     assert "url.pathname !== '/chat'" in CHAT_SW
+
+
+def test_firebase_main_install_entry_matches_backend_and_keeps_login():
+    from pathlib import Path
+    import json
+    root = Path(__file__).resolve().parents[1]
+    config = json.loads((root / "firebase.json").read_text())
+    assert config["hosting"]["public"] == "public"
+    html = (root / "public" / "index.html").read_text()
+    assert html.count('href="/chat/install"') == 1
+    assert 'lang="he">הוספה למסך הבית</a>' in html
+    assert 'הכניסה לחשבון נשארת נפרדת' in html
+    assert html.index('href="/chat/install"') < html.index('href="/auth/google/url')
+    assert 'href="/chat"' in html and 'href="/login"' in html
+    assert 'beforeinstallprompt' not in html
+    assert 'Notification.requestPermission' not in html
