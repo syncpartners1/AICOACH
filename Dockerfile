@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir \
     "python-dotenv>=1.0.0" \
     "python-multipart>=0.0.7" \
     "requests>=2.32.0" \
+    "google-auth[requests]==2.58.1" \
     "httpx>=0.24.0" \
     "urllib3>=2.0.0" \
     "charset-normalizer>=3.0.0" \

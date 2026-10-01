@@ -19,3 +19,5 @@ python-telegram-bot>=20.0
 APScheduler>=3.10.0
 
 weasyprint>=68,<69  # signed work-order PDF, supports Hebrew RTL
+
+google-auth[requests]==2.58.1  # OIDC ID-token signature/issuer/audience verification

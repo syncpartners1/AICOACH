@@ -277,6 +277,9 @@ def _get_user_id_from_cookie(request: Request) -> Optional[str]:
         # Existing direct Cloud Run sessions can be upgraded on their next
         # authenticated dashboard visit. Firebase never forwards this cookie.
         cookie = request.cookies.get(_LEGACY_USER_COOKIE, "")
+    # Preserve the signed participant session during browser-bound OAuth.
+    from autogpt.coaching.google_oidc import previous_cookie
+    cookie = previous_cookie(cookie)
     if ":" not in cookie:
         return None
     parts = cookie.split(":", 1)
@@ -398,217 +401,84 @@ def auth_login(req: LoginRequest, _: str = Depends(verify_api_key)) -> AuthRespo
     return AuthResponse(user_id=user.user_id, name=user.name, email=user.email)
 
 
-@app.post("/auth/google/token", response_model=AuthResponse,
-          summary="Register or login via Google OAuth — phone_number is required")
-def auth_google(req: GoogleAuthRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
+@app.post("/auth/google/token", include_in_schema=False)
+def auth_google_disabled():
+    raise HTTPException(status_code=410, detail="Unverified Google credentials are no longer accepted.")
+
+
+@app.get("/auth/google", response_class=RedirectResponse)
+@app.get("/auth/google/url", response_class=RedirectResponse)
+@limiter.limit("10/minute")
+def google_oauth_start(request: Request, redirect_to: str = Query("/dashboard")):
+    from autogpt.coaching import google_oidc
     try:
-        user = google_auth(google_id=req.google_id, name=req.name,
-                           email=req.email, phone_number=req.phone_number)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    return AuthResponse(user_id=user.user_id, name=user.name,
-                        email=user.email, phone_number=user.phone_number)
-
-
-@app.get(
-    "/auth/google",
-    summary="Redirect the user's browser to Google's OAuth consent screen",
-    response_class=RedirectResponse,
-)
-@app.get(
-    "/auth/google/url",
-    summary="Redirect the user's browser to Google's OAuth consent screen",
-    response_class=RedirectResponse,
-)
-def google_oauth_start(
-    redirect_to: str = Query(
-        "/dashboard",
-        description="The URL to return the user to after authentication "
-                    "(e.g. /dashboard or https://yoursite.com/dashboard)",
-    ),
-) -> RedirectResponse:
-    """
-    Wix links the 'Sign in with Google' button directly to this endpoint.
-    The user's browser is redirected to Google's consent screen.
-    After consent, Google calls /auth/google/callback which then sends the
-    user back to the *redirect_to* URL with user_id, name, and email as query params.
-    """
-    client_id = (coaching_config.google_client_id or "").strip()
-    redirect_uri = (coaching_config.google_redirect_uri or f"{coaching_config.public_url.rstrip('/')}/auth/google/callback").strip()
-
-    if not client_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google OAuth is not configured on this server.",
-        )
-
-    # Encode the Wix/Web return URL inside the `state` param
-    state = base64.urlsafe_b64encode(redirect_to.encode()).decode()
-
-    params = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "access_type": "online",
-        "state": state,
-        "prompt": "select_account",
-    }
-    google_auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
-    return RedirectResponse(url=google_auth_url, status_code=302)
-
-
-def _oauth_error_redirect(redirect_to: str, code: str) -> RedirectResponse:
-    """For web-flow (local path), redirect errors to /login?error=code; for Wix append to redirect_to."""
-    if redirect_to.startswith("/"):
-        return RedirectResponse(url=f"/login?error={code}", status_code=302)
-    return RedirectResponse(url=f"{redirect_to}?error={code}", status_code=302)
-
-
-@app.get(
-    "/auth/google/callback",
-    summary="Google OAuth callback — exchanges code, creates/finds user, redirects to dashboard",
-    response_class=RedirectResponse,
-)
-def google_oauth_callback(
-    code: str = Query(..., description="Authorization code from Google"),
-    state: str = Query(..., description="Base64-encoded return URL"),
-    error: Optional[str] = Query(None, description="Error from Google (e.g. access_denied)"),
-) -> RedirectResponse:
-    """Google redirects here after user consents."""
-    try:
-        redirect_to = base64.urlsafe_b64decode(state.encode()).decode()
+        url,browser = google_oidc.start(redirect_to)
+    except google_oidc.OAuthRejected as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception:
-        redirect_to = "/dashboard"
+        logger.warning("Google OAuth start unavailable")
+        raise HTTPException(status_code=503, detail="Google login is temporarily unavailable.")
+    response=RedirectResponse(url=url,status_code=302)
+    previous = google_oidc.previous_cookie(request.cookies.get(_USER_COOKIE,""))
+    response.set_cookie(google_oidc.COOKIE,"oauth|"+browser+"|"+previous,max_age=google_oidc.TTL,
+                        secure=True,httponly=True,samesite="lax",path="/")
+    response.headers["Cache-Control"]="no-store"
+    response.headers["Referrer-Policy"]="no-referrer"
+    return response
 
-    if error:
-        logger.warning("Google OAuth returned error=%s (redirect_to=%s)", error, redirect_to)
-        return _oauth_error_redirect(redirect_to, error)
 
-    client_id = (coaching_config.google_client_id or "").strip()
-    client_secret = (coaching_config.google_client_secret or "").strip()
-    redirect_uri = (coaching_config.google_redirect_uri or f"{coaching_config.public_url.rstrip('/')}/auth/google/callback").strip()
+def _google_callback_target(cookie, state, code, error):
+    """Returns (redirect_target, user_id_or_None, keep_oauth_cookie)."""
+    from autogpt.coaching import google_oidc, identity_enrollment as ie
+    browser=google_oidc.browser_cookie(cookie)
+    intent,claims=google_oidc.proof(code,state,browser,error)
+    purpose=intent.get('purpose','login')
+    if purpose=='login':
+        uid,target=google_oidc.resolve_login(intent,claims)
+        return target,uid,False
+    if purpose=='link':
+        token=ie.stage_google_confirmation(intent['profile_id'],claims['sub'],claims['email'],
+                                           browser,'telegram_google_dual_proof')
+        return "/identity/confirm?t="+token,None,True
+    token=google_oidc.extra_cookie(cookie)
+    if not token or ie.hashed(token)!=intent.get('recovery_hash'):
+        raise google_oidc.OAuthRejected('invalid_proof')
+    if purpose=='recover_stage':
+        ie.attach_recovery_google(token,browser,claims['sub'])
+        return "/identity/recover/status",None,True
+    # recover_finish: fresh second proof; binding and grant consumption are atomic.
+    ie.complete_recovery(token,browser,claims['sub'])
+    return "/login",None,False
 
-    # Exchange authorization code for tokens
-    token_resp = http_requests.post(
-        "https://oauth2.googleapis.com/token",
-        data={
-            "code": code,
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "redirect_uri": redirect_uri,
-            "grant_type": "authorization_code",
-        },
-        timeout=10,
-    )
-    if token_resp.status_code != 200:
-        logger.error(
-            "Google token exchange failed: HTTP %s — %s (redirect_uri=%s)",
-            token_resp.status_code,
-            token_resp.text[:400],
-            redirect_uri,
-        )
-        return _oauth_error_redirect(redirect_to, "token_exchange_failed")
 
-    access_token = token_resp.json().get("access_token")
-
-    # Fetch user info from Google
-    userinfo_resp = http_requests.get(
-        "https://www.googleapis.com/oauth2/v3/userinfo",
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=10,
-    )
-    if userinfo_resp.status_code != 200:
-        logger.error("Google userinfo fetch failed: HTTP %s — %s", userinfo_resp.status_code, userinfo_resp.text[:200])
-        return _oauth_error_redirect(redirect_to, "userinfo_failed")
-
-    userinfo = userinfo_resp.json()
-    google_id = userinfo.get("sub")
-    name = userinfo.get("name", "")
-    email = userinfo.get("email", "")
-
-    if not google_id or not email:
-        logger.error("Google userinfo missing sub/email: %s", userinfo)
-        return _oauth_error_redirect(redirect_to, "incomplete_profile")
-
-    is_web_flow = redirect_to.startswith("/")
-
-    # Invite token rides the return URL from the /register page (?token=...).
-    # A valid, unused, unexpired invite is required to activate a NEW account
-    # via Google; without one a new account is created as pending (same model
-    # as phone registration). Existing users always just sign in.
-    from datetime import datetime as _dt
-    from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
-    invite_token = ""
+@app.get("/auth/google/callback", response_class=RedirectResponse)
+@limiter.limit("10/minute")
+def google_oauth_callback(request: Request, state: str = Query(""),
+                          code: str = Query(""), error: Optional[str] = Query(None)):
+    from autogpt.coaching import google_oidc, identity_enrollment as ie
+    cookie=request.cookies.get(google_oidc.COOKIE,"")
+    keep=False; ok=False; uid=None
     try:
-        invite_token = (_parse_qs(_urlparse(redirect_to).query).get("token") or [""])[0].strip()
+        target,uid,keep=_google_callback_target(cookie,state,code,error)
+        ok=True
+        response=RedirectResponse(target,status_code=302)
+        if uid: _set_user_cookie(response,uid)
+    except (google_oidc.OAuthRejected, ie.EnrollmentConflict) as exc:
+        reason=str(exc) if isinstance(exc,google_oidc.OAuthRejected) else "manual_review"
+        response=RedirectResponse("/login?error="+reason,status_code=302)
     except Exception:
-        invite_token = ""
-    invite = None
-    if invite_token:
-        try:
-            invite = get_invite(invite_token)
-        except Exception as inv_exc:
-            logger.warning("OAuth callback invite lookup failed: %s", inv_exc)
-            invite = None
-    invite_valid = bool(invite) and not invite.used_at and not (
-        invite.expires_at and invite.expires_at < _dt.utcnow())
-
-    existing = []
-    try:
-        from autogpt.coaching.storage import _get_client as _supa
-        db = _supa()
-        existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
-            "google_id", google_id
-        ).execute().data
-        if not existing:
-            existing = db.table("user_profiles").select("user_id,name,phone_number,account_status").eq(
-                "email", email
-            ).execute().data
-    except Exception as db_exc:
-        logger.warning("OAuth callback DB query warning (no auto-provisioning on error): %s", db_exc)
-        existing = []
-
-    user_id = f"google_{google_id}"
-    if existing:
-        row = existing[0]
-        user_id = row["user_id"]
-        final_status = row.get("account_status") or AccountStatus.ACTIVE.value
-        # A pending participant arriving with a valid invite is activated.
-        if invite_valid and final_status == AccountStatus.PENDING.value:
-            try:
-                set_account_status(user_id, AccountStatus.ACTIVE,
-                                   reason="valid invite on Google sign-in")
-                use_invite(invite_token, user_id)
-                final_status = AccountStatus.ACTIVE.value
-            except Exception as act_exc:
-                logger.warning("OAuth invite activation failed for %s: %s", user_id, act_exc)
-    else:
-        final_status = AccountStatus.ACTIVE.value if invite_valid else AccountStatus.PENDING.value
-        try:
-            from autogpt.coaching.db import get_db_cursor
-            with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    """
-                    INSERT INTO user_profiles (user_id, name, email, google_id, account_status)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id) DO NOTHING
-                    """,
-                    (user_id, name, email, google_id, final_status)
-                )
-            if invite_valid:
-                use_invite(invite_token, user_id)
-        except Exception as insert_err:
-            logger.warning("OAuth user_profiles auto-insert notice: %s", insert_err)
-
-    if is_web_flow:
-        dest = f"/dashboard/{user_id}" if final_status == AccountStatus.ACTIVE.value else "/pending"
-        resp = RedirectResponse(url=dest, status_code=302)
-        _set_user_cookie(resp, user_id)
-        return resp
-
-    params = urlencode({"user_id": user_id, "name": name, "email": email})
-    return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
+        logger.warning("Google OAuth callback unavailable")
+        response=RedirectResponse("/login?error=login_unavailable",status_code=302)
+    if not (ok and keep):
+        # Restore only a participant token whose signature was checked.
+        old_uid=_get_user_id_from_cookie(request)
+        if old_uid and not (ok and not keep and uid):
+            _set_user_cookie(response,old_uid)
+        elif not (ok and uid):
+            response.delete_cookie(google_oidc.COOKIE,path="/",secure=True,httponly=True,samesite="lax")
+    response.headers["Cache-Control"]="no-store"
+    response.headers["Referrer-Policy"]="no-referrer"
+    return response
 
 
 @app.post("/auth/telegram", summary="Telegram OAuth / Login Widget verification & user login")
@@ -669,136 +539,10 @@ async def telegram_oauth_callback(payload: dict, response: Response) -> AuthResp
     )
 
 
-@app.get("/phone-setup", response_class=HTMLResponse, include_in_schema=False)
-def phone_setup_page(
-    gid: str = Query(..., description="Base64-encoded google_id|name|email"),
-    redirect_to: str = Query(default="/"),
-) -> HTMLResponse:
-    """Collect phone number after Google OAuth when the account has no phone on file."""
-    try:
-        decoded = base64.urlsafe_b64decode(gid.encode()).decode()
-        parts = decoded.split("|", 2)
-        pre_name = parts[1] if len(parts) > 1 else ""
-    except Exception:
-        pre_name = ""
-
-    return HTMLResponse(content=f"""<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Complete Your Registration – ABN Consulting</title>
-<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
-<style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-     background:#f0f4f8;min-height:100vh;display:flex;align-items:center;justify-content:center}}
-.card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:400px;width:100%;
-      box-shadow:0 4px 20px rgba(0,0,0,.1)}}
-.logo{{display:flex;align-items:center;gap:10px;margin-bottom:24px}}
-.logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
-h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:8px}}
-p{{color:#6b7280;font-size:14px;margin-bottom:22px;line-height:1.5}}
-label{{font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:4px}}
-input{{width:100%;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:9px;
-      font-size:14px;outline:none;margin-bottom:16px;transition:border-color .2s}}
-input:focus{{border-color:#1a2b4a}}
-.btn{{width:100%;background:#1a2b4a;color:#fff;border:none;padding:12px;border-radius:10px;
-     font-size:15px;font-weight:700;cursor:pointer}}
-.btn:hover{{background:#243d6b}}
-#msg{{margin-top:12px;font-size:13px;text-align:center}}
-</style></head>
-<body>
-<div class="card">
-  <div class="logo">
-    <img src="/static/android-chrome-192x192.png" width="36" height="36"
-         style="border-radius:8px" alt="logo">
-    <div class="logo-text">ABN Consulting</div>
-  </div>
-  <h1>One last step</h1>
-  <p>Welcome, <strong>{pre_name}</strong>! Please add your phone number to complete your
-  registration. This lets us connect your coaching across all channels.</p>
-  <form id="phoneForm">
-    <label>Phone Number (WhatsApp / Telegram)</label>
-    <input type="tel" id="phone" placeholder="+1 234 567 8900" required>
-    <button type="submit" class="btn">Complete Registration</button>
-  </form>
-  <div id="msg"></div>
-</div>
-<script>
-document.getElementById('phoneForm').addEventListener('submit', async function(e) {{
-  e.preventDefault();
-  const msg = document.getElementById('msg');
-  msg.textContent = 'Saving…';
-  const phone = document.getElementById('phone').value.trim();
-  const res = await fetch('/public/complete-google-signup', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{gid: decodeURIComponent('{gid}'), phone_number: phone}})
-  }});
-  if (res.ok) {{
-    const data = await res.json();
-    msg.style.color = '#16a34a';
-    msg.textContent = 'All set! Redirecting…';
-    setTimeout(() => {{
-      if (data.account_status === 'pending') {{
-        window.location = '/pending';
-      }} else {{
-        window.location = '/dashboard/' + data.user_id;
-      }}
-    }}, 1200);
-  }} else {{
-    const err = await res.json().catch(()=>({{}}));
-    msg.style.color = '#dc2626';
-    msg.textContent = err.detail || 'Could not save. Please try again.';
-  }}
-}});
-</script>
-</body></html>""")
-
-
-class _GooglePhoneBody(BaseModel):
-    gid: str          # base64-encoded "google_id|name|email"
-    phone_number: str
-    invite_token: Optional[str] = None
-
-
-@app.post("/public/complete-google-signup", response_model=AuthResponse,
-          summary="Finalise Google OAuth signup by providing the mandatory phone number")
-def complete_google_signup(body: _GooglePhoneBody) -> AuthResponse:
-    """Called from the /phone-setup page."""
-    try:
-        decoded = base64.urlsafe_b64decode(body.gid.encode()).decode()
-        google_id, name, email = decoded.split("|", 2)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token.")
-    invite = None
-    if body.invite_token:
-        from datetime import datetime as _dt
-        invite = get_invite(body.invite_token)
-        if not invite:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Invite token is invalid.")
-        if invite.used_at:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Invite link was already used.")
-        if invite.expires_at and invite.expires_at < _dt.utcnow():
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Invite link has expired.")
-    new_status = AccountStatus.ACTIVE if invite else AccountStatus.PENDING
-    try:
-        user = google_auth(google_id=google_id, name=name, email=email,
-                           phone_number=body.phone_number, account_status=new_status)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    out_status = user.account_status
-    if invite is not None:
-        if user.account_status != AccountStatus.ACTIVE:
-            set_account_status(user.user_id, AccountStatus.ACTIVE,
-                               reason="valid invite on Google sign-up")
-            out_status = AccountStatus.ACTIVE
-        use_invite(body.invite_token, user.user_id)
-    return AuthResponse(user_id=user.user_id, name=user.name,
-                        email=user.email, phone_number=user.phone_number,
-                        account_status=out_status)
+@app.get("/phone-setup", include_in_schema=False)
+@app.post("/public/complete-google-signup", include_in_schema=False)
+def unverified_google_signup_disabled():
+    raise HTTPException(status_code=410, detail="Unverified Google signup is no longer accepted.")
 
 
 @app.get("/auth/google/config", summary="Show the redirect URI to register in Google Cloud Console")
@@ -4106,3 +3850,11 @@ function submitConsult(){
 </script>
 </body></html>"""
     return HTMLResponse(content=html)
+
+
+def _mount_identity_routes():
+    from autogpt.coaching.identity_routes import build_router
+    from autogpt.coaching.email_service import _send_message
+    app.include_router(build_router(_USER_COOKIE,_is_admin_authenticated,_send_message))
+
+_mount_identity_routes()
