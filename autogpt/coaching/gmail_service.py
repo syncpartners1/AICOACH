@@ -1,6 +1,7 @@
 # autogpt/coaching/gmail_service.py
 # UPDATED: 2026-03-22 v2 — matches revised Yes/No coaching qualification model
 import os, smtplib, logging
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -25,101 +26,96 @@ def _send(msg: MIMEMultipart) -> None:
 
 # -- COACHING FLOW -------------------------------------------------------------
 
+COACH_NOTIFICATION_EMAIL = "navigator.change@gmail.com"
+_COACHING_SIGN_OFF = "מצפה לעבוד יחד\nעדי בן נשר\nמאמן לניווט שינויים\nאישי | כלכלי | עסקי"
+_COACHING_RIGHTS = "© 2026 Adi Ben-Nesher. כל הזכויות שמורות."
+
+
+def _booking_link(base_url: str, lead_name: str) -> str:
+    """Preserve configured URL/query and encode the prospect's name safely."""
+    parts = urlsplit(base_url)
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != "name"]
+    query.append(("name", lead_name))
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
+def _coaching_body(text: str) -> str:
+    return text + "\n\n" + _COACHING_SIGN_OFF + "\n\nChange Navigator\n" + _COACHING_RIGHTS
+
+
 def send_qualify_notification(
     lead_name: str, lead_email: str, challenge: str, outcome: str,
     yes_count: int, verdict: str, clickup_url: str, booking_url: str
 ) -> bool:
-    """Notify Adi when a coaching lead submits the qualification form."""
+    """Notify Adi of a saved lead; True means SMTP acceptance, not inbox delivery."""
     label = {
-        "PASS":       "? PASS — all 5 Yes — send booking link",
-        "BORDERLINE": "??  BORDERLINE — 3-4 Yes — review manually",
-        "FAIL":       "? FAIL — 0-2 Yes — move to Nurture",
+        "PASS": "5 תשובות כן - אפשר להזמין לשיחה ראשונית",
+        "BORDERLINE": "3-4 תשובות כן - נדרשת בדיקה שלך",
+        "FAIL": "0-2 תשובות כן - לא בשל כרגע",
     }.get(verdict, verdict)
+    booking_line = ("\nקישור לשיחה ראשונית: " + _booking_link(booking_url, lead_name)
+                    if verdict == "PASS" else "")
+    body = _coaching_body(f"""ליד חדש - Change Navigator
 
-    booking_line = f"\nBooking link: {booking_url}?name={lead_name}\n" if verdict == "PASS" else ""
-
-    body = f"""New coaching lead — Co-Navigator
-
-Verdict:    {label}
-Yes count:  {yes_count}/5
-
-Name:       {lead_name}
-Email:      {lead_email}
-Challenge:  {challenge}
-Outcome:    {outcome}
+סיווג: {verdict} | {label}
+תשובות כן: {yes_count}/5
+שם: {lead_name}
+אימייל: {lead_email}
+האתגר: {challenge}
+התוצאה הרצויה: {outcome}
 {booking_line}
-ClickUp:    {clickup_url or 'FAILED — check logs'}
-"""
+ClickUp: {clickup_url or 'יצירת המשימה לא אושרה - נדרשת בדיקה'}""")
     msg = MIMEMultipart()
-    msg["From"]    = SMTP_FROM
-    msg["To"]      = "abn@ben-nesher.com"
-    msg["Subject"] = f"[Coaching {verdict}] New lead — {lead_name}"
+    msg["From"] = SMTP_FROM
+    msg["To"] = COACH_NOTIFICATION_EMAIL
+    msg["Subject"] = f"[Change Navigator | {verdict}] ליד חדש - {lead_name}"
     msg.attach(MIMEText(body, "plain", "utf-8"))
     try:
         _send(msg)
         logger.info("Coach notification accepted by SMTP")
         return True
-    except Exception as e:
-        logger.error("Coach notification SMTP failed (%s)", type(e).__name__)
+    except Exception as exc:
+        logger.error("Coach notification SMTP failed (%s)", type(exc).__name__)
         return False
 
 
-def send_lead_response(lead_name: str, lead_email: str, verdict: str) -> None:
-    """Send automated Hebrew response to the coaching lead."""
+def send_lead_response(lead_name: str, lead_email: str, verdict: str) -> bool:
+    """Hebrew coaching lead response, with no admission or response-time promise."""
     if not lead_email or "@" not in lead_email:
-        logger.warning(f"No valid email for {lead_name} — lead response skipped")
-        return
-
+        logger.warning("Lead response skipped: invalid recipient address")
+        return False
+    greeting = f"שלום {lead_name},\n\nתודה שמילאת את שאלון המוכנות של Change Navigator.\n\n"
     if verdict == "PASS":
-        subject = f"??? ?? ??? | ????? ????? ?????? ????, {lead_name}"
-        body = f"""???? {lead_name},
-
-???? ?? ????? ??????.
-
-??????? ??? ????? ????/?? ????? ?? ??????? Co-Navigator ????? ?????/?.
-
-???? ??? ??? ???? ????? ?????? ?? 30 ???? ?? ??? — ????? ???? ?? ????? ??? ?????? ??? ?? ??????? ??????.
-
-?????? ????:
-{BOOKING_URL}?name={lead_name}
-
-??? ?? ??? | ????? ????? ???????????? ????????
-054-758-6022 | www.ben-nesher.com
-"""
+        subject = f"Change Navigator | הזמנה לשיחה ראשונית - {lead_name}"
+        text = ("התשובות שלך מצביעות על מוכנות לשיחה ראשונית.\n"
+                "אני מזמין אותך לשיחה של 30 דקות כדי להכיר, להבין את הצורך שלך ולבדוק התאמה.\n"
+                "השיחה אינה הרשמה לתוכנית האימון.\n\n"
+                "לקביעת השיחה:\n" + _booking_link(BOOKING_URL, lead_name))
     elif verdict == "BORDERLINE":
-        subject = f"?????? ?? ?????? — {lead_name}"
-        body = f"""???? {lead_name},
-
-???? ?? ????? ??????.
-
-??? ????? ??????? ??? ?????? ???? ??? 24-48 ????.
-
-??? ?? ???
-054-758-6022 | www.ben-nesher.com
-"""
+        subject = f"Change Navigator | השאלון שלך התקבל - {lead_name}"
+        text = ("השאלון שלך התקבל לבדיקה שלי.\n"
+                "נדרשת בדיקה נוספת של ההתאמה לפני הזמנה לשיחה ראשונית.\n"
+                "מילוי השאלון אינו הרשמה לתוכנית האימון.")
+    elif verdict == "FAIL":
+        subject = f"Change Navigator | תודה על מילוי השאלון - {lead_name}"
+        text = ("לפי התשובות שלך, ייתכן שזה עדיין לא הזמן המתאים לתהליך אימון.\n"
+                "אפשר לחזור לשאלון כשהצורך והאפשרות להתחייב לתהליך יהיו ברורים יותר.\n"
+                "מילוי השאלון אינו הרשמה לתוכנית האימון.")
     else:
-        subject = f"???? ?? ?????? — {lead_name}"
-        body = f"""???? {lead_name},
-
-???? ?? ????? ??????.
-
-???? ?? ???? ??????? ????? ?? ????? ?????? ???, ??? ????? ????? ???? ?????? ?? ????? ????????.
-
-?? ???? ????? — ?? ????/? ?????.
-
-??? ?? ???
-054-758-6022 | www.ben-nesher.com
-"""
+        logger.error("Lead response skipped: unsupported verdict")
+        return False
     msg = MIMEMultipart()
-    msg["From"]    = SMTP_FROM
-    msg["To"]      = lead_email
+    msg["From"] = SMTP_FROM
+    msg["To"] = lead_email
     msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+    msg.attach(MIMEText(_coaching_body(greeting + text), "plain", "utf-8"))
     try:
         _send(msg)
-        logger.info(f"Lead response sent to {lead_email} ({verdict})")
-    except Exception as e:
-        logger.error(f"Lead response failed for {lead_email}: {e}")
+        logger.info("Lead response accepted by SMTP (%s)", verdict)
+        return True
+    except Exception as exc:
+        logger.error("Lead response SMTP failed (%s)", type(exc).__name__)
+        return False
 
 
 # -- CONSULTING & WORKSHOPS FLOW -----------------------------------------------
