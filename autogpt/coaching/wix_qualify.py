@@ -250,12 +250,15 @@ def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: 
         notify_coach_email_failure(submission_id)
 
     try:
-        send_lead_response(
+        lead_email_accepted = send_lead_response(
             lead_name  = payload.q8_name,
             lead_email = payload.q9_email,
             verdict    = verdict,
         )
-        logger.info(f"Lead response email sent to {payload.q9_email}")
+        if lead_email_accepted:
+            logger.info("Lead response accepted by SMTP for submission %s", submission_id)
+        else:
+            logger.error("Lead response not accepted for submission %s; no automatic resend", submission_id)
     except Exception as e:
         logger.error(f"Failed to send lead response email to {payload.q9_email}: {e}")
 
