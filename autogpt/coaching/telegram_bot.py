@@ -695,29 +695,33 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     await update.message.reply_text(
         t(lang, "ask_phone"),
         parse_mode="HTML",
+        reply_markup=ReplyKeyboardMarkup(
+            [[KeyboardButton(t(lang, "share_own_contact"), request_contact=True)]],
+            resize_keyboard=True, one_time_keyboard=True,
+        ),
     )
     return WAITING_PHONE
 
 
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Capture phone number, register the user as pending, link their Telegram ID."""
-    import re as _re
+    """Register/link only after Telegram proves the sender's own contact."""
     tg_id = update.effective_user.id
-    raw = update.message.text.strip()
-    lang = context.user_data.get("lang", detect_lang(raw))
+    lang = context.user_data.get("lang", "he")
     name = context.user_data.get("temp_name", "")
-
-    # Basic normalisation — allow digits, +, spaces, dashes, parens
-    phone = _re.sub(r"[\s\-()]", "", raw)
-    if not _re.match(r"^\+?\d{7,15}$", phone):
-        await update.message.reply_text(t(lang, "invalid_phone"))
+    contact = update.message.contact
+    if (update.effective_chat.type != "private" or not contact
+            or contact.user_id != tg_id):
+        await update.message.reply_text(t(lang, "link_contact_required"))
         return WAITING_PHONE
-
+    phone = contact.phone_number.strip()
     if not phone.startswith("+"):
         phone = "+" + phone
+    if not re.fullmatch(r"\+[1-9]\d{7,14}", phone):
+        await update.message.reply_text(t(lang, "link_contact_required"))
+        return WAITING_PHONE
 
     from autogpt.coaching.storage import (
-        get_user_by_phone, register_user_by_phone, link_telegram,
+        get_user_by_phone, register_user_by_phone, link_telegram_verified_contact,
     )
     from autogpt.coaching.models import AccountStatus
 
@@ -725,22 +729,23 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         # If phone already exists — link this Telegram ID to that account
         existing = get_user_by_phone(phone)
         if existing:
-            try:
-                link_telegram(existing.user_id, tg_id)
-            except Exception:
-                logger.warning("Could not link telegram to existing user %s", existing.user_id)
+            if not link_telegram_verified_contact(existing.user_id, tg_id, phone):
+                await update.message.reply_text(t(lang, "link_contact_conflict"),
+                                                reply_markup=ReplyKeyboardRemove())
+                return ConversationHandler.END
             st = existing.account_status.value if hasattr(existing.account_status, "value") else str(existing.account_status)
             if st == "active":
                 esc_name = html.escape(existing.name)
                 await update.message.reply_text(
                     t(lang, "linked_existing", name=esc_name),
-                    parse_mode="HTML",
+                    parse_mode="HTML", reply_markup=ReplyKeyboardRemove(),
                 )
                 await _start_coaching_session(update, context, tg_id,
                                               existing.user_id, existing.name, lang)
                 return CHATTING
             else:
-                await update.message.reply_text(t(lang, "pending_registered"), parse_mode="HTML")
+                await update.message.reply_text(t(lang, "pending_registered"), parse_mode="HTML",
+                                                reply_markup=ReplyKeyboardRemove())
                 return ConversationHandler.END
 
         # New user — register as pending
@@ -755,14 +760,15 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             await update.message.reply_text(t(lang, "phone_taken"))
             return WAITING_PHONE
 
-        # Link telegram ID (best-effort — don't block registration if column missing)
-        try:
-            link_telegram(user.user_id, tg_id)
-        except Exception:
-            logger.warning("Could not link telegram_user_id for user %s — column may not exist in DB", user.user_id)
+        # A failed binding must never be reported as successful registration.
+        if not link_telegram_verified_contact(user.user_id, tg_id, phone):
+            await update.message.reply_text(t(lang, "link_contact_conflict"),
+                                            reply_markup=ReplyKeyboardRemove())
+            return ConversationHandler.END
 
         context.user_data.clear()
-        await update.message.reply_text(t(lang, "pending_registered"), parse_mode="HTML")
+        await update.message.reply_text(t(lang, "pending_registered"), parse_mode="HTML",
+                                        reply_markup=ReplyKeyboardRemove())
 
         # Notify admin
         if coaching_config.admin_telegram_id:
@@ -787,7 +793,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                 pass
 
     except Exception:
-        logger.exception("Error in receive_phone for tg_id=%s phone=%s", tg_id, phone)
+        logger.exception("Error in receive_phone for tg_id=%s", tg_id)
         await update.message.reply_text(
             "Sorry, something went wrong registering you. Please try again with /start."
         )
@@ -1754,7 +1760,7 @@ def _build_app(token: str) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name),
             ],
             WAITING_PHONE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone),
+                MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone),
             ],
             CHATTING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message),

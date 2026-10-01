@@ -91,7 +91,7 @@ def ensure_user(req: EnsureUserRequest, _: str = Depends(verify_bridge_secret)) 
     from autogpt.coaching.storage import (
         get_user_by_phone,
         get_user_by_telegram,
-        link_telegram,
+        link_telegram_verified_contact,
         register_user_by_phone,
     )
 
@@ -120,7 +120,10 @@ def ensure_user(req: EnsureUserRequest, _: str = Depends(verify_bridge_secret)) 
             if not user:
                 raise HTTPException(status_code=500, detail="User provisioning failed.")
 
-    link_telegram(user.user_id, req.telegram_id)
+    # The authenticated bot supplies native-contact proof. Still guard the
+    # SQL binding atomically against phone changes/another Telegram owner.
+    if not link_telegram_verified_contact(user.user_id, req.telegram_id, req.phone):
+        raise HTTPException(status_code=409, detail="Telegram binding conflict.")
 
     # Best-effort email sync: only fill an empty slot, never overwrite.
     if req.email and not getattr(user, "email", None):
