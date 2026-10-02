@@ -123,16 +123,28 @@ def test_link_state_derivation():
     assert link_state({"expires_at": p, "signed_at": now}) == "signed"
 
 
-def test_list_puts_waiting_first(monkeypatch):
+def test_list_puts_waiting_first_and_signed_separate(monkeypatch):
     c = _client(monkeypatch)
     now = datetime.now(timezone.utc)
-    base = {"order_id": OID, "customer_name": "x", "amount_agorot": 1, "track": "personal", "plan": "full", "status": "draft"}
-    rows = [{**base, "customer_name": "newest", "expires_at": None, "sent_at": None, "signed_at": None, "revoked_at": None},
-            {**base, "customer_name": "waiting", "expires_at": now + timedelta(days=2), "sent_at": now, "signed_at": None, "revoked_at": None}]
-    with patch("autogpt.coaching.work_orders.execute_query", return_value=rows):
+    base = {"order_id": OID, "customer_name": "x", "amount_agorot": 1, "track": "personal", "plan": "full", "status": "draft",
+            "revoked_at": None, "signed_copy_sent_at": None}
+    open_rows = [{**base, "customer_name": "newest", "expires_at": None, "sent_at": None, "signed_at": None},
+                 {**base, "customer_name": "waiting", "expires_at": now + timedelta(days=2), "sent_at": now, "signed_at": None}]
+    signed_rows = [{**base, "customer_name": "approved", "expires_at": now, "sent_at": now, "signed_at": now}]
+    with patch("autogpt.coaching.work_orders.execute_query", side_effect=[open_rows, signed_rows]) as q:
         out = c.get("/admin/work-orders/drafts").json()["drafts"]
-    assert [r["customer_name"] for r in out] == ["waiting", "newest"]
-    assert out[0]["link_state"] == "waiting"
+    assert [r["customer_name"] for r in out] == ["waiting", "newest", "approved"]
+    assert [r["link_state"] for r in out] == ["waiting", "draft", "signed"]
+    assert "signed_at IS NULL" in q.call_args_list[0][0][0]
+    assert "signed_at IS NOT NULL" in q.call_args_list[1][0][0] and "ORDER BY l.signed_at DESC" in q.call_args_list[1][0][0]
+
+
+def test_page_has_separate_open_and_approved_lists(monkeypatch):
+    c = _client(monkeypatch)
+    with patch("autogpt.coaching.work_orders.execute_query", return_value=[]):
+        page = c.get("/admin/work-orders").text
+    assert 'id="drafts"' in page and 'id="approved"' in page
+    assert "link_state===\'signed\'" in page or "row.link_state==='signed'?done:out" in page
 
 
 def test_signing_page_mobile_markup(monkeypatch):
