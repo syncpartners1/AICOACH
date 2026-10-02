@@ -79,7 +79,7 @@ def test_admin_screen_and_price_edit(monkeypatch):
         assert "customer_address" in page.text
         assert "customer_identity" in page.text
         assert "savePrice" in page.text
-        assert "טיוטות אחרונות" in page.text
+        assert "טיוטות פתוחות" in page.text and "הזמנות מאושרות" in page.text and "טיוטות אחרונות" not in page.text
         db.assert_called_once()
     with patch("autogpt.coaching.work_orders.execute_query") as db:
         update = client.put("/admin/work-orders/prices/family_full",

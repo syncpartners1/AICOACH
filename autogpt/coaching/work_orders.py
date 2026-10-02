@@ -140,7 +140,8 @@ button{{padding:.75rem 1rem}}[hidden]{{display:none!important}}.notice{{backgrou
 <label>מחיר להזמנה זו בש״ח (ניתן להזין מחיר אחר)<input name="amount_ils" id="amount" inputmode="decimal" required></label>
 <label>הערות פנימיות<input name="notes" maxlength="2000"></label><button>שמור טיוטה</button></form>
 <p id="message" role="status"></p><section id="preview" aria-live="polite"></section>
-<h2>טיוטות אחרונות</h2><section id="drafts"></section>
+<h2>טיוטות פתוחות</h2><section id="drafts"></section>
+<h2>הזמנות מאושרות</h2><section id="approved"></section>
 <script>
 const prices={json.dumps(prices)};
 const form=document.getElementById('order'), select=document.getElementById('price');
@@ -165,9 +166,9 @@ const json=await res.json();if(!res.ok)throw Error(JSON.stringify(json.detail));
 prices[select.value].amount_agorot=json.amount_agorot;select.selectedOptions[0].textContent=select.value+' - '+(json.amount_agorot/100).toFixed(2)+' ₪';fillPrice();
 out.textContent='מחירון עודכן להזמנות עתידיות';}}catch(err){{out.textContent='העדכון נכשל: '+err.message}}}});
 
-async function recentDrafts(){{const out=document.getElementById('drafts');
+async function recentDrafts(){{const out=document.getElementById('drafts'),done=document.getElementById('approved');
 try{{const res=await fetch('/admin/work-orders/drafts');if(!res.ok)throw Error('אין גישה');
-const data=await res.json();out.replaceChildren();for(const row of data.drafts){{
+const data=await res.json();out.replaceChildren();done.replaceChildren();for(const row of data.drafts){{
 const p=document.createElement('p');const labels={{draft:'טיוטה',link_created:'קישור נוצר',waiting:'נשלח ללקוח, ממתין לחתימה',expired_unsigned:'לא נחתם והקישור פג',signed:'נחתמה'}};
 const when=t=>t?new Date(t).toLocaleDateString('he-IL'):'';
 let state=labels[row.link_state]||row.status;if(row.link_state==='waiting'||row.link_state==='expired_unsigned')state+=' ('+when(row.sent_at)+')';if(row.link_state==='signed')state+=' ('+when(row.signed_at)+')';
@@ -175,8 +176,8 @@ if(row.link_state==='waiting')p.style.fontWeight='bold';if(row.link_state==='exp
 p.textContent=row.customer_name+' | '+row.track+' | '+row.plan+' | '+(row.amount_agorot/100).toFixed(2)+' ₪ | '+state+' | ';const a=document.createElement('a');const base='/admin/work-orders/drafts/'+row.order_id;
 if(row.link_state==='signed'){{a.href=base+'/signed-pdf';a.textContent='הורדת PDF חתום';p.append(a);
 const b=document.createElement('a');b.href=base+'/signed-copy';b.textContent=row.signed_copy_sent_at?'שליחת עותק ללקוח (נשלח '+when(row.signed_copy_sent_at)+')':'שלח עותק ללקוח';p.append(' | ',b)}}
-else{{a.href=base+'/prepare';a.textContent='בדיקה והכנת קישור';p.append(a)}}out.append(p)}}
-if(!data.drafts.length)out.textContent='אין טיוטות';}}catch(err){{out.textContent='לא ניתן לטעון טיוטות: '+err.message}}}}
+else{{a.href=base+'/prepare';a.textContent='בדיקה והכנת קישור';p.append(a)}}(row.link_state==='signed'?done:out).append(p)}}
+if(!out.children.length)out.textContent='אין טיוטות פתוחות';if(!done.children.length)done.textContent='אין הזמנות מאושרות';}}catch(err){{out.textContent='לא ניתן לטעון טיוטות: '+err.message}}}}
 recentDrafts();
 const params=new URLSearchParams(location.search);const editId=params.get('edit'),copyId=params.get('copy');
 const sourceId=editId||copyId;
@@ -306,19 +307,28 @@ def update_draft(order_id: uuid.UUID, body: DraftInput) -> dict:
     return {"order_id": oid, "status": "draft"}
 
 
+_DRAFT_COLUMNS = """d.order_id, d.customer_name, d.customer_identity, d.organization_contact, d.customer_email,
+        d.customer_phone, d.customer_address, d.track, d.plan, d.price_key, d.amount_agorot, d.vat_mode, d.notes,
+        d.status, d.created_at, l.expires_at, l.revoked_at, l.sent_at, l.signed_at, l.signed_copy_sent_at"""
+_LATEST_LINK = """FROM work_order_drafts d LEFT JOIN LATERAL (
+          SELECT expires_at, revoked_at, sent_at, signed_at, signed_copy_sent_at FROM work_order_links
+          WHERE order_id=d.order_id ORDER BY (signed_at IS NOT NULL) DESC, created_at DESC LIMIT 1) l ON true"""
+
+
 @router.get("/drafts", dependencies=[Depends(_admin)])
 def list_drafts() -> dict:
-    rows = execute_query("""SELECT d.order_id, d.customer_name, d.customer_identity, d.organization_contact, d.customer_email,
-        d.customer_phone, d.customer_address, d.track, d.plan, d.price_key, d.amount_agorot, d.vat_mode, d.notes,
-        d.status, d.created_at, l.expires_at, l.revoked_at, l.sent_at, l.signed_at, l.signed_copy_sent_at
-        FROM work_order_drafts d LEFT JOIN LATERAL (
-          SELECT expires_at, revoked_at, sent_at, signed_at, signed_copy_sent_at FROM work_order_links
-          WHERE order_id=d.order_id ORDER BY (signed_at IS NOT NULL) DESC, created_at DESC LIMIT 1) l ON true
-        ORDER BY d.created_at DESC LIMIT 50""", fetch_all=True)
-    drafts = [dict(r, link_state=link_state(r)) for r in rows]
-    # Orders waiting for a signature first; the rest keep newest-first order.
-    drafts.sort(key=lambda r: r["link_state"] != "waiting")
-    return {"drafts": drafts}
+    """Open drafts first (waiting for signature on top), then approved (signed) orders, newest signature first.
+
+    Two queries, so a long history of signed orders never pushes open drafts out of the list.
+    """
+    open_rows = execute_query(f"SELECT {_DRAFT_COLUMNS} {_LATEST_LINK} WHERE l.signed_at IS NULL "
+                              "ORDER BY d.created_at DESC LIMIT 50", fetch_all=True)
+    signed_rows = execute_query(f"SELECT {_DRAFT_COLUMNS} {_LATEST_LINK} WHERE l.signed_at IS NOT NULL "
+                                "ORDER BY l.signed_at DESC LIMIT 50", fetch_all=True)
+    open_drafts = [dict(r, link_state=link_state(r)) for r in open_rows]
+    open_drafts.sort(key=lambda r: r["link_state"] != "waiting")
+    approved = [dict(r, link_state="signed") for r in signed_rows]
+    return {"drafts": open_drafts + approved}
 
 
 def link_state(row: dict) -> str:
