@@ -193,6 +193,14 @@ def admin_prepare(order_id: str) -> HTMLResponse:
     draft = dict(row)
     draft["payment_schedule"] = "(מועדי התשלום ייקבעו לפני יצירת הקישור)"
     preview = apply_theme(contract_html(draft), screen_only=True)
+    has_link = execute_query("SELECT 1 AS x FROM work_order_links WHERE order_id=%s LIMIT 1", (order_id,), fetch_one=True)
+    # Editing in place is allowed only while no link exists; otherwise edit as a copy (new draft).
+    edit = (f'<a href="/admin/work-orders?copy={_safe(order_id)}">ערוך כהעתק (טיוטה חדשה)</a>' if has_link
+            else f'<a href="/admin/work-orders?edit={_safe(order_id)}">ערוך טיוטה</a>')
+    nav = ('<p class="adminnav" style="background:#f4efec;padding:10px;border-radius:6px">'
+           '<a href="/admin/work-orders">← חזרה להזמנות</a> | <a href="/admin?lang=he">למסך הניהול</a> | '
+           + edit + '</p>')
+    preview = preview.replace("<h1>", nav + "<h1>", 1)
     # The admin preview is not a signing surface; use the schedule entered below.
     action = f"/admin/work-orders/drafts/{_safe(order_id)}/signing-link"
     panel = f'''<section><h2>הכנת קישור לחתימה</h2><p>בדוק את הנוסח, הסכום, המע״מ ופרטי הלקוח לפני יצירת הקישור.</p>

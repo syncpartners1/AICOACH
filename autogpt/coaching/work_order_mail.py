@@ -157,7 +157,7 @@ def signed_copy_page(order_id: str) -> HTMLResponse:
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>שליחת עותק חתום | Change Navigator</title>
 <style>body{{font:16px Arial,sans-serif;max-width:640px;margin:1.5rem auto;padding:0 1rem;color:#251f21}}
 pre{{white-space:pre-wrap;word-break:break-word;background:#f4efec;padding:1rem}}button{{padding:.8rem 1.2rem;font:inherit}}</style></head>
-<body><h1>שליחת עותק חתום ללקוח</h1><p><a href="/admin/work-orders">חזרה להזמנות</a></p>
+<body><h1>שליחת עותק חתום ללקוח</h1><p><a href="/admin/work-orders">← חזרה להזמנות</a> | <a href="/admin?lang=he">למסך הניהול</a></p>
 <div id="box"><p>טוען תצוגה מקדימה...</p></div>
 <script>const base='{base}';const box=document.getElementById('box');
 function row(label,value){{const p=document.createElement('p');p.textContent=label+': '+value;return p}}
