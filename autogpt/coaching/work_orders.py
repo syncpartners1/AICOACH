@@ -178,7 +178,17 @@ const b=document.createElement('a');b.href=base+'/signed-copy';b.textContent=row
 else{{a.href=base+'/prepare';a.textContent='בדיקה והכנת קישור';p.append(a)}}out.append(p)}}
 if(!data.drafts.length)out.textContent='אין טיוטות';}}catch(err){{out.textContent='לא ניתן לטעון טיוטות: '+err.message}}}}
 recentDrafts();
-const leadId=new URLSearchParams(location.search).get('lead');
+const params=new URLSearchParams(location.search);const editId=params.get('edit'),copyId=params.get('copy');
+const sourceId=editId||copyId;
+if(sourceId){{fetch('/admin/work-orders/drafts/'+encodeURIComponent(sourceId)).then(r=>{{if(!r.ok)throw Error('x');return r.json()}}).then(d=>{{
+for(const k of ['customer_name','customer_identity','organization_contact','customer_email','customer_phone','customer_address','notes'])form.elements[k].value=d[k]||'';
+form.elements.track.value=d.track;form.elements.plan.value=d.plan;validOptions();
+select.value=d.price_key;if(d.price_key==='custom')document.getElementById('customVat').value=d.vat_mode;fillPrice();
+document.getElementById('amount').value=(d.amount_agorot/100).toFixed(2);
+const h=document.querySelector('h1');h.textContent=editId?'עריכת טיוטת הזמנת עבודה':'טיוטה חדשה מתוך טיוטה קיימת';
+const n=document.createElement('p');n.className='notice';n.textContent=editId?'השינויים יישמרו בטיוטה הקיימת (אפשרי רק כל עוד לא נוצר לה קישור חתימה).':'השמירה תיצור טיוטה חדשה. הטיוטה המקורית נשארת ללא שינוי.';h.after(n);
+}}).catch(()=>{{document.getElementById('message').textContent='לא ניתן לטעון את הטיוטה לעריכה'}})}}
+const leadId=params.get('lead');
 if(leadId){{fetch('/admin/coaching-leads/'+encodeURIComponent(leadId)).then(r=>{{if(!r.ok)throw Error('Lead not found');return r.json()}}).then(lead=>{{
 form.elements.customer_name.value=lead.contact_name||lead.name||'';
 form.elements.customer_email.value=lead.contact_email||lead.email||'';
@@ -190,9 +200,10 @@ form.addEventListener('submit',async e=>{{e.preventDefault();const out=document.
 if(!selectionOk()){{validOptions();out.textContent='התעריף עודכן לפי המסלול והמתכונת. בדקו את הסכום ושמרו שוב';return}}
 const data=Object.fromEntries(new FormData(form));data.price_key=select.value;
 out.textContent='שומר...';
-try{{const res=await fetch('/admin/work-orders/drafts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
-const json=await res.json();if(!res.ok)throw Error(JSON.stringify(json.detail));
-out.textContent='טיוטה נשמרה: '+json.order_id+' (ללא שליחה או חתימה)';
+try{{const res=await fetch(editId?'/admin/work-orders/drafts/'+encodeURIComponent(editId):'/admin/work-orders/drafts',{{method:editId?'PUT':'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
+const json=await res.json();if(!res.ok)throw Error(res.status===409?'הטיוטה נעולה כי נוצר לה קישור חתימה. השתמשו ב"ערוך כהעתק"':JSON.stringify(json.detail));
+out.textContent=(editId?'הטיוטה עודכנה: ':'טיוטה נשמרה: ')+json.order_id+' (ללא שליחה או חתימה) ';
+const go=document.createElement('a');go.href='/admin/work-orders/drafts/'+json.order_id+'/prepare';go.textContent='למעבר להכנת קישור';out.append(go);
 const view=await fetch('/admin/work-orders/drafts/'+json.order_id);
 if(!view.ok)throw Error('הטיוטה נשמרה, אך התצוגה לא נטענה');
 const saved=await view.json(),preview=document.getElementById('preview');
@@ -225,8 +236,8 @@ def update_price(price_key: str, body: PriceUpdate) -> dict:
             "vat_mode": DEFAULT_PRICES[price_key][1]}
 
 
-@router.post("/drafts", dependencies=[Depends(_admin), Depends(_origin_guard)])
-def create_draft(body: DraftInput) -> dict:
+def _checked_fields(body: DraftInput) -> tuple[int, str]:
+    """Validate a draft form. Returns (amount_agorot, vat_mode). Shared by create and edit."""
     if "@" not in body.customer_email or body.customer_email.count("@") != 1:
         raise HTTPException(422, "Invalid email")
     if body.track not in ("personal", "family", "business") or body.plan not in ("full", "intro", "per_session"):
@@ -250,6 +261,12 @@ def create_draft(body: DraftInput) -> dict:
         agorot = money_to_agorot(body.amount_ils)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+    return agorot, vat_mode
+
+
+@router.post("/drafts", dependencies=[Depends(_admin), Depends(_origin_guard)])
+def create_draft(body: DraftInput) -> dict:
+    agorot, vat_mode = _checked_fields(body)
     order_id = str(uuid.uuid4())
     execute_query("""INSERT INTO work_order_drafts
        (order_id, customer_name, customer_identity, organization_contact, customer_email, customer_phone, customer_address, track, plan,
@@ -260,6 +277,33 @@ def create_draft(body: DraftInput) -> dict:
         body.customer_phone.strip(), body.customer_address.strip(), body.track, body.plan, body.price_key,
         agorot, vat_mode, body.notes.strip()), commit=True)
     return {"order_id": order_id, "status": "draft"}
+
+
+@router.put("/drafts/{order_id}", dependencies=[Depends(_admin), Depends(_origin_guard)])
+def update_draft(order_id: uuid.UUID, body: DraftInput) -> dict:
+    """Edit a draft in place, only while no signing link exists for it.
+
+    The contract text is built live from the draft row, so a draft that has a link
+    (even a revoked one) is locked. The guard is part of the single UPDATE, so a link
+    created at the same moment cannot slip past a separate check.
+    """
+    agorot, vat_mode = _checked_fields(body)
+    oid = str(order_id)
+    row = execute_query("""UPDATE work_order_drafts SET customer_name=%s, customer_identity=%s,
+        organization_contact=%s, customer_email=%s, customer_phone=%s, customer_address=%s, track=%s, plan=%s,
+        price_key=%s, amount_agorot=%s, vat_mode=%s, notes=%s
+        WHERE order_id=%s AND NOT EXISTS (SELECT 1 FROM work_order_links WHERE order_id=%s)
+        RETURNING order_id""",
+        (body.customer_name.strip(), body.customer_identity.strip(), body.organization_contact.strip(),
+         body.customer_email.strip(), body.customer_phone.strip(), body.customer_address.strip(),
+         body.track, body.plan, body.price_key, agorot, vat_mode, body.notes.strip(), oid, oid),
+        fetch_one=True, commit=True)
+    if not row:
+        exists = execute_query("SELECT 1 AS x FROM work_order_drafts WHERE order_id=%s", (oid,), fetch_one=True)
+        if not exists:
+            raise HTTPException(404, "Draft not found")
+        raise HTTPException(409, "Draft is locked because a signing link exists. Use edit as copy.")
+    return {"order_id": oid, "status": "draft"}
 
 
 @router.get("/drafts", dependencies=[Depends(_admin)])
