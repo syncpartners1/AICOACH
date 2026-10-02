@@ -1226,10 +1226,8 @@ def admin_message_read(message_id: uuid.UUID, request: Request):
     # CORS settings, so a custom header alone is not a CSRF boundary.
     if not _is_admin_authenticated(request):
         raise HTTPException(status_code=403, detail="Admin authentication required")
-    origin = request.headers.get("Origin", "")
-    expected_origin = f"{request.url.scheme}://{request.url.netloc}"
-    if origin != expected_origin:
-        raise HTTPException(status_code=403, detail="Same-origin request required")
+    from autogpt.coaching.identity_routes import same_origin
+    same_origin(request)  # public https origin or the request's own origin
     if request.headers.get("X-Inbox-Action") != "mark-read":
         raise HTTPException(status_code=403, detail="Inbox action header required")
     from autogpt.coaching.coach_inbox import mark_read

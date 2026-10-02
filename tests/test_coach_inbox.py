@@ -194,3 +194,19 @@ def test_dashboard_link_displays_count_or_error():
     from autogpt.coaching.admin_ui import render_admin
     assert '7 לא נקראו' in render_admin([], [], inbox_unread=7)
     assert 'מונה לא זמין' in render_admin([], [])
+
+
+def test_inbox_mark_read_accepts_public_https_origin_behind_proxy():
+    # Behind Cloud Run the request URL is http, but the browser sends the public origin.
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from autogpt.coaching import api
+    from autogpt.coaching import coach_inbox as inbox
+    client = TestClient(api.app)
+    h = {'X-Inbox-Action': 'mark-read', 'Origin': 'https://app.changenavigator.co.il'}
+    with patch.object(api, '_is_admin_authenticated', return_value=True), patch.object(inbox, 'mark_read', return_value=True) as mark:
+        assert client.post(f'/admin/messages/{MID}/read', headers=h).status_code == 200
+        mark.assert_called_once()
+        for bad in ('null', 'https://app.changenavigator.co.il.evil.example', 'http://app.changenavigator.co.il'):
+            assert client.post(f'/admin/messages/{MID}/read', headers={**h, 'Origin': bad}).status_code == 403
+        assert mark.call_count == 1
