@@ -212,7 +212,7 @@ for(const [label,value] of Object.entries({{שם:saved.customer_name,זיהוי:
 const line=document.createElement('p');line.textContent=label+': '+value;preview.append(line)}}recentDrafts()}}
 catch(err){{out.textContent='שגיאה: '+err.message;}}}});
 </script></html>'''
-    return HTMLResponse(apply_theme(page))
+    return HTMLResponse(apply_theme(page, admin=True))
 
 
 @router.get("/prices", dependencies=[Depends(_admin)])

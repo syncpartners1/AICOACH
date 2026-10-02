@@ -203,7 +203,8 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
     prev=f'<a href="?page={previous_page}">הקודם</a>' if page>1 else ''
     nxt=f'<a href="?page={next_page}">הבא</a>' if more else ''
     count='לא זמין' if error else str(unread)
-    return '''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+    from autogpt.coaching.theme import apply_admin_bar
+    return apply_admin_bar('''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>פגישות חדשות | Change Navigator</title>
     <style>body{font:16px/1.6 Arial,sans-serif;background:#f3f4f6;color:#1a2b4a;margin:0}main{max-width:900px;margin:30px auto;padding:0 18px}
     h1{font-size:28px}h2{font-size:20px;margin:0}article{padding:20px;background:white;border:1px solid #d1d5db;border-radius:12px;margin:18px 0;overflow-wrap:anywhere}
@@ -216,7 +217,7 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
     <p id="action-error" class="error" role="alert" hidden></p>{content}<nav>{prev}<span>עמוד {page_label}</span>{nxt}</nav>'''+'''
     <script>async function markRead(b){b.disabled=true;const e=document.getElementById('action-error');e.hidden=true;
     try{const r=await fetch('/admin/booking-notifications/'+b.dataset.id+'/read',{method:'POST'});if(!r.ok)throw Error();location.reload();}
-    catch(x){e.textContent='הסימון לא נשמר. נסו שוב.';e.hidden=false;b.disabled=false;}}</script></main></body></html>'''
+    catch(x){e.textContent='הסימון לא נשמר. נסו שוב.';e.hidden=false;b.disabled=false;}}</script></main></body></html>''')
 
 
 @router.get('/admin/booking-notifications', dependencies=[Depends(_admin)], response_class=HTMLResponse, include_in_schema=False)
