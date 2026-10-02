@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 import logging
 
 from autogpt.coaching.db import execute_query
+from autogpt.coaching.theme import apply_theme
 
 _log = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ def coach_page(request: Request, _: None = Depends(_admin)) -> HTMLResponse:
         f'({"כולל מע״מ" if price["vat_mode"] == "vat_included" else "+ מע״מ"})</option>'
         for key, price in prices.items()
     )
-    return HTMLResponse(f'''<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
+    page = f'''<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>טיוטות הזמנת עבודה | Change Navigator</title>
 <style>body{{font:16px Arial,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#251f21}}
@@ -186,7 +187,8 @@ preview.replaceChildren();const title=document.createElement('h2');title.textCon
 for(const [label,value] of Object.entries({{שם:saved.customer_name,זיהוי:saved.customer_identity,איש_קשר:saved.organization_contact,אימייל:saved.customer_email,טלפון:saved.customer_phone,כתובת:saved.customer_address,מסלול:saved.track,מתכונת:saved.plan,מחיר:(saved.amount_agorot/100).toFixed(2)+' ₪ '+(saved.vat_mode==='vat_included'?'כולל מע״מ':'+ מע״מ'),הערות:saved.notes}})){{
 const line=document.createElement('p');line.textContent=label+': '+value;preview.append(line)}}recentDrafts()}}
 catch(err){{out.textContent='שגיאה: '+err.message;}}}});
-</script></html>''')
+</script></html>'''
+    return HTMLResponse(apply_theme(page))
 
 
 @router.get("/prices", dependencies=[Depends(_admin)])

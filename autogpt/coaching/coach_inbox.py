@@ -7,6 +7,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from autogpt.coaching.db import get_db_cursor
+from autogpt.coaching.theme import apply_theme
 
 PAGE_SIZE = 30
 
@@ -82,7 +83,7 @@ def render_inbox(rows, unread, page=1, has_next=False, error=False):
     prev_link = f'<a href="?page={page-1}">הקודם</a>' if page > 1 else ''
     next_link = f'<a href="?page={page+1}">הבא</a>' if has_next else ''
     count = 'לא זמין' if error else str(unread)
-    return '''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+    return apply_theme('''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>הודעות למאמן | Change Navigator</title>
     <style>body{margin:0;background:#f3f4f6;color:#1a2b4a;font-family:Arial,sans-serif}
     main{max-width:900px;margin:32px auto;padding:0 18px}h1{font-size:28px;margin-bottom:10px}
@@ -105,4 +106,4 @@ def render_inbox(rows, unread, page=1, has_next=False, error=False):
         method:'POST',headers:{'X-Inbox-Action':'mark-read'}});
         if(!res.ok)throw new Error('failed'); location.reload();
       }catch(e){error.textContent='הסימון לא נשמר. נסו שוב.';error.hidden=false;button.disabled=false;}
-    }</script></main></body></html>'''
+    }</script></main></body></html>''')
