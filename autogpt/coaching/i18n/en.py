@@ -365,7 +365,7 @@ S_EN = {
     "admin_track_base_financial": "Base + financial track",
     "admin_track_undefined": "Not set yet",
     "admin_phase_unassigned": "Not set yet",
-    "admin_phase_qmark": "Q-Mark",
+    "admin_phase_qmark": "Diagnostic meeting",
     "admin_phase_meeting_n": "Meeting {n}",
     "admin_phase_ongoing": "Ongoing coaching",
     "admin_status_update_failed": "Could not update status.",

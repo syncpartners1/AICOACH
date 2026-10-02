@@ -133,6 +133,12 @@ def receive_booking(booking: NewBooking):
     except Exception:
         logger.exception('Booking inbox storage unavailable')
         raise HTTPException(503, 'Booking inbox unavailable')
+    # Link a diagnostic-meeting booking to its lead. A failure here must not fail the notification.
+    try:
+        from autogpt.coaching.lead_stage import record_booking
+        record_booking(booking.event_id, booking.email, booking.meeting_type, booking.start)
+    except Exception:
+        logger.warning('Could not link diagnostic booking to a lead', exc_info=True)
     # Inbox committed; email problems never make the caller treat the confirmed
     # calendar event or durable notification as failed. Duplicate pending receipt
     # can finish an interrupted pre-claim flow without duplicate SMTP send.

@@ -6,7 +6,7 @@ from html import escape
 from autogpt.coaching.storage import PROGRAM_PHASES
 
 PHASE_LABELS = {
-    "unassigned": "טרם הוגדר", "qmark": "קיו-מרק",
+    "unassigned": "טרם הוגדר", "qmark": "פגישת איבחון",
     **{f"meeting_{n}": f"מפגש {n}" for n in range(1, 11)},
     "ongoing": "ליווי מתמשך",
 }
