@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from autogpt.coaching import lead_stage
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.db import execute_query, get_db_cursor
+from autogpt.coaching.theme import apply_theme
 from autogpt.coaching.work_orders import _admin, _origin_guard
 
 router = APIRouter(prefix="/admin/coaching-leads", tags=["admin coaching leads"])
@@ -54,7 +55,7 @@ def _diagnostic_url(lead: dict) -> str:
 
 @router.get("", response_class=HTMLResponse, include_in_schema=False, dependencies=[Depends(_admin)])
 def lead_page() -> HTMLResponse:
-    return HTMLResponse('''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+    return HTMLResponse(apply_theme('''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>פניות אימון | Change Navigator</title>
 <style>body{font:16px/1.5 Arial,sans-serif;margin:0 auto;max-width:1100px;padding:24px;color:#251f21}
 a{color:#166e61}.layout{display:grid;grid-template-columns:minmax(230px,1fr) minmax(330px,2fr);gap:20px}
@@ -110,7 +111,7 @@ form.elements.mobile_phone.value=lead.mobile_phone||'';document.getElementById('
 form.onsubmit=async e=>{e.preventDefault();if(!selected)return;result.textContent='שומר...';const data=Object.fromEntries(new FormData(form));
 const res=await fetch('/admin/coaching-leads/'+selected+'/contact',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
 result.textContent=res.ok?'פרטי הקשר נשמרו. הזמנת עבודה תיעשה בנפרד, לאחר פגישת איבחון.':'שמירת פרטי הקשר נכשלה';if(res.ok){const keep=result.textContent;await selectLead(selected);result.textContent=keep}};
-load();</script></body></html>''', headers={"Cache-Control": "no-store, private"})
+load();</script></body></html>'''), headers={"Cache-Control": "no-store, private"})
 
 
 @router.get("/data", dependencies=[Depends(_admin)])

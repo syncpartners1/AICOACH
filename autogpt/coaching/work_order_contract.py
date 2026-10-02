@@ -23,6 +23,7 @@ from weasyprint import HTML
 
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.db import execute_query, get_db_cursor
+from autogpt.coaching.theme import apply_theme
 from autogpt.coaching.work_orders import _admin, _origin_guard
 
 router = APIRouter(tags=["work order signing"])
@@ -169,7 +170,7 @@ def admin_prepare(order_id: str) -> HTMLResponse:
         raise HTTPException(404, "Draft not found")
     draft = dict(row)
     draft["payment_schedule"] = "(מועדי התשלום ייקבעו לפני יצירת הקישור)"
-    preview = contract_html(draft)
+    preview = apply_theme(contract_html(draft), screen_only=True)
     # The admin preview is not a signing surface; use the schedule entered below.
     action = f"/admin/work-orders/drafts/{_safe(order_id)}/signing-link"
     panel = f'''<section><h2>הכנת קישור לחתימה</h2><p>בדוק את הנוסח, הסכום, המע״מ ופרטי הלקוח לפני יצירת הקישור.</p>
@@ -203,8 +204,9 @@ def signing_page(token: str) -> HTMLResponse:
         text = (f'<html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
                 f'<h1>ההזמנה נחתמה</h1><p>המסמך יהיה מחייב לאחר התשלום.</p>'
                 f'<a href="/work-orders/sign/{_safe(token)}/pdf">הורד את ההזמנה החתומה (PDF)</a></html>')
-        return HTMLResponse(text, headers=NO_STORE)
-    body = contract_html(row)
+        return HTMLResponse(apply_theme(text, screen_only=True), headers=NO_STORE)
+    # Screen-only theme: contract_html itself (and so the signed PDF) is unchanged.
+    body = apply_theme(contract_html(row), screen_only=True)
     # The complete terms are present before signature. Signing requires a named signer.
     form = '''<section><h2>חתימה על גבי המסך</h2><label>שם המזמין/מורשה חתימה<input id="signer" maxlength="160" required></label>
 <label>תפקיד (אם חותם בשם עסק)<input id="role" maxlength="160"></label>
