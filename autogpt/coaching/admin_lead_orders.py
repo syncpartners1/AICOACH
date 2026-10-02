@@ -111,7 +111,7 @@ form.elements.mobile_phone.value=lead.mobile_phone||'';document.getElementById('
 form.onsubmit=async e=>{e.preventDefault();if(!selected)return;result.textContent='שומר...';const data=Object.fromEntries(new FormData(form));
 const res=await fetch('/admin/coaching-leads/'+selected+'/contact',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
 result.textContent=res.ok?'פרטי הקשר נשמרו. הזמנת עבודה תיעשה בנפרד, לאחר פגישת איבחון.':'שמירת פרטי הקשר נכשלה';if(res.ok){const keep=result.textContent;await selectLead(selected);result.textContent=keep}};
-load();</script></body></html>'''), headers={"Cache-Control": "no-store, private"})
+load();</script></body></html>''', admin=True), headers={"Cache-Control": "no-store, private"})
 
 
 @router.get("/data", dependencies=[Depends(_admin)])

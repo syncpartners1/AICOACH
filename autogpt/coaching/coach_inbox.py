@@ -106,4 +106,4 @@ def render_inbox(rows, unread, page=1, has_next=False, error=False):
         method:'POST',headers:{'X-Inbox-Action':'mark-read'}});
         if(!res.ok)throw new Error('failed'); location.reload();
       }catch(e){error.textContent='הסימון לא נשמר. נסו שוב.';error.hidden=false;button.disabled=false;}
-    }</script></main></body></html>''')
+    }</script></main></body></html>''', admin=True)

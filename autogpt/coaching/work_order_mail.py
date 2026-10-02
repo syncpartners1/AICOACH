@@ -169,7 +169,8 @@ const b=document.createElement('button');b.textContent='אשר ושלח ללקו
 b.onclick=async()=>{{b.disabled=true;out.textContent='שולח...';const r=await fetch(base+'/signed-copy-send',{{method:'POST'}});
 if(r.ok){{out.textContent='נשלח';}}else{{out.textContent='השליחה נכשלה, לא נשלח';b.disabled=false}}}};
 box.append(b,out)}}load();</script></body></html>'''
-    return HTMLResponse(page, headers=NO_STORE)
+    from autogpt.coaching.theme import apply_admin_bar
+    return HTMLResponse(apply_admin_bar(page), headers=NO_STORE)
 
 
 def notify_signed(order_id: str, token_digest: str, *, signer_name: str, signer_role: str,

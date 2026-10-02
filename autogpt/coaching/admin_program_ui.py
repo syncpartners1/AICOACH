@@ -25,7 +25,8 @@ def render_program_editor(user, program: dict) -> str:
         f'<option value="{value}"{" selected" if current_phase == value else ""}>{PHASE_LABELS[value]}</option>'
         for value in PROGRAM_PHASES
     )
-    return f"""<!DOCTYPE html>
+    from autogpt.coaching.theme import apply_admin_bar
+    return apply_admin_bar(f"""<!DOCTYPE html>
 <html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ניהול תוכנית אימון - {name}</title>
@@ -76,4 +77,4 @@ form.addEventListener('submit', async event => {{
     status.style.color = '#b91c1c';
   }} finally {{ button.disabled = false; }}
 }});
-</script></body></html>"""
+</script></body></html>""")

@@ -192,7 +192,7 @@ def admin_prepare(order_id: str) -> HTMLResponse:
         raise HTTPException(404, "Draft not found")
     draft = dict(row)
     draft["payment_schedule"] = "(מועדי התשלום ייקבעו לפני יצירת הקישור)"
-    preview = apply_theme(contract_html(draft), screen_only=True)
+    preview = apply_theme(contract_html(draft), screen_only=True, admin=True)
     has_link = execute_query("SELECT 1 AS x FROM work_order_links WHERE order_id=%s LIMIT 1", (order_id,), fetch_one=True)
     # Editing in place is allowed only while no link exists; otherwise edit as a copy (new draft).
     edit = (f'<a href="/admin/work-orders?copy={_safe(order_id)}">ערוך כהעתק (טיוטה חדשה)</a>' if has_link
