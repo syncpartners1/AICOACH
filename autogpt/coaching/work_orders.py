@@ -15,7 +15,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+import logging
+
 from autogpt.coaching.db import execute_query
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/work-orders", tags=["admin work orders"])
 
@@ -47,10 +51,20 @@ def money_to_agorot(value: str) -> int:
 
 def _origin_guard(request: Request) -> None:
     # SameSite cookies are not a substitute for rejecting cross-origin writes.
-    origin = request.headers.get("origin", "")
+    # Behind Cloud Run/Firebase the request URL is http, so the public origins
+    # are accepted explicitly. Forwarded headers are never trusted.
     from autogpt.coaching.config import coaching_config
-    allowed = {str(request.base_url).rstrip("/"), coaching_config.public_url.rstrip("/")}
-    if not origin or origin.rstrip("/") not in allowed:
+    from autogpt.coaching.identity_routes import PUBLIC_ORIGIN
+    origin = request.headers.get("origin", "").rstrip("/")
+    allowed = {
+        PUBLIC_ORIGIN,
+        "https://changenavigator.web.app",
+        f"{request.url.scheme}://{request.url.netloc}",
+        str(request.base_url).rstrip("/"),
+        coaching_config.public_url.rstrip("/"),
+    }
+    if not origin or origin not in allowed:
+        _log.warning("origin guard rejected: origin=%r path=%s", origin[:80], request.url.path)
         raise HTTPException(403, "Cross-origin write rejected")
 
 
