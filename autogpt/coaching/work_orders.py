@@ -8,6 +8,7 @@ from __future__ import annotations
 import html
 import json
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -164,7 +165,14 @@ out.textContent='מחירון עודכן להזמנות עתידיות';}}catch(
 async function recentDrafts(){{const out=document.getElementById('drafts');
 try{{const res=await fetch('/admin/work-orders/drafts');if(!res.ok)throw Error('אין גישה');
 const data=await res.json();out.replaceChildren();for(const row of data.drafts){{
-const p=document.createElement('p');p.textContent=row.customer_name+' | '+row.track+' | '+row.plan+' | '+(row.amount_agorot/100).toFixed(2)+' ₪ | '+row.status+' | ';const a=document.createElement('a');a.href='/admin/work-orders/drafts/'+row.order_id+'/prepare';a.textContent='בדיקה והכנת קישור';p.append(a);out.append(p)}}
+const p=document.createElement('p');const labels={{draft:'טיוטה',link_created:'קישור נוצר',waiting:'נשלח ללקוח, ממתין לחתימה',expired_unsigned:'לא נחתם והקישור פג',signed:'נחתמה'}};
+const when=t=>t?new Date(t).toLocaleDateString('he-IL'):'';
+let state=labels[row.link_state]||row.status;if(row.link_state==='waiting'||row.link_state==='expired_unsigned')state+=' ('+when(row.sent_at)+')';if(row.link_state==='signed')state+=' ('+when(row.signed_at)+')';
+if(row.link_state==='waiting')p.style.fontWeight='bold';if(row.link_state==='expired_unsigned'){{p.style.background='#fde8e8';p.style.padding='4px'}}
+p.textContent=row.customer_name+' | '+row.track+' | '+row.plan+' | '+(row.amount_agorot/100).toFixed(2)+' ₪ | '+state+' | ';const a=document.createElement('a');const base='/admin/work-orders/drafts/'+row.order_id;
+if(row.link_state==='signed'){{a.href=base+'/signed-pdf';a.textContent='הורדת PDF חתום';p.append(a);
+const b=document.createElement('a');b.href=base+'/signed-copy';b.textContent=row.signed_copy_sent_at?'שליחת עותק ללקוח (נשלח '+when(row.signed_copy_sent_at)+')':'שלח עותק ללקוח';p.append(' | ',b)}}
+else{{a.href=base+'/prepare';a.textContent='בדיקה והכנת קישור';p.append(a)}}out.append(p)}}
 if(!data.drafts.length)out.textContent='אין טיוטות';}}catch(err){{out.textContent='לא ניתן לטעון טיוטות: '+err.message}}}}
 recentDrafts();
 const leadId=new URLSearchParams(location.search).get('lead');
@@ -251,11 +259,29 @@ def create_draft(body: DraftInput) -> dict:
 
 @router.get("/drafts", dependencies=[Depends(_admin)])
 def list_drafts() -> dict:
-    rows = execute_query("""SELECT order_id, customer_name, customer_identity, organization_contact, customer_email, customer_phone,
-        customer_address, track, plan, price_key, amount_agorot, vat_mode, notes,
-        status, created_at FROM work_order_drafts ORDER BY created_at DESC LIMIT 50""",
-        fetch_all=True)
-    return {"drafts": rows}
+    rows = execute_query("""SELECT d.order_id, d.customer_name, d.customer_identity, d.organization_contact, d.customer_email,
+        d.customer_phone, d.customer_address, d.track, d.plan, d.price_key, d.amount_agorot, d.vat_mode, d.notes,
+        d.status, d.created_at, l.expires_at, l.revoked_at, l.sent_at, l.signed_at, l.signed_copy_sent_at
+        FROM work_order_drafts d LEFT JOIN LATERAL (
+          SELECT expires_at, revoked_at, sent_at, signed_at, signed_copy_sent_at FROM work_order_links
+          WHERE order_id=d.order_id ORDER BY (signed_at IS NOT NULL) DESC, created_at DESC LIMIT 1) l ON true
+        ORDER BY d.created_at DESC LIMIT 50""", fetch_all=True)
+    drafts = [dict(r, link_state=link_state(r)) for r in rows]
+    # Orders waiting for a signature first; the rest keep newest-first order.
+    drafts.sort(key=lambda r: r["link_state"] != "waiting")
+    return {"drafts": drafts}
+
+
+def link_state(row: dict) -> str:
+    """Derived stage: draft, link_created, waiting, expired_unsigned or signed."""
+    if row.get("signed_at"):
+        return "signed"
+    if not row.get("expires_at") or row.get("revoked_at"):
+        return "draft"
+    expired = row["expires_at"] <= datetime.now(timezone.utc)
+    if row.get("sent_at"):
+        return "expired_unsigned" if expired else "waiting"
+    return "draft" if expired else "link_created"
 
 
 @router.get("/drafts/{order_id}", dependencies=[Depends(_admin)])

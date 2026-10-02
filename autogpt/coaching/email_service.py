@@ -118,17 +118,36 @@ def _html_to_text(rendered_html: str) -> str:
     return _WS_RE.sub(" ", text).strip()
 
 
-def _send_message(*, to_email: str, subject: str, html_body: str, plain_body: str) -> bool:
-    """Send one multipart (plain + HTML) message over SMTP. Returns True on success."""
+def _send_message(*, to_email: str, subject: str, html_body: str, plain_body: str,
+                  cc: list[str] | None = None,
+                  attachments: list[tuple[str, bytes, str]] | None = None) -> bool:
+    """Send one multipart (plain + HTML) message over SMTP. Returns True on success.
+
+    ``cc`` addresses are added to the Cc header and the SMTP envelope.
+    ``attachments`` is a list of (filename, bytes, mime_type).
+    """
     if not SMTP_PASS:
         logger.error("SMTP_PASSWORD not set — email to %s skipped", to_email)
         return False
-    msg = MIMEMultipart("alternative")
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(plain_body, "plain", "utf-8"))
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+    if attachments:
+        from email.mime.application import MIMEApplication
+        msg = MIMEMultipart("mixed")
+        msg.attach(alt)
+        for filename, data, mime_type in attachments:
+            subtype = mime_type.split("/", 1)[1] if "/" in mime_type else "octet-stream"
+            part = MIMEApplication(data, _subtype=subtype)
+            part.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(part)
+    else:
+        msg = alt
     msg["From"] = SMTP_FROM
     msg["To"] = to_email
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     msg["Subject"] = Header(subject, "utf-8")
-    msg.attach(MIMEText(plain_body, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as smtp:
             smtp.ehlo()
@@ -187,12 +206,16 @@ def send_notification_email(
     subject: str,
     body_html: str,
     language: str = "en",
+    cc: list[str] | None = None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> bool:
     """Send a generic trainee notification email (the email leg of a
     multi-channel notification). ``body_html`` is trusted HTML, typically
     the same content sent on Telegram; it is inserted unescaped while
     every other template value is escaped."""
     validate_recipient_address(to_email)
+    for address in cc or []:
+        validate_recipient_address(address)
     direction = "rtl" if language == "he" else "ltr"
     params = {
         "to_name": to_name or "",
@@ -209,6 +232,8 @@ def send_notification_email(
         subject=subject,
         html_body=html_body,
         plain_body=plain_body,
+        cc=cc,
+        attachments=attachments,
     )
 
 
