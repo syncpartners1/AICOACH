@@ -117,3 +117,53 @@ def test_blank_signature_rejected():
     with pytest.raises(HTTPException) as error:
         _png_bytes(png_data(blank=True))
     assert error.value.status_code == 422
+
+
+def _row(track, plan, key, amount=100000, vat="plus_vat"):
+    return {**ORDER, "track": track, "plan": plan, "price_key": key, "amount_agorot": amount, "vat_mode": vat}
+
+
+COMBOS = [
+    ("personal", "full", "personal_clinic_full"), ("personal", "full", "personal_video_full"),
+    ("personal", "per_session", "personal_clinic_session"), ("personal", "per_session", "personal_video_session"),
+    ("personal", "intro", "personal_clinic_session"),
+    ("family", "full", "family_full"), ("family", "per_session", "family_session"), ("family", "intro", "family_session"),
+    ("business", "full", "business_full"), ("business", "per_session", "business_session"), ("business", "intro", "business_session"),
+]
+VENUES = {"family": "כלכלי: בקליניקה", "business": "עסקי: בקליניקה בראשון לציון בלבד", "personal": "אישי: בקליניקה"}
+PRICE_LIST_FRAGMENTS = ("450 ₪ למפגש", "350 ₪ למפגש", "4,500 ₪", "3,500 ₪", "550 ₪ למפגש", "7,788 ₪ כולל")
+
+
+def test_only_selected_track_and_plan_appear():
+    for track, plan, key in COMBOS:
+        html = contract_html(_row(track, plan, key, amount=194700))
+        for frag in PRICE_LIST_FRAGMENTS:
+            assert frag not in html, (track, plan, frag)
+        assert "1,947.00 ₪" in html  # the order's own amount
+        for t, frag in VENUES.items():
+            assert (frag in html) == (t == track), (track, plan, t)
+        assert ("תוכנית היכרות של 3 מפגשים" in html) == (plan == "intro")
+        assert "תשלום לכל מפגש בנפרד זמין תמיד" in html
+        assert "12 מפגשים כולל אבחון" in html if (plan == "full" and track == "personal") else True
+        assert ("13 מפגשים כולל אבחון" in html) == (plan == "full" and track != "personal")
+
+
+def test_personal_modality_follows_selected_price():
+    assert "בקליניקה: 12" not in contract_html(_row("personal", "full", "personal_video_full"))
+    assert "תוכנית מלאה בשיחת וידאו בגוגל מיט" in contract_html(_row("personal", "full", "personal_video_full"))
+    assert "תוכנית מלאה בקליניקה" in contract_html(_row("personal", "full", "personal_clinic_full"))
+
+
+def test_custom_price_shows_order_line_without_list():
+    html = contract_html(_row("business", "full", "custom", amount=1234500, vat="vat_included"))
+    assert "12,345.00 ₪ כולל מע״מ" in html
+    for frag in PRICE_LIST_FRAGMENTS:
+        assert frag not in html
+
+
+def test_universal_terms_untouched_for_every_combo():
+    for track, plan, key in COMBOS:
+        html = contract_html(_row(track, plan, key))
+        for snippet in ("פגישת איבחון ללא עלות", "מערכת ה-AI", "מועדי תשלום", "50%", "30%", "ממפגש 8 ואילך",
+                        "פחות מ-24 שעות", "חשבונית עסקה", "הקוד האתי", "מדיניות הפרטיות", "מחייב לאחר התשלום"):
+            assert snippet in html, (track, plan, snippet)

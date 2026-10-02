@@ -73,6 +73,37 @@ def _money(row: dict) -> str:
     return f"{amount:,.2f} ₪ {VAT[row['vat_mode']]}"
 
 
+VENUE = {
+    "family": "כלכלי: בקליניקה בראשון לציון; לפחות 8 המפגשים הראשונים שם. בעת הצורך חלק מהמשך המפגשים בווידאו.",
+    "business": "עסקי: בקליניקה בראשון לציון בלבד; לפחות 8 המפגשים הראשונים שם.",
+    "personal": "אישי: בקליניקה, או תוכנית מלאה בגוגל מיט לפי בחירת המסלול והמחיר.",
+}
+INTRO_ROW = "תוכנית היכרות של 3 מפגשים: כל מפגש בתשלום מחויב בנפרד לפי תעריף המסלול + מע״מ; האבחון חינם."
+ALWAYS_ROW = "תשלום לכל מפגש בנפרד זמין תמיד ללקוחות, גם ללא רכישת תוכנית מראש."
+
+
+def _plan_rows(row: dict) -> str:
+    """Only what applies to this order. No printed price list: the amount is the order's own line."""
+    track, plan, key = row["track"], row["plan"], str(row.get("price_key") or "")
+    where = ""
+    if track == "personal":
+        where = {"personal_clinic": " בקליניקה", "personal_video": " בשיחת וידאו בגוגל מיט"}.get(
+            next((k for k in ("personal_clinic", "personal_video") if key.startswith(k)), ""), "")
+    rows = []
+    if plan == "full":
+        if track == "personal":
+            rows.append(f"תוכנית מלאה{where}: 12 מפגשים כולל אבחון, בתשלום מראש במחיר 10 מפגשים.")
+        else:
+            rows.append("תוכנית מלאה: 13 מפגשים כולל אבחון.")
+    elif plan == "per_session":
+        rows.append(f"מפגש בודד{where}: כל מפגש מחויב לפי התעריף שבהזמנה.")
+    else:
+        rows.append(INTRO_ROW)
+    rows.append(VENUE[track])
+    rows.append(ALWAYS_ROW)
+    return "".join(f"<p>{_safe(r)}</p>\n" for r in rows)
+
+
 def contract_html(row: dict, *, signer_name: str = "", signer_role: str = "",
                   signature_data_uri: str = "", signed_at: datetime | None = None) -> str:
     """The same contract is shown before signing and rendered to PDF afterward."""
@@ -80,6 +111,7 @@ def contract_html(row: dict, *, signer_name: str = "", signer_role: str = "",
     track = TRACK[row["track"]]
     plan = PLAN[row["plan"]]
     customer = _safe(row["customer_name"])
+    plan_rows = _plan_rows(row)
     contact = _safe(row["organization_contact"])
     adviser = ("<p>במסלול הכלכלי המשפחתי, עדי יפנה ליועץ פיננסי במקרה הצורך לבחינת "
                "התחייבויות, ביטוחים ואפשרויות לצמצום חובות. תיאום הפגישה ייעשה מול היועץ "
@@ -104,17 +136,7 @@ h1{{font-size:24px}}h2{{font-size:18px;margin:22px 0 6px;border-bottom:1px solid
 <h2>בחירת מסלול ותשלום</h2><div class="terms">
 <p>מפגש 1 בכל תוכנית: פגישת איבחון ללא עלות וללא התחייבות; הזמנת העבודה נערכת אחריה.</p>
 <p>מסלול: {track} | מתכונת: {plan}</p>
-<p>אימון אישי במפגש פרונטלי: 450 ₪ למפגש + מע״מ.</p>
-<p>אימון אישי בשיחת וידאו בגוגל מיט: 350 ₪ למפגש + מע״מ.</p>
-<p>תוכנית אישית מלאה בקליניקה: 12 מפגשים כולל אבחון; 4,500 ₪ + מע״מ מראש (מחיר 10 מפגשים).</p>
-<p>תוכנית אישית מלאה בגוגל מיט: 12 מפגשים כולל אבחון; 3,500 ₪ + מע״מ בתשלום מראש (מחיר 10 מפגשים).</p>
-<p>כלכלי משפחתי: 550 ₪ למפגש + מע״מ; תוכנית 13 מפגשים כולל אבחון: 7,788 ₪ כולל מע״מ.</p>
-<p>עסקי: 550 ₪ למפגש + מע״מ; תוכנית 13 מפגשים כולל אבחון: 7,788 ₪ כולל מע״מ.</p>
-<p>כלכלי: בקליניקה בראשון לציון; לפחות 8 המפגשים הראשונים שם. בעת הצורך חלק מהמשך המפגשים בווידאו.</p>
-<p>עסקי: בקליניקה בראשון לציון בלבד; לפחות 8 המפגשים הראשונים שם.</p>
-<p>אישי: בקליניקה, או תוכנית מלאה בגוגל מיט לפי בחירת המסלול והמחיר.</p>
-<p>תוכנית היכרות של 3 מפגשים: כל מפגש בתשלום מחויב בנפרד לפי תעריף המסלול + מע״מ; האבחון חינם.</p>
-<p>תשלום לכל מפגש בנפרד זמין תמיד ללקוחות, גם ללא רכישת תוכנית מראש.</p>
+{plan_rows}
 <p>התשלום כולל שימוש במערכת ה-AI במהלך התוכנית, וערכת מתאמנים הכוללת מחברת עבודה עם הכלים וערכת קלפים.</p>
 <p><strong>ההזמנה המסוימת:</strong> {track} | {plan} | סכום: {_money(row)}.</p>
 <p>מועדי תשלום: {_safe(row['payment_schedule'])}</p>{adviser}</div>
