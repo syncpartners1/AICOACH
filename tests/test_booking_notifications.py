@@ -165,3 +165,15 @@ def test_error_route_numeric_page_remains_safe_html():
         response=TestClient(api.app).get('/admin/booking-notifications?page=2')
     assert response.status_code==503 and 'עמוד 2' in response.text
     assert 'אין להסיק' in response.text
+
+
+def test_booking_mark_read_accepts_public_origin_and_logs_rejection(caplog):
+    # Behind Cloud Run the request URL is http; the browser sends the public https origin.
+    from autogpt.coaching import api
+    client=TestClient(api.app)
+    with patch.object(api,'_is_admin_authenticated',return_value=True):
+        with patch.object(b,'get_db_cursor',side_effect=lambda **kw:cursor(MagicMock(**{'fetchone.return_value':{'event_id':'evt_1'}}),**kw)):
+            assert client.post('/admin/booking-notifications/evt_1/read',headers={'Origin':'https://app.changenavigator.co.il'}).status_code==200
+        for bad in ('null','','https://app.changenavigator.co.il.evil.example','http://app.changenavigator.co.il'):
+            assert client.post('/admin/booking-notifications/evt_1/read',headers={'Origin':bad} if bad else {}).status_code==403
+    assert 'origin guard rejected' in caplog.text
