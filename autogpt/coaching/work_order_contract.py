@@ -176,7 +176,8 @@ def admin_prepare(order_id: str) -> HTMLResponse:
     panel = f'''<section><h2>הכנת קישור לחתימה</h2><p>בדוק את הנוסח, הסכום, המע״מ ופרטי הלקוח לפני יצירת הקישור.</p>
 <label>מועדי התשלום להזמנה זו<input id="schedule" maxlength="500" required></label>
 <button type="button" id="create">צור קישור חדש לחתימה</button><p id="result" role="status"></p>
-<p>יצירת קישור נוסף תבטל קישור שלא נחתם. אין שליחה אוטומטית ללקוח.</p></section>
+<p>יצירת קישור נוסף תבטל קישור שלא נחתם. שום דבר לא נשלח ללקוח בלי תצוגה מקדימה ואישור שלך.</p>
+<div id="sendbox" hidden><button type="button" id="preview">שלח ללקוח במייל (תצוגה מקדימה)</button><div id="mailpreview"></div></div></section>
 <script>document.getElementById('create').onclick=async()=>{{
 const schedule=document.getElementById('schedule').value.trim(),out=document.getElementById('result');
 if(!schedule){{out.textContent='יש להזין מועדי תשלום';return}}
@@ -187,7 +188,20 @@ const data=await res.json();out.replaceChildren();const a=document.createElement
 a.href=data.url;a.textContent='פתח את טופס הלקוח לבדיקה';out.append(a);
 const p=document.createElement('p');p.textContent='הקישור נוצר ואינו נשלח. תוקף: '+data.expires_at;out.append(p);
 const input=document.createElement('input');input.readOnly=true;input.value=data.url;
-input.setAttribute('aria-label','קישור הלקוח להעתקה');out.append(input)}};</script>'''
+input.setAttribute('aria-label','קישור הלקוח להעתקה');out.append(input);
+rawToken=data.url.split('/').pop();document.getElementById('sendbox').hidden=false;document.getElementById('mailpreview').replaceChildren()}};
+const base='/admin/work-orders/drafts/{_safe(order_id)}';let rawToken='';
+function line(label,value){{const p=document.createElement('p');p.textContent=label+': '+value;return p}}
+document.getElementById('preview').onclick=async()=>{{const box=document.getElementById('mailpreview');box.replaceChildren();
+const res=await fetch(base+'/send-preview',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{token:rawToken}})}});
+if(!res.ok){{box.textContent='לא ניתן להכין תצוגה. צור קישור חדש.';return}}const d=await res.json();
+box.append(line('אל',d.to),line('העתק',d.cc.join(', ')),line('נושא',d.subject));
+const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=d.body;box.append(pre);
+const go=document.createElement('button');go.type='button';go.textContent='אשר ושלח ללקוח';const st=document.createElement('p');st.setAttribute('role','status');
+go.onclick=async()=>{{go.disabled=true;st.textContent='שולח...';
+const r=await fetch(base+'/send',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{token:rawToken}})}});
+if(r.ok){{st.textContent='נשלח ללקוח';}}else{{st.textContent='השליחה נכשלה, לא נשלח';go.disabled=false}}}};
+box.append(go,st)}};</script>'''
     return HTMLResponse(preview.replace("</body>", panel + "</body>"), headers=NO_STORE)
 
 
@@ -210,6 +224,10 @@ def signing_page(token: str) -> HTMLResponse:
     # The complete terms are present before signature. Signing requires a named signer.
     form = '''<section><h2>חתימה על גבי המסך</h2><label>שם המזמין/מורשה חתימה<input id="signer" maxlength="160" required></label>
 <label>תפקיד (אם חותם בשם עסק)<input id="role" maxlength="160"></label>
+<style>#pad{width:100%;max-width:480px;height:auto;aspect-ratio:2/1;display:block;touch-action:none;-webkit-user-select:none;user-select:none;border:2px dashed #167263;border-radius:8px}
+#sign,#clear{min-height:48px;min-width:48px;font-size:17px}#sign:disabled{opacity:.5}.hint{color:#555;font-size:14px;margin:4px 0}input[type=checkbox]{width:24px;height:24px;vertical-align:middle}
+@media(max-width:480px){body{padding:12px;font-size:16px}input{width:100%;box-sizing:border-box;min-height:44px}}</style>
+<p class="hint">חתמו כאן באצבע (או בעכבר) בתוך המסגרת</p>
 <canvas id="pad" width="320" height="160" aria-label="משטח חתימה"></canvas><p><button id="clear" type="button">נקה חתימה</button></p>
 <label><input id="accept" type="checkbox"> קראתי ואני מסכים/ה להזמנה המוצגת לעיל</label>
 <button id="sign" type="button">חתום על ההזמנה</button><p id="result" role="status"></p></section>
@@ -217,7 +235,10 @@ def signing_page(token: str) -> HTMLResponse:
 function point(e){const r=c.getBoundingClientRect();return [Math.round((e.clientX-r.left)*c.width/r.width),Math.round((e.clientY-r.top)*c.height/r.height)]}
 c.addEventListener('pointerdown',e=>{drawing=true;ink=true;c.setPointerCapture(e.pointerId);let [x,y]=point(e);ctx.beginPath();ctx.moveTo(x,y);ctx.lineWidth=2;ctx.lineCap='round';ctx.lineTo(x+.01,y+.01);ctx.stroke()});
 c.addEventListener('pointermove',e=>{if(!drawing)return;let [x,y]=point(e);ctx.lineTo(x,y);ctx.stroke()});
-c.addEventListener('pointerup',()=>drawing=false);document.getElementById('clear').onclick=()=>{ctx.clearRect(0,0,c.width,c.height);ink=false};
+const stop=()=>{drawing=false;refresh()};['pointerup','pointercancel','lostpointercapture'].forEach(n=>c.addEventListener(n,stop));
+function refresh(){document.getElementById('sign').disabled=!ink}
+['input','change'].forEach(n=>document.addEventListener(n,refresh));
+document.getElementById('clear').onclick=()=>{ctx.clearRect(0,0,c.width,c.height);ink=false;refresh()};refresh();
 document.getElementById('sign').onclick=async()=>{let out=document.getElementById('result');if(!ink||!document.getElementById('accept').checked||!document.getElementById('signer').value.trim()){out.textContent='יש למלא שם, לאשר את התנאים ולחתום';return}
 let res=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signer_name:document.getElementById('signer').value,signer_role:document.getElementById('role').value,signature_png:c.toDataURL('image/png')})});
 if(res.ok){out.replaceChildren();const p=document.createElement('p');p.textContent='החתימה נשמרה. המסמך יהיה מחייב לאחר התשלום. ';out.append(p);const a=document.createElement('a');a.href=location.pathname+'/pdf';a.textContent='הורד את ההזמנה החתומה (PDF)';out.append(a);document.getElementById('sign').disabled=true}else{out.textContent='שמירת החתימה נכשלה'}}</script>'''
@@ -282,6 +303,10 @@ def sign_order(token: str, body: Signature) -> dict:
         cur.execute("""UPDATE work_order_links SET signed_at=%s, signer_name=%s, signer_role=%s,
             signature_png=%s, signed_pdf=%s WHERE token_digest=%s""",
             (signed_at, signer, body.signer_role.strip(), png, pdf, _digest(token)))
+        order_id, customer_name = str(row["order_id"]), row["customer_name"]
+    from autogpt.coaching.work_order_mail import notify_signed
+    notify_signed(order_id, _digest(token), signer_name=signer, signer_role=body.signer_role.strip(),
+                  signed_at=signed_at, customer_name=customer_name)
     return {"status": "signed", "signed_at": signed_at.isoformat()}
 
 

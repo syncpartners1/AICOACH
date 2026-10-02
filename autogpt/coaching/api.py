@@ -198,6 +198,8 @@ from autogpt.coaching.booking_notifications import router as _booking_notificati
 app.include_router(_booking_notifications_router)
 from autogpt.coaching.work_order_contract import router as _work_order_contract_router  # noqa: E402
 app.include_router(_work_order_contract_router)
+from autogpt.coaching.work_order_mail import router as _work_order_mail_router  # noqa: E402
+app.include_router(_work_order_mail_router)
 
 # ── Rate limiting (slowapi) ───────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)

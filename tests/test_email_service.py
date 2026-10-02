@@ -263,3 +263,19 @@ class TestSendWelcomeEmail:
                 to_name="Test",
                 coach_name="Adi",
             )
+
+
+def test_send_message_adds_cc_and_pdf_attachment(monkeypatch):
+    from unittest.mock import MagicMock, patch
+    from autogpt.coaching import email_service as es
+    monkeypatch.setattr(es, "SMTP_PASS", "x")
+    smtp = MagicMock()
+    with patch.object(es.smtplib, "SMTP") as cls:
+        cls.return_value.__enter__.return_value = smtp
+        ok = es._send_message(to_email="a@b.co.il", subject="s", html_body="<p>h</p>", plain_body="h",
+                              cc=["c@d.co.il", "e@f.com"], attachments=[("x.pdf", b"%PDF-1", "application/pdf")])
+    assert ok
+    msg = smtp.send_message.call_args[0][0]
+    assert msg["Cc"] == "c@d.co.il, e@f.com" and msg["To"] == "a@b.co.il"
+    names = [p.get_filename() for p in msg.walk() if p.get_filename()]
+    assert names == ["x.pdf"]
