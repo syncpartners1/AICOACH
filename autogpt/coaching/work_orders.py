@@ -155,6 +155,9 @@ function validOptions(){{for(const option of select.options){{
 const key=option.value;if(key==='custom')continue;option.disabled=option.hidden=!key.startsWith(track.value+'_')||key.endsWith('_full')!==(plan.value==='full');
 }}if(select.selectedOptions[0].disabled)select.value=[...select.options].find(o=>!o.disabled).value;fillPrice()}}
 track.addEventListener('change',validOptions);plan.addEventListener('change',validOptions);validOptions();
+// A restored or autofilled form can leave a disabled price selected; the browser then omits price_key.
+function selectionOk(){{const o=select.selectedOptions[0];return !!o&&!o.disabled}}
+window.addEventListener('pageshow',()=>{{if(!selectionOk())validOptions()}});
 document.getElementById('savePrice').addEventListener('click',async()=>{{
 const input=document.getElementById('defaultAmount'),out=document.getElementById('message');
 try{{if(select.value==='custom')throw Error('מחיר אחר נשמר רק בהזמנה, לא במחירון');const res=await fetch('/admin/work-orders/prices/'+select.value,{{method:'PUT',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{amount_ils:input.value}})}});
@@ -183,8 +186,10 @@ form.elements.customer_phone.value=lead.mobile_phone||'';
 const p=document.createElement('p');p.textContent='פרטי ליד מוצעים לעריכה לאחר QMark. יש לבדוק אותם ולהשלים כתובת, מזהה ותנאי הזמנה לפני שמירה.';
 document.getElementById('order').before(p);
 }}).catch(()=>{{document.getElementById('message').textContent='לא ניתן לטעון פרטי ליד; מלא ידנית.'}})}}
-form.addEventListener('submit',async e=>{{e.preventDefault();const data=Object.fromEntries(new FormData(form));
-const out=document.getElementById('message');out.textContent='שומר...';
+form.addEventListener('submit',async e=>{{e.preventDefault();const out=document.getElementById('message');
+if(!selectionOk()){{validOptions();out.textContent='התעריף עודכן לפי המסלול והמתכונת. בדקו את הסכום ושמרו שוב';return}}
+const data=Object.fromEntries(new FormData(form));data.price_key=select.value;
+out.textContent='שומר...';
 try{{const res=await fetch('/admin/work-orders/drafts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
 const json=await res.json();if(!res.ok)throw Error(JSON.stringify(json.detail));
 out.textContent='טיוטה נשמרה: '+json.order_id+' (ללא שליחה או חתימה)';
