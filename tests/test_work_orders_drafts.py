@@ -116,3 +116,14 @@ def test_custom_price_requires_vat_choice_and_does_not_edit_default(monkeypatch)
         assert db.call_args.args[1][10] == 700050
         assert db.call_args.args[1][11] == "vat_included"
         assert db.call_count == 1
+
+
+def test_draft_form_never_submits_without_price_key(monkeypatch):
+    from unittest.mock import patch
+    client = _client(monkeypatch)
+    with patch("autogpt.coaching.work_orders.execute_query", return_value=[]):
+        page = client.get("/admin/work-orders").text
+    assert "function selectionOk()" in page
+    assert "addEventListener('pageshow'" in page
+    assert "data.price_key=select.value" in page
+    assert page.index("if(!selectionOk())") < page.index("new FormData(form)", page.index("selectionOk()"))
