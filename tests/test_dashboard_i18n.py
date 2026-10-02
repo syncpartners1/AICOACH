@@ -183,5 +183,5 @@ def test_phase_label_helper():
     assert phase_label("en", "meeting_7") == "Meeting 7"
     assert phase_label("he", "meeting_7") == "מפגש 7"
     assert phase_label("en", "ongoing") == "Ongoing coaching"
-    assert phase_label("he", "qmark") == "קיו-מרק"
+    assert phase_label("he", "qmark") == "פגישת איבחון"
     assert phase_label("en", "bogus") == "Not set yet"

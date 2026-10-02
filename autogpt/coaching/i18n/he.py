@@ -365,7 +365,7 @@ S_HE = {
     "admin_track_base_financial": "בסיס + מעטפת כלכלית",
     "admin_track_undefined": "טרם הוגדר",
     "admin_phase_unassigned": "טרם הוגדר",
-    "admin_phase_qmark": "קיו-מרק",
+    "admin_phase_qmark": "פגישת איבחון",
     "admin_phase_meeting_n": "מפגש {n}",
     "admin_phase_ongoing": "ליווי מתמשך",
     "admin_status_update_failed": "לא ניתן לעדכן את הסטטוס.",
