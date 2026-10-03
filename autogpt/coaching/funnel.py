@@ -122,8 +122,11 @@ def build_rows() -> dict:
     for r in execute_query("SELECT person_id, kind, value FROM person_identifiers ORDER BY kind, value", fetch_all=True) or []:
         idents.setdefault(str(r["person_id"]), []).append((r["kind"], r["value"]))
     review: dict = {}
-    for r in execute_query("SELECT value, person_ids FROM people_review", fetch_all=True) or []:
-        for pid in r["person_ids"] or []:
+    for r in execute_query("SELECT value, person_ids::text[] AS person_ids FROM people_review", fetch_all=True) or []:
+        ids = r["person_ids"] or []
+        if isinstance(ids, str):  # a uuid[] column can arrive as the text "{a,b}"
+            ids = [x for x in ids.strip("{}").split(",") if x]
+        for pid in ids:
             review.setdefault(str(pid), []).append(r["value"])
     facts = load_facts()
     rows = []
