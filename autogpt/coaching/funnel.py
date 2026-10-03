@@ -215,7 +215,8 @@ def person(person_id: str):
         raise HTTPException(404, "Person not found")
     links = execute_query("SELECT source_table, source_key FROM person_links WHERE person_id=%s ORDER BY 1,2",
                           (person_id,), fetch_all=True) or []
-    return JSONResponse({**rows[0], "links": [dict(l) for l in links], "notes": _notes(person_id)})
+    return JSONResponse({**rows[0], "links": [dict(l) for l in links], "notes": _notes(person_id),
+                         "join_invite": _join_invite_status(person_id)})
 
 
 class MarkBody(BaseModel):
@@ -262,6 +263,12 @@ def _notes(person_id: str) -> list:
     return [{"note_id": r["note_id"], "body": r["body"], "created_at": _iso(r["created_at"])} for r in rows]
 
 
+def _join_invite_status(person_id: str):
+    r = execute_query("SELECT status FROM join_invites_pending WHERE person_id=%s ORDER BY pending_id DESC LIMIT 1",
+                      (person_id,), fetch_one=True)
+    return r["status"] if r else None
+
+
 def _existing_person(person_id: str):
     if not execute_query("SELECT 1 AS ok FROM people WHERE person_id=%s", (person_id,), fetch_one=True):
         raise HTTPException(404, "Person not found")
@@ -296,6 +303,34 @@ def hide_note(person_id: str, note_id: int):
     return JSONResponse({"ok": True, "notes": _notes(person_id)})
 
 
+@router.post("/person/{person_id}/prepare-invite", dependencies=[Depends(_admin), Depends(_origin_guard)],
+             include_in_schema=False)
+def prepare_invite(person_id: str):
+    """Prepare an invitation to join the app. It only waits for the coach to approve it on the join-invites
+    screen: nothing is created in invites and nothing is sent here. The email is the one the person's work order
+    was sent to for signing."""
+    from autogpt.coaching.email_service import validate_recipient_address
+    person_id = _uuid_or_404(person_id)
+    stable_key = _existing_person(person_id)
+    order = execute_query("""SELECT d.customer_name, d.customer_email, d.customer_phone
+        FROM person_links pl JOIN work_order_drafts d
+          ON pl.source_table = 'work_order_drafts' AND d.order_id::text = pl.source_key
+        WHERE pl.person_id = %s ORDER BY d.created_at DESC LIMIT 1""", (person_id,), fetch_one=True)
+    email = ((order or {}).get("customer_email") or "").strip()
+    if not email:
+        raise HTTPException(400, "אין הזמנת עבודה עם אימייל לאדם הזה")
+    try:
+        validate_recipient_address(email)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    # one open request per person (partial unique index); a second click changes nothing
+    created = execute_query("""INSERT INTO join_invites_pending (person_id, stable_key, name, email, phone, language)
+        VALUES (%s::uuid, %s, %s, %s, %s, 'he') ON CONFLICT (person_id) WHERE status IN ('pending', 'sending')
+        DO NOTHING""", (person_id, stable_key, order.get("customer_name") or "", email,
+                        order.get("customer_phone") or None), commit=True)
+    return JSONResponse({"ok": True, "created": bool(created), "email": email})
+
+
 @router.post("/sync", dependencies=[Depends(_admin), Depends(_origin_guard)], include_in_schema=False)
 def sync():
     return JSONResponse(people.sync_people())
@@ -328,7 +363,7 @@ textarea{font:inherit;width:100%;box-sizing:border-box;border:1px solid #c9d0da;
 .muted{color:#6b7686;font-size:13px}
 </style></head><body>
 <h1>משפך לקוחות</h1>
-<div class="muted">מציג את כולם, כולל חשבונות בדיקה. <span id="sync"></span></div>
+<div class="muted"><a href="/admin/join-invites">הזמנות להצטרפות</a> | מציג את כולם, כולל חשבונות בדיקה. <span id="sync"></span></div>
 <div class="bar"><input id="q" placeholder="חיפוש שם, אימייל או טלפון"><select id="f"><option value="">כל השלבים</option></select>
 <button id="r">רענון</button></div>
 <div id="card"></div>
@@ -364,12 +399,15 @@ c.innerHTML='<b>'+E(p.name)+'</b><div class="muted">'+E(p.phones.join(' , '))+' 
 (p.review.length?'<div><span class="badge">לבדיקה</span> אימייל משותף לכמה אנשים עם טלפונים שונים: '+E(p.review.join(' , '))+'</div>':'')+
 '<ul>'+NAMES.map(function(n,i){var s=p.stages[i+1];return '<li>'+E(n)+': '+(s.state==='full'?'בוצע':s.no_show?'לא הגיע':s.state==='partial'?'בתהליך':'אין')+(s.at?' ('+fmt(s.at)+')':'')+
 (i===2?' '+btns('intro'):'')+(i===3?' '+btns('diagnostic'):'')+'</li>'}).join('')+'</ul>'+
-'<h4>הערות</h4><textarea id="nb" maxlength="2000" rows="2" placeholder="הערה חדשה"></textarea><button class="mk" id="ns" data-id="'+E(p.person_id)+'">שמור הערה</button>'+
+'<div>'+(p.join_invite==='pending'||p.join_invite==='sending'?'<span class="badge">הזמנה להצטרפות ממתינה לאישור</span> <a href="/admin/join-invites">למסך ההזמנות</a>':
+p.join_invite==='sent'?'<span class="badge">הזמנה להצטרפות נשלחה</span>':
+'<button class="mk" id="pi" data-id="'+E(p.person_id)+'">הכן הזמנה להצטרפות</button>')+'</div>'+'<h4>הערות</h4><textarea id="nb" maxlength="2000" rows="2" placeholder="הערה חדשה"></textarea><button class="mk" id="ns" data-id="'+E(p.person_id)+'">שמור הערה</button>'+
 '<div id="nl">'+(p.notes||[]).map(function(n){return '<div class="nt">'+E(n.body)+'<div class="muted">'+fmt(n.created_at)+' <button class="mk" data-hide="'+n.note_id+'" data-id="'+E(p.person_id)+'">הסתר</button></div></div>'}).join('')+'</div>'+
 '<div class="muted">מקורות: '+p.links.length+'</div>'})}
-function noteCall(url,body,id){return post(url,body).then(function(r){if(!r.ok)throw 0;return openCard(id)}).catch(function(){alert('שמירת ההערה נכשלה')})}
+function noteCall(url,body,id){return post(url,body).then(function(r){if(!r.ok)throw 0;return openCard(id)}).catch(function(){alert('הפעולה נכשלה')})}
 document.body.addEventListener('click',function(e){var b=e.target.closest('button.mk');
 if(b&&b.id==='ns'){var v=document.getElementById('nb').value.trim();if(v)noteCall('/admin/funnel/person/'+b.dataset.id+'/note',{body:v},b.dataset.id);return}
+if(b&&b.id==='pi'){noteCall('/admin/funnel/person/'+b.dataset.id+'/prepare-invite',null,b.dataset.id);return}
 if(b&&b.dataset.hide){noteCall('/admin/funnel/person/'+b.dataset.id+'/note/'+b.dataset.hide+'/hide',null,b.dataset.id);return}
 if(b){e.stopPropagation();mark(b.dataset.id,b.dataset.mk,b.dataset.st);return}
 var tr=e.target.closest('tr.p');if(tr)openCard(tr.dataset.id)});
