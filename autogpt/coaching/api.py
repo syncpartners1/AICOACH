@@ -778,6 +778,28 @@ def user_history(user_id: str, _: str = Depends(verify_api_key)) -> List[PastSes
     return get_past_sessions(user_id=user_id, limit=10)
 
 
+@app.get("/user/timeline", summary="Own merged session timeline (participant cookie auth)")
+def user_timeline(request: Request, limit: int = 50, before: Optional[str] = None) -> dict:
+    user_id = _get_user_id_from_cookie(request)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
+    return _timeline_response(user_id, False, limit, before)
+
+
+@app.get("/admin/users/{user_id}/timeline", summary="Admin: merged session timeline of a participant")
+def admin_user_timeline(user_id: str, limit: int = 50, before: Optional[str] = None,
+                        _: None = Depends(verify_admin_or_api_key)) -> dict:
+    return _timeline_response(user_id, True, limit, before)
+
+
+def _timeline_response(user_id: str, admin_view: bool, limit: int, before: Optional[str]) -> dict:
+    from autogpt.coaching.session_timeline import get_timeline
+    try:
+        return get_timeline(user_id, admin_view=admin_view, limit=limit, before=before)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid limit or cursor.")
+
+
 # ── User personal dashboard ───────────────────────────────────────────────────
 
 @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)

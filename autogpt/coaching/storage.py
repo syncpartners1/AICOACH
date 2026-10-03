@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+from autogpt.coaching.session_channel import channel_for_client_id
 from autogpt.coaching.auth import hash_password, verify_password
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.models import (
@@ -502,10 +503,10 @@ def create_manual_session(
         with get_db_cursor(commit=True) as cur:
             cur.execute("INSERT INTO clients(client_id,name) VALUES (%s,%s) ON CONFLICT(client_id) DO NOTHING",
                         (client_id, "Admin Manual"))
-            cur.execute("""INSERT INTO coaching_sessions(session_id,user_id,client_id,timestamp,is_manual,
+            cur.execute("""INSERT INTO coaching_sessions(session_id,user_id,client_id,timestamp,is_manual,channel,
                 coach_notes,summary_for_coach,alert_level,alert_reason,focus_goal,mood_indicator,
                 environmental_changes,meeting_number,leading_value_snapshot)
-                VALUES (%s,%s,%s,%s,true,%s,%s,'green','',%s,'','',%s,%s)""",
+                VALUES (%s,%s,%s,%s,true,'manual',%s,%s,'green','',%s,'','',%s,%s)""",
                 (session_id,user_id,client_id,f"{session_date}T12:00:00",coach_notes,summary_for_coach,
                  focus_goal,meeting_number,leading_value_snapshot))
             insert_actions(cur,session_id,user_id,actions,"coach_recorded")
@@ -520,6 +521,7 @@ def create_manual_session(
         "client_id": client_id,
         "timestamp": f"{session_date}T12:00:00",
         "is_manual": True,
+        "channel": "manual",
         "coach_notes": coach_notes,
         "summary_for_coach": summary_for_coach,
         "alert_level": "green",
@@ -604,6 +606,9 @@ def save_session(summary: SessionSummary) -> None:
     }
     if summary.user_id:
         session_row["user_id"] = summary.user_id
+    channel = channel_for_client_id(summary.client_id)
+    if channel:
+        session_row["channel"] = channel
 
     db.table("coaching_sessions").upsert(session_row, on_conflict="session_id").execute()
 
