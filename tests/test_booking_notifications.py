@@ -36,7 +36,7 @@ def test_store_commit_before_return():
 
 
 def test_store_duplicate_identical():
-    cur=MagicMock();cur.fetchone.side_effect=[None,{'payload':booking().model_dump(mode='json')}]
+    cur=MagicMock();cur.fetchone.side_effect=[None,{'payload':booking().model_dump(mode='json', exclude_none=True)}]
     with patch.object(b,'get_db_cursor',side_effect=lambda **kw:cursor(cur,**kw)):
         assert b.store_booking(booking()) is False
 

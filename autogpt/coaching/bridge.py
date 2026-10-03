@@ -88,6 +88,7 @@ def ensure_user(req: EnsureUserRequest, _: str = Depends(verify_bridge_secret)) 
     linking one as needed. Join key is phone number; new profiles default to
     Hebrew. Firestore (scheduler-google) remains the primary identity store —
     this keeps the coaching-side profile in sync lazily."""
+    from autogpt.coaching.phone import InvalidPhoneError
     from autogpt.coaching.storage import (
         get_user_by_phone,
         get_user_by_telegram,
@@ -114,6 +115,8 @@ def ensure_user(req: EnsureUserRequest, _: str = Depends(verify_bridge_secret)) 
                 name=req.name, phone_number=req.phone, language=lang,
             )
             created = True
+        except InvalidPhoneError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
         except ValueError:
             # Lost a race with a concurrent registration — re-fetch.
             user = get_user_by_phone(req.phone)

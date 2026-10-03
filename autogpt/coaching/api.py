@@ -190,6 +190,7 @@ from autogpt.coaching.bridge import router as _bridge_router  # noqa: E402
 app.include_router(_bridge_router)
 
 # Private, draft-only work order preparation. Signing/delivery are later PRs.
+from autogpt.coaching.phone import InvalidPhoneError  # noqa: E402
 from autogpt.coaching.work_orders import router as _work_orders_router  # noqa: E402
 app.include_router(_work_orders_router)
 from autogpt.coaching.admin_lead_orders import router as _admin_lead_orders_router  # noqa: E402
@@ -374,6 +375,8 @@ def auth_register(req: RegisterRequest, _: str = Depends(verify_api_key)) -> Aut
     try:
         user = register_user(name=req.name, email=req.email,
                              password=req.password, phone_number=req.phone_number)
+    except InvalidPhoneError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
@@ -389,6 +392,8 @@ def auth_register(req: RegisterRequest, _: str = Depends(verify_api_key)) -> Aut
 def auth_register_phone(req: PhoneRegisterRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
     try:
         user = register_user_by_phone(name=req.name, phone_number=req.phone_number)
+    except InvalidPhoneError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     return AuthResponse(user_id=user.user_id, name=user.name, phone_number=user.phone_number)
@@ -1556,6 +1561,8 @@ def admin_register_user(req: AdminRegisterRequest, request: Request,
             phone_number=req.phone_number,
             account_status=AccountStatus.ACTIVE,
         )
+    except InvalidPhoneError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if req.email:
@@ -1862,6 +1869,8 @@ def public_register_phone(
             account_status=new_status,
             language=lang,
         )
+    except InvalidPhoneError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if invite_token:
