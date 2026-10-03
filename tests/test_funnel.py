@@ -134,3 +134,23 @@ def test_review_badge_works_when_the_database_returns_uuid_array_as_text(monkeyp
     with patch("autogpt.coaching.funnel.execute_query", side_effect=q):
         p = funnel.build_rows()["people"][0]
     assert p["review"] == ["same@example.test"]
+
+
+def test_interest_form_is_stage_1_and_the_furthest_stage_moves_on_with_later_rows():
+    d = derive_stages({"interest": [{"created_at": "2026-10-03"}]})
+    assert d["stages"][1]["state"] == FULL and d["furthest"] == 1 and d["furthest_at"] == "2026-10-03"
+    both = derive_stages({"interest": [{"created_at": "a"}], "submissions": [{"created_at": "b"}]})
+    assert both["stages"][1]["state"] == FULL and both["furthest"] == 2
+
+
+def test_funnel_loads_interest_rows_through_person_links():
+    seen = []
+
+    def q(sql, params=None, fetch_all=False, fetch_one=False, **kw):
+        seen.append(sql)
+        if "JOIN coaching_interest" in sql:
+            return [{"person_id": PID, "created_at": "2026-10-03"}]
+        return fake_query(sql, params, fetch_all, fetch_one)
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=q):
+        p = funnel.build_rows()["people"][0]
+    assert p["stages"]["1"]["state"] == FULL and any("JOIN coaching_interest" in s for s in seen)

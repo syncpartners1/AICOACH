@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from autogpt.coaching import people as pp
-from autogpt.coaching.people import (BOOKINGS, INVITES, ORDERS, SUBMISSIONS, USERS, compute_people,
+from autogpt.coaching.people import (BOOKINGS, INTEREST, INVITES, ORDERS, SUBMISSIONS, USERS, compute_people,
                                      make_rec)
 
 P1, P2 = "+972501234567", "+972509999999"
@@ -119,6 +119,8 @@ class FakeCursor:
             self.rows = self.tables.get("bookings", [])
         elif "FROM work_order_drafts" in s:
             self.rows = self.tables.get("orders", [])
+        elif "FROM coaching_interest" in s:
+            self.rows = self.tables.get("interest", [])
         elif "FROM invites" in s:
             self.rows = self.tables.get("invites", [])
         elif "FROM user_profiles" in s:
@@ -200,3 +202,20 @@ def test_migration_adds_only_four_new_tables():
         assert name in body
     assert not any(w in body for w in ("DROP ", "DELETE FROM", "TRUNCATE", "ALTER ", "UPDATE ", "INSERT "))
     assert "PERSON_IDENTIFIERS_PHONE_UNIQUE ON PERSON_IDENTIFIERS (VALUE) WHERE KIND = 'PHONE'" in body
+
+
+def test_interest_form_row_joins_the_person_with_the_same_phone_and_has_the_lowest_name_priority():
+    recs = [rec(INTEREST, "i1", "dana from form", ["050-123-4567"], ["d@example.test"]),
+            rec(SUBMISSIONS, "s1", "Dana Levi", [P1], [])]
+    people, _ = compute_people(recs)
+    assert len(people) == 1 and people[0].display_name == "Dana Levi"
+    assert (INTEREST, "i1") in people[0].links
+    only, _ = compute_people([rec(INTEREST, "i2", "Only Form", [P2], [])])
+    assert only[0].display_name == "Only Form"
+
+
+def test_load_records_reads_interest_rows_with_phone_and_email():
+    tables = {"interest": [{"interest_id": "i1", "name": "A", "email": "A@Example.test", "phone_e164": P1}],
+              "users": [], "submissions": [], "bookings": [], "orders": [], "invites": []}
+    recs = pp.load_records(FakeCursor(tables))
+    assert [(r.table, r.key, r.phones, r.emails) for r in recs] == [(INTEREST, "i1", (P1,), ("a@example.test",))]
