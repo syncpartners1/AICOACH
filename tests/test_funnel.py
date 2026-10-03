@@ -82,10 +82,13 @@ def test_everything_needs_admin_and_sync_needs_origin(monkeypatch):
 
 
 MARKS: dict = {}
+NOTES: dict = {}
 
 
 def fake_query(sql, params=None, fetch_all=False, fetch_one=False, **kw):
     assert not re.match(r"\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)", sql, re.I)
+    if "FROM person_notes" in sql:
+        return NOTES.get("rows", [])
     if "FROM person_marks" in sql or "JOIN person_marks" in sql:
         return MARKS.get("rows", [])
     if "FROM people_review" in sql:
@@ -124,10 +127,11 @@ def test_page_has_search_stage_filter_and_no_write_controls(monkeypatch):
     assert page.text.count("method:'POST'") == 1 and "/admin/funnel/sync" in page.text
 
 
-def test_module_writes_only_to_person_marks_and_the_sync_call():
+def test_module_writes_only_to_the_marks_and_notes_tables_and_the_sync_call():
     src = Path(funnel.__file__).read_text()
-    assert not re.search(r"\b(UPDATE \w+ SET|DELETE FROM|DROP|ALTER|TRUNCATE)\b", src)
-    assert re.findall(r"INSERT INTO (\w+)", src) == ["person_marks"]
+    assert not re.search(r"\b(DELETE FROM|DROP|ALTER|TRUNCATE)\b", src)
+    assert re.findall(r"INSERT INTO (\w+)", src) == ["person_marks", "person_notes"]
+    assert re.findall(r"UPDATE (\w+) SET (\w+)", src) == [("person_notes", "hidden")]  # a note is hidden, never deleted
     assert src.count("sync_people()") >= 1
 
 
@@ -249,7 +253,9 @@ def test_mark_needs_admin_and_the_origin_header_and_validates_input(monkeypatch)
     calls = []
     with patch("autogpt.coaching.funnel.execute_query", side_effect=mark_db(calls)):
         assert c.post(url, json={"kind": "intro", "state": "held"}).status_code == 403  # no origin header
-        assert c.post(url, json={"kind": "not_lead", "state": "on"}, headers=ORIGIN).status_code == 400
+        assert c.post(url, json={"kind": "not_lead", "state": "held"}, headers=ORIGIN).status_code == 400
+        assert c.post(url, json={"kind": "intro", "state": "on"}, headers=ORIGIN).status_code == 400
+        assert c.post(url, json={"kind": "nope", "state": "on"}, headers=ORIGIN).status_code == 400
         assert c.post(url, json={"kind": "intro", "state": "won"}, headers=ORIGIN).status_code == 400
         assert c.post("/admin/funnel/person/not-a-uuid/mark", json={"kind": "intro", "state": "held"},
                       headers=ORIGIN).status_code == 404
@@ -292,3 +298,75 @@ def test_page_has_mark_buttons_in_rows_and_the_card_and_no_extra_post(monkeypatc
     assert "בטל סימון" in page and "התקיימה" in page and "לא הגיע" in page  # in the card
     assert page.count("method:'POST'") == 1  # one helper does every POST
     assert "/admin/funnel/person/'+id+'/mark" in page
+
+
+def test_not_lead_mark_on_and_off_uses_off_as_the_empty_state(monkeypatch):
+    c = client(monkeypatch)
+    calls = []
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=mark_db(calls)):
+        on = c.post("/admin/funnel/person/%s/mark" % PID, json={"kind": "not_lead", "state": "on"}, headers=ORIGIN)
+        off = c.post("/admin/funnel/person/%s/mark" % PID, json={"kind": "not_lead", "state": "off"}, headers=ORIGIN)
+    assert on.status_code == 200 and off.status_code == 200 and len(calls) == 2
+    assert calls[0][1][2:4] == ("not_lead", "on") and calls[0][1][-2:] == ("off", "on")  # turning it on when it is off
+    assert calls[1][1][-2:] == ("off", "off")  # turning it off when it is off adds no row
+
+
+def note_db(calls, person_exists=True, updated=1):
+    def q(sql, params=None, fetch_all=False, fetch_one=False, commit=False, **kw):
+        if sql.lstrip().startswith(("INSERT INTO person_notes", "UPDATE person_notes")):
+            calls.append((sql, params, commit))
+            return updated
+        if "FROM person_notes" in sql:
+            return fake_query(sql, params, fetch_all, fetch_one)
+        if "SELECT 1 AS ok FROM people" in sql:
+            return {"ok": 1} if person_exists else None
+        if "SELECT value FROM person_identifiers" in sql:
+            return {"value": "+972501234567"}
+        return fake_query(sql, params, fetch_all, fetch_one)
+    return q
+
+
+def test_notes_need_admin_and_origin_and_a_1_to_2000_char_body(monkeypatch):
+    c = client(monkeypatch)
+    url = "/admin/funnel/person/%s/note" % PID
+    calls = []
+    assert TestClient(app).post(url, json={"body": "x"}).status_code == 403
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=note_db(calls)):
+        assert c.post(url, json={"body": "x"}).status_code == 403  # no origin header
+        assert c.post(url, json={"body": "   "}, headers=ORIGIN).status_code == 400
+        assert c.post(url, json={"body": "a" * 2001}, headers=ORIGIN).status_code == 400
+        assert c.post("/admin/funnel/person/%s/note/1/hide" % PID).status_code == 403
+    assert calls == []
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=note_db(calls, person_exists=False)):
+        assert c.post(url, json={"body": "hi"}, headers=ORIGIN).status_code == 404
+    assert calls == []
+
+
+def test_note_is_inserted_with_the_stable_key_and_hide_never_deletes(monkeypatch):
+    c = client(monkeypatch)
+    calls = []
+    NOTES["rows"] = [{"note_id": 7, "body": "שיחה טובה", "created_at": "2026-10-04T00:00:00"}]
+    try:
+        with patch("autogpt.coaching.funnel.execute_query", side_effect=note_db(calls)):
+            r = c.post("/admin/funnel/person/%s/note" % PID, json={"body": "  שיחה טובה  "}, headers=ORIGIN)
+            assert r.status_code == 200 and r.json()["notes"][0]["body"] == "שיחה טובה"
+            h = c.post("/admin/funnel/person/%s/note/7/hide" % PID, headers=ORIGIN)
+            card = c.get("/admin/funnel/person/" + PID).json()
+    finally:
+        NOTES.clear()
+    assert calls[0][1] == (PID, "+972501234567", "שיחה טובה")
+    assert h.status_code == 200 and "SET hidden = true" in calls[1][0] and "DELETE" not in calls[1][0]
+    assert calls[1][1] == (7, PID, PID)
+    assert "notes" in card
+
+
+def test_hiding_a_note_that_is_not_the_persons_is_404(monkeypatch):
+    c = client(monkeypatch)
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=note_db([], updated=0)):
+        assert c.post("/admin/funnel/person/%s/note/99/hide" % PID, headers=ORIGIN).status_code == 404
+
+
+def test_page_has_not_lead_and_notes_controls_and_still_one_post_helper(monkeypatch):
+    page = client(monkeypatch).get("/admin/funnel").text
+    assert "בטל לא ליד" in page and 'data-mk="not_lead"' in page and "שמור הערה" in page and "הסתר" in page
+    assert page.count("method:'POST'") == 1

@@ -215,16 +215,22 @@ def person(person_id: str):
         raise HTTPException(404, "Person not found")
     links = execute_query("SELECT source_table, source_key FROM person_links WHERE person_id=%s ORDER BY 1,2",
                           (person_id,), fetch_all=True) or []
-    return JSONResponse({**rows[0], "links": [dict(l) for l in links]})
+    return JSONResponse({**rows[0], "links": [dict(l) for l in links], "notes": _notes(person_id)})
 
 
 class MarkBody(BaseModel):
-    kind: str   # intro (the intro call) or diagnostic (the diagnostic meeting)
-    state: str  # held, no_show, or cleared (removes the mark)
+    kind: str   # intro (the intro call), diagnostic (the diagnostic meeting) or not_lead
+    state: str  # held, no_show or cleared (removes the mark); for not_lead: on or off
 
 
-MARK_KINDS = ("intro", "diagnostic")
-MARK_STATES = ("held", "no_show", "cleared")
+# the states each kind accepts; the table has the same rule as a CHECK
+MARK_STATES = {"intro": ("held", "no_show", "cleared"), "diagnostic": ("held", "no_show", "cleared"),
+               "not_lead": ("on", "off")}
+EMPTY_STATE = {"intro": "cleared", "diagnostic": "cleared", "not_lead": "off"}
+
+
+class NoteBody(BaseModel):
+    body: str
 
 
 @router.post("/person/{person_id}/mark", dependencies=[Depends(_admin), Depends(_origin_guard)],
@@ -233,21 +239,61 @@ def set_mark(person_id: str, body: MarkBody):
     """Record a manual mark. Every change is a new row (history); the current value is the latest row.
     A mark can always be changed or cleared. Writes only to person_marks."""
     person_id = _uuid_or_404(person_id)
-    if body.kind not in MARK_KINDS or body.state not in MARK_STATES:
+    if body.state not in MARK_STATES.get(body.kind, ()):
         raise HTTPException(400, "Unknown mark")
-    if not execute_query("SELECT 1 AS ok FROM people WHERE person_id=%s", (person_id,), fetch_one=True):
-        raise HTTPException(404, "Person not found")
     # the stable key (phone first, then email) lets the mark follow the person after a merge or split
-    key = execute_query("""SELECT value FROM person_identifiers WHERE person_id=%s
-        ORDER BY (kind = 'phone') DESC, value LIMIT 1""", (person_id,), fetch_one=True)
-    stable_key = key["value"] if key else person_id
-    # a repeated click, or clearing a mark that is not set, adds no row
+    stable_key = _existing_person(person_id)
+    # a repeated click, or clearing a mark that is not set (not_lead: off), adds no row
     changed = execute_query("""INSERT INTO person_marks (person_id, stable_key, kind, state)
         SELECT %s::uuid, %s::text, %s::text, %s::text WHERE COALESCE((SELECT state FROM person_marks WHERE person_id=%s AND kind=%s
-          ORDER BY mark_id DESC LIMIT 1), 'cleared') <> %s""",
-        (person_id, stable_key, body.kind, body.state, person_id, body.kind, body.state), commit=True)
+          ORDER BY mark_id DESC LIMIT 1), %s) <> %s""",
+        (person_id, stable_key, body.kind, body.state, person_id, body.kind, EMPTY_STATE[body.kind], body.state),
+        commit=True)
     rows = [r for r in build_rows()["people"] if r["person_id"] == person_id]
     return JSONResponse({"ok": True, "changed": bool(changed), "person": rows[0] if rows else None})
+
+
+_OWN_NOTES = """(person_id = %s OR stable_key IN (SELECT value FROM person_identifiers WHERE person_id = %s))"""
+
+
+def _notes(person_id: str) -> list:
+    rows = execute_query("SELECT note_id, body, created_at FROM person_notes WHERE hidden = false AND "
+                         + _OWN_NOTES + " ORDER BY created_at DESC, note_id DESC", (person_id, person_id), fetch_all=True) or []
+    return [{"note_id": r["note_id"], "body": r["body"], "created_at": _iso(r["created_at"])} for r in rows]
+
+
+def _existing_person(person_id: str):
+    if not execute_query("SELECT 1 AS ok FROM people WHERE person_id=%s", (person_id,), fetch_one=True):
+        raise HTTPException(404, "Person not found")
+    key = execute_query("""SELECT value FROM person_identifiers WHERE person_id=%s
+        ORDER BY (kind = 'phone') DESC, value LIMIT 1""", (person_id,), fetch_one=True)
+    return key["value"] if key else person_id
+
+
+@router.post("/person/{person_id}/note", dependencies=[Depends(_admin), Depends(_origin_guard)],
+             include_in_schema=False)
+def add_note(person_id: str, body: NoteBody):
+    """Add a free note. Notes are never edited or deleted; one can be hidden."""
+    person_id = _uuid_or_404(person_id)
+    text = (body.body or "").strip()
+    if not 1 <= len(text) <= 2000:
+        raise HTTPException(400, "Note must be 1 to 2000 characters")
+    stable_key = _existing_person(person_id)
+    execute_query("INSERT INTO person_notes (person_id, stable_key, body) VALUES (%s::uuid, %s, %s)",
+                  (person_id, stable_key, text), commit=True)
+    return JSONResponse({"ok": True, "notes": _notes(person_id)})
+
+
+@router.post("/person/{person_id}/note/{note_id}/hide", dependencies=[Depends(_admin), Depends(_origin_guard)],
+             include_in_schema=False)
+def hide_note(person_id: str, note_id: int):
+    person_id = _uuid_or_404(person_id)
+    _existing_person(person_id)
+    n = execute_query("UPDATE person_notes SET hidden = true WHERE note_id = %s AND " + _OWN_NOTES,
+                      (note_id, person_id, person_id), commit=True)
+    if not n:
+        raise HTTPException(404, "Note not found")
+    return JSONResponse({"ok": True, "notes": _notes(person_id)})
 
 
 @router.post("/sync", dependencies=[Depends(_admin), Depends(_origin_guard)], include_in_schema=False)
@@ -275,6 +321,8 @@ tr.p{cursor:pointer}tr.p:hover{background:#f0f5ff}
 .c.nos::after{content:"";position:absolute;top:-5px;left:-5px;width:7px;height:7px;border-radius:50%;background:#d93025;border:1px solid #fff}
 .mk{color:#1a2b4a;font-size:12px;padding:2px 8px;margin:0 2px;cursor:pointer;background:#fff;border:1px solid #9aa5b5;border-radius:6px;font-weight:600}.mk:hover{background:#eef2f7}.mk.no{color:#b3261e}.mk.ok{color:#1b7a4f}
 .mkg{white-space:nowrap}.mkg b{font-weight:600;font-size:12px;margin-left:2px}
+.nt{border-top:1px solid #eef0f3;padding:6px 0;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+textarea{font:inherit;width:100%;box-sizing:border-box;border:1px solid #c9d0da;border-radius:8px;padding:6px;margin:6px 0}
 .badge{background:#fde7c8;color:#8a5200;border-radius:10px;padding:1px 8px;font-size:12px}
 #card{background:#fff;border-radius:10px;padding:12px;margin:12px 0;display:none}
 .muted{color:#6b7686;font-size:13px}
@@ -311,12 +359,19 @@ function btns(kind,n){return '<span class="mkg"><button class="mk ok" data-mk="'
 '<button class="mk no" data-mk="'+kind+'" data-st="no_show" data-id="'+E(p.person_id)+'">לא הגיע</button>'+
 '<button class="mk" data-mk="'+kind+'" data-st="cleared" data-id="'+E(p.person_id)+'">בטל סימון</button></span>'}
 c.innerHTML='<b>'+E(p.name)+'</b><div class="muted">'+E(p.phones.join(' , '))+' '+E(p.emails.join(' , '))+'</div>'+
-(p.hidden?'<div><span class="badge">לא ליד</span></div>':'')+
+(p.hidden?'<div><span class="badge">לא ליד</span> <button class="mk" data-mk="not_lead" data-st="off" data-id="'+E(p.person_id)+'">בטל לא ליד</button></div>':
+'<div><button class="mk no" data-mk="not_lead" data-st="on" data-id="'+E(p.person_id)+'" title="יוסתר מהרשימה, אפשר למצוא בחיפוש">לא ליד</button></div>')+
 (p.review.length?'<div><span class="badge">לבדיקה</span> אימייל משותף לכמה אנשים עם טלפונים שונים: '+E(p.review.join(' , '))+'</div>':'')+
 '<ul>'+NAMES.map(function(n,i){var s=p.stages[i+1];return '<li>'+E(n)+': '+(s.state==='full'?'בוצע':s.no_show?'לא הגיע':s.state==='partial'?'בתהליך':'אין')+(s.at?' ('+fmt(s.at)+')':'')+
 (i===2?' '+btns('intro'):'')+(i===3?' '+btns('diagnostic'):'')+'</li>'}).join('')+'</ul>'+
+'<h4>הערות</h4><textarea id="nb" maxlength="2000" rows="2" placeholder="הערה חדשה"></textarea><button class="mk" id="ns" data-id="'+E(p.person_id)+'">שמור הערה</button>'+
+'<div id="nl">'+(p.notes||[]).map(function(n){return '<div class="nt">'+E(n.body)+'<div class="muted">'+fmt(n.created_at)+' <button class="mk" data-hide="'+n.note_id+'" data-id="'+E(p.person_id)+'">הסתר</button></div></div>'}).join('')+'</div>'+
 '<div class="muted">מקורות: '+p.links.length+'</div>'})}
-document.body.addEventListener('click',function(e){var b=e.target.closest('button.mk');if(b){e.stopPropagation();mark(b.dataset.id,b.dataset.mk,b.dataset.st);return}
+function noteCall(url,body,id){return post(url,body).then(function(r){if(!r.ok)throw 0;return openCard(id)}).catch(function(){alert('שמירת ההערה נכשלה')})}
+document.body.addEventListener('click',function(e){var b=e.target.closest('button.mk');
+if(b&&b.id==='ns'){var v=document.getElementById('nb').value.trim();if(v)noteCall('/admin/funnel/person/'+b.dataset.id+'/note',{body:v},b.dataset.id);return}
+if(b&&b.dataset.hide){noteCall('/admin/funnel/person/'+b.dataset.id+'/note/'+b.dataset.hide+'/hide',null,b.dataset.id);return}
+if(b){e.stopPropagation();mark(b.dataset.id,b.dataset.mk,b.dataset.st);return}
 var tr=e.target.closest('tr.p');if(tr)openCard(tr.dataset.id)});
 load().then(function(d){if(d.stale)sync()});
 </script></body></html>"""
