@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 from autogpt.coaching import lead_stage, people
 from autogpt.coaching.db import execute_query
@@ -199,18 +200,54 @@ def data():
     return JSONResponse(build_rows())
 
 
-@router.get("/person/{person_id}", dependencies=[Depends(_admin)], include_in_schema=False)
-def person(person_id: str):
+def _uuid_or_404(person_id: str) -> str:
     try:
-        person_id = str(uuid.UUID(person_id))
+        return str(uuid.UUID(person_id))
     except ValueError:
         raise HTTPException(404, "Person not found")
+
+
+@router.get("/person/{person_id}", dependencies=[Depends(_admin)], include_in_schema=False)
+def person(person_id: str):
+    person_id = _uuid_or_404(person_id)
     rows = [r for r in build_rows()["people"] if r["person_id"] == person_id]
     if not rows:
         raise HTTPException(404, "Person not found")
     links = execute_query("SELECT source_table, source_key FROM person_links WHERE person_id=%s ORDER BY 1,2",
                           (person_id,), fetch_all=True) or []
     return JSONResponse({**rows[0], "links": [dict(l) for l in links]})
+
+
+class MarkBody(BaseModel):
+    kind: str   # intro (the intro call) or diagnostic (the diagnostic meeting)
+    state: str  # held, no_show, or cleared (removes the mark)
+
+
+MARK_KINDS = ("intro", "diagnostic")
+MARK_STATES = ("held", "no_show", "cleared")
+
+
+@router.post("/person/{person_id}/mark", dependencies=[Depends(_admin), Depends(_origin_guard)],
+             include_in_schema=False)
+def set_mark(person_id: str, body: MarkBody):
+    """Record a manual mark. Every change is a new row (history); the current value is the latest row.
+    A mark can always be changed or cleared. Writes only to person_marks."""
+    person_id = _uuid_or_404(person_id)
+    if body.kind not in MARK_KINDS or body.state not in MARK_STATES:
+        raise HTTPException(400, "Unknown mark")
+    if not execute_query("SELECT 1 AS ok FROM people WHERE person_id=%s", (person_id,), fetch_one=True):
+        raise HTTPException(404, "Person not found")
+    # the stable key (phone first, then email) lets the mark follow the person after a merge or split
+    key = execute_query("""SELECT value FROM person_identifiers WHERE person_id=%s
+        ORDER BY (kind = 'phone') DESC, value LIMIT 1""", (person_id,), fetch_one=True)
+    stable_key = key["value"] if key else person_id
+    # a repeated click, or clearing a mark that is not set, adds no row
+    changed = execute_query("""INSERT INTO person_marks (person_id, stable_key, kind, state)
+        SELECT %s::uuid, %s::text, %s::text, %s::text WHERE COALESCE((SELECT state FROM person_marks WHERE person_id=%s AND kind=%s
+          ORDER BY mark_id DESC LIMIT 1), 'cleared') <> %s""",
+        (person_id, stable_key, body.kind, body.state, person_id, body.kind, body.state), commit=True)
+    rows = [r for r in build_rows()["people"] if r["person_id"] == person_id]
+    return JSONResponse({"ok": True, "changed": bool(changed), "person": rows[0] if rows else None})
 
 
 @router.post("/sync", dependencies=[Depends(_admin), Depends(_origin_guard)], include_in_schema=False)
@@ -236,37 +273,50 @@ tr.p{cursor:pointer}tr.p:hover{background:#f0f5ff}
 .c{position:relative;display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid #9aa5b5;margin-left:3px;box-sizing:border-box}
 .c.full{background:#2a9d6a;border-color:#2a9d6a}.c.partial{background:linear-gradient(90deg,#e0a21b 50%,#fff 50%);border-color:#e0a21b}
 .c.nos::after{content:"";position:absolute;top:-5px;left:-5px;width:7px;height:7px;border-radius:50%;background:#d93025;border:1px solid #fff}
+.mk{color:#1a2b4a;font-size:12px;padding:2px 8px;margin:0 2px;cursor:pointer;background:#fff;border:1px solid #9aa5b5;border-radius:6px;font-weight:600}.mk:hover{background:#eef2f7}.mk.no{color:#b3261e}.mk.ok{color:#1b7a4f}
+.mkg{white-space:nowrap}.mkg b{font-weight:600;font-size:12px;margin-left:2px}
 .badge{background:#fde7c8;color:#8a5200;border-radius:10px;padding:1px 8px;font-size:12px}
 #card{background:#fff;border-radius:10px;padding:12px;margin:12px 0;display:none}
 .muted{color:#6b7686;font-size:13px}
 </style></head><body>
 <h1>משפך לקוחות</h1>
-<div class="muted">מסך לקריאה בלבד. מציג את כולם, כולל חשבונות בדיקה. <span id="sync"></span></div>
+<div class="muted">מציג את כולם, כולל חשבונות בדיקה. <span id="sync"></span></div>
 <div class="bar"><input id="q" placeholder="חיפוש שם, אימייל או טלפון"><select id="f"><option value="">כל השלבים</option></select>
 <button id="r">רענון</button></div>
 <div id="card"></div>
-<table><thead><tr><th>שם</th><th>שלבים</th><th>שלב מתקדם</th><th>תאריך</th><th></th></tr></thead><tbody id="b"></tbody></table>
+<table><thead><tr><th>שם</th><th>שלבים</th><th>שלב מתקדם</th><th>תאריך</th><th>סימון</th><th></th></tr></thead><tbody id="b"></tbody></table>
 <script>
 var NAMES=__STAGES__,DATA=[],E=function(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML};
 var f=document.getElementById('f');NAMES.forEach(function(n,i){f.insertAdjacentHTML('beforeend','<option value="'+(i+1)+'">'+E(n)+'</option>')});
 function fmt(d){return d?new Date(d).toLocaleDateString('he-IL'):''}
 function circles(p){return NAMES.map(function(n,i){var s=p.stages[i+1];return '<span class="c '+s.state+(s.no_show?' nos':'')+'" title="'+E(n)+(s.no_show?' (לא הגיע)':'')+'"></span>'}).join('')}
+function mkbtns(id,kind,label){return '<span class="mkg"><b>'+label+'</b><button class="mk ok" data-mk="'+kind+'" data-st="held" data-id="'+E(id)+'" title="התקיימה">✓</button>'+
+'<button class="mk no" data-mk="'+kind+'" data-st="no_show" data-id="'+E(id)+'" title="לא הגיע">✗</button></span>'}
+function post(url,body){return fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined})}
+function mark(id,kind,st){return post('/admin/funnel/person/'+id+'/mark',{kind:kind,state:st}).then(function(r){if(!r.ok)throw 0;return load()}).then(function(){
+var c=document.getElementById('card');if(c.dataset.id===id)openCard(id)}).catch(function(){alert('שמירת הסימון נכשלה')})}
 function draw(){var q=document.getElementById('q').value.trim().toLowerCase(),fs=f.value,h='';
 DATA.filter(function(p){if(p.hidden&&!q)return false;if(fs&&p.stages[fs].state==='empty')return false;
 return !q||(p.name+' '+p.phones.join(' ')+' '+p.emails.join(' ')).toLowerCase().indexOf(q)>=0}).forEach(function(p){
 h+='<tr class="p" data-id="'+E(p.person_id)+'"><td>'+E(p.name)+'</td><td>'+circles(p)+'</td><td>'+(p.furthest?E(NAMES[p.furthest-1]):'')+
-'</td><td>'+fmt(p.furthest_at)+'</td><td>'+(p.hidden?'<span class="badge">לא ליד</span> ':'')+(p.review.length?'<span class="badge">לבדיקה</span>':'')+'</td></tr>'});
-document.getElementById('b').innerHTML=h||'<tr><td colspan="5" class="muted">אין תוצאות</td></tr>'}
+'</td><td>'+fmt(p.furthest_at)+'</td><td>'+mkbtns(p.person_id,'intro','הכרות')+' '+mkbtns(p.person_id,'diagnostic','איבחון')+'</td><td>'+(p.hidden?'<span class="badge">לא ליד</span> ':'')+(p.review.length?'<span class="badge">לבדיקה</span>':'')+'</td></tr>'});
+document.getElementById('b').innerHTML=h||'<tr><td colspan="6" class="muted">אין תוצאות</td></tr>'}
 function load(){return fetch('/admin/funnel/data',{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(d){
 DATA=d.people;document.getElementById('sync').textContent=d.synced_at?'סנכרון אחרון: '+new Date(d.synced_at).toLocaleString('he-IL'):'טרם סונכרן';draw();return d})}
-function sync(){return fetch('/admin/funnel/sync',{method:'POST',credentials:'same-origin'}).then(function(){return load()})}
+function sync(){return post('/admin/funnel/sync').then(function(){return load()})}
 document.getElementById('r').onclick=sync;document.getElementById('q').oninput=draw;f.onchange=draw;
-document.getElementById('b').onclick=function(e){var tr=e.target.closest('tr.p');if(!tr)return;
-fetch('/admin/funnel/person/'+tr.dataset.id,{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(p){
-var c=document.getElementById('card');c.style.display='block';
+function openCard(id){fetch('/admin/funnel/person/'+id,{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(p){
+var c=document.getElementById('card');c.style.display='block';c.dataset.id=p.person_id;
+function btns(kind,n){return '<span class="mkg"><button class="mk ok" data-mk="'+kind+'" data-st="held" data-id="'+E(p.person_id)+'">התקיימה</button>'+
+'<button class="mk no" data-mk="'+kind+'" data-st="no_show" data-id="'+E(p.person_id)+'">לא הגיע</button>'+
+'<button class="mk" data-mk="'+kind+'" data-st="cleared" data-id="'+E(p.person_id)+'">בטל סימון</button></span>'}
 c.innerHTML='<b>'+E(p.name)+'</b><div class="muted">'+E(p.phones.join(' , '))+' '+E(p.emails.join(' , '))+'</div>'+
+(p.hidden?'<div><span class="badge">לא ליד</span></div>':'')+
 (p.review.length?'<div><span class="badge">לבדיקה</span> אימייל משותף לכמה אנשים עם טלפונים שונים: '+E(p.review.join(' , '))+'</div>':'')+
-'<ul>'+NAMES.map(function(n,i){var s=p.stages[i+1];return '<li>'+E(n)+': '+(s.state==='full'?'בוצע':s.no_show?'לא הגיע':s.state==='partial'?'בתהליך':'אין')+(s.at?' ('+fmt(s.at)+')':'')+'</li>'}).join('')+'</ul>'+
-'<div class="muted">מקורות: '+p.links.length+'</div>'})};
+'<ul>'+NAMES.map(function(n,i){var s=p.stages[i+1];return '<li>'+E(n)+': '+(s.state==='full'?'בוצע':s.no_show?'לא הגיע':s.state==='partial'?'בתהליך':'אין')+(s.at?' ('+fmt(s.at)+')':'')+
+(i===2?' '+btns('intro'):'')+(i===3?' '+btns('diagnostic'):'')+'</li>'}).join('')+'</ul>'+
+'<div class="muted">מקורות: '+p.links.length+'</div>'})}
+document.body.addEventListener('click',function(e){var b=e.target.closest('button.mk');if(b){e.stopPropagation();mark(b.dataset.id,b.dataset.mk,b.dataset.st);return}
+var tr=e.target.closest('tr.p');if(tr)openCard(tr.dataset.id)});
 load().then(function(d){if(d.stale)sync()});
 </script></body></html>"""
