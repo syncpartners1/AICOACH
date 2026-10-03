@@ -12,12 +12,11 @@ from typing import Optional, Tuple
 
 import requests
 from pydantic import BaseModel
-from autogpt.coaching.gmail_service import send_qualify_notification, send_lead_response
+from autogpt.coaching.gmail_service import BOOKING_URL, send_qualify_notification, send_lead_response
 
 logger = logging.getLogger(__name__)
 
 CLICKUP_API_KEY = os.getenv("CLICKUP_API_KEY")
-SCHEDULER_URL   = os.getenv("SCHEDULER_URL", "https://change-navigator-scheduler-972564781508.me-west1.run.app")
 
 CLICKUP_LISTS = {
     "PASS":       "901816800057",   # 3 - Qualified
@@ -234,7 +233,7 @@ def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: 
                                if str(v).strip().lower() in ("yes", "כן", "true", "1")),
             verdict      = verdict,
             clickup_url  = clickup or "",
-            booking_url  = SCHEDULER_URL,
+            booking_url  = BOOKING_URL,
         )
     except Exception as exc:
         logger.error('Coach notification failed for submission %s (%s)',

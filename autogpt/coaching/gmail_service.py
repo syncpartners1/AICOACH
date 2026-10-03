@@ -5,6 +5,8 @@ from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+from autogpt.coaching.config import coaching_config
+
 logger = logging.getLogger(__name__)
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.office365.com")
@@ -12,7 +14,9 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "office@ben-nesher.com")
 SMTP_PASS = os.getenv("SMTP_PASSWORD")
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
-BOOKING_URL = os.getenv("SCHEDULER_URL", "https://change-navigator-scheduler-972564781508.me-west1.run.app")
+# Public booking page for leads (BOOKING_PAGE_URL, default https://meet.changenavigator.co.il).
+# SCHEDULER_URL is the scheduler API base, not a page a person can open.
+BOOKING_URL = coaching_config.booking_page_url
 
 
 def _send(msg: MIMEMultipart) -> None:

@@ -4,6 +4,7 @@
 # Same scoring logic as wix_qualify.py — single source of truth via handle_coaching_qualify()
 import logging
 from typing import Optional
+from autogpt.coaching.gmail_service import BOOKING_URL, _booking_link
 from autogpt.coaching.wix_qualify import CoachingQualPayload, handle_coaching_qualify
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ RESULT_MSGS = {
     "PASS": (
         "✅ {name}, ענית כן על כל השאלות — זה בדיוק הפרופיל שתוכנית Co-Navigator נבנתה עבורו.\n\n"
         "השלב הבא: שיחת גילוי חינמית של 30 דקות עם עדי.\n"
-        "לחץ/י כאן לבחירת זמן מתאים:\n{booking_url}?name={name}\n\n"
+        "לחץ/י כאן לבחירת זמן מתאים:\n{booking_link}\n\n"
         "שלחתי לך גם אישור למייל 📧"
     ),
     "BORDERLINE": (
@@ -163,13 +164,12 @@ async def update_qualification(session_id: str, user_input: str) -> str:
     try:
         result  = await handle_coaching_qualify(payload)
         verdict = result["verdict"]
-        booking = result.get("booking_url", "https://change-navigator-scheduler-972564781508.me-west1.run.app")
     except Exception as e:
         logger.error(f"Qualification error for session {session_id}: {e}")
         return "⚠️ אירעה שגיאה. פנה/י ישירות לעדי: abn@ben-nesher.com"
 
     name = payload.q8_name
-    return RESULT_MSGS[verdict].format(name=name, booking_url=booking)
+    return RESULT_MSGS[verdict].format(name=name, booking_link=_booking_link(BOOKING_URL, name))
 
 
 # ── TRIGGER DETECTION ─────────────────────────────────────────────────────────
