@@ -111,6 +111,19 @@ def render_template(template_name: str, params: dict) -> str:
     return _VAR_RE.sub(_var_sub, rendered)
 
 
+_BREAK_RE = re.compile(r"(?i)<br\s*/?>|</p>|</tr>|</h1>|</div>")
+_HEAD_RE = re.compile(r"(?is)<head>.*?</head>")
+
+
+def _html_to_text_lines(rendered_html: str) -> str:
+    """Like _html_to_text but keeps line breaks and drops the <head>, so the link stays on its own line."""
+    text = _HEAD_RE.sub(" ", rendered_html)
+    text = _BREAK_RE.sub("\n", _STYLE_SCRIPT_RE.sub(" ", text))
+    text = html.unescape(_TAG_RE.sub(" ", text))
+    lines = [_WS_RE.sub(" ", ln).strip() for ln in text.split("\n")]
+    return "\n".join(ln for ln in lines if ln)
+
+
 def _html_to_text(rendered_html: str) -> str:
     """Plain-text fallback derived from the rendered HTML."""
     text = _STYLE_SCRIPT_RE.sub(" ", rendered_html)
@@ -187,7 +200,7 @@ def render_invite_email(
     }
     lang = language if language in _INVITE_TEMPLATES else "en"
     html_body = render_template(_INVITE_TEMPLATES[lang], params)
-    plain_body = _html_to_text(html_body) + _SIGNATURE_PLAIN
+    plain_body = _html_to_text_lines(html_body) + _SIGNATURE_PLAIN
     return _INVITE_SUBJECTS[lang].format(program_name=program_name), html_body, plain_body
 
 
