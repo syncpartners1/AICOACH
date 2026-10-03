@@ -269,7 +269,7 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
     </div>
   </div>
 
-  <p style="margin:12px 0"><a href="/admin/booking-notifications">פגישות חדשות ({booking_unread if booking_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/messages">הודעות למאמן ({inbox_unread if inbox_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a></p>
+  <p style="margin:12px 0"><a href="/admin/booking-notifications">פגישות חדשות ({booking_unread if booking_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/messages">הודעות למאמן ({inbox_unread if inbox_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a> | <a href="/admin/funnel">משפך לקוחות</a></p>
   <div class="section-title">{t(lang, "admin_section_members")} ({len(users)})</div>
   <div class="card">
     <div class="tbl-wrap">
