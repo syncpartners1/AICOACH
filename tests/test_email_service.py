@@ -279,3 +279,43 @@ def test_send_message_adds_cc_and_pdf_attachment(monkeypatch):
     assert msg["Cc"] == "c@d.co.il, e@f.com" and msg["To"] == "a@b.co.il"
     names = [p.get_filename() for p in msg.walk() if p.get_filename()]
     assert names == ["x.pdf"]
+
+
+# ── invite email survives dark mode and blocked images (5g) ──────────────────
+
+import re as _re
+
+
+class TestInviteEmailRobust:
+    PARAMS = dict(to_email="jane@realmail.com", to_name="Jane", register_url="https://app.example-site.com/register?token=abc",
+                  coach_name="Adi", invite_note="Glad you are in", expires_at="April 30, 2026")
+
+    def _render(self, lang):
+        from autogpt.coaching.email_service import render_invite_email
+        return render_invite_email(language=lang, **self.PARAMS)
+
+    def test_no_images_gradients_classes_or_transparent_colours(self):
+        for lang in ("en", "he"):
+            _s, html_body, _p = self._render(lang)
+            low = html_body.lower()
+            assert "<img" not in low and "gradient" not in low and "rgba(" not in low
+            assert " class=" not in low and "<style" not in low
+
+    def test_every_cell_and_the_body_set_their_own_background(self):
+        for lang in ("en", "he"):
+            _s, html_body, _p = self._render(lang)
+            for tag in _re.findall(r"<(?:td|body)\b[^>]*>", html_body):
+                assert "bgcolor=" in tag and "background-color:" in tag, tag
+
+    def test_button_is_a_filled_cell_with_a_text_link(self):
+        for lang in ("en", "he"):
+            _s, html_body, _p = self._render(lang)
+            m = _re.search(r'<td[^>]*bgcolor="#1a2b4a"[^>]*><a href="https://app.example-site.com/register\?token=abc"[^>]*>([^<]+)</a>', html_body)
+            assert m, "button must be a td with bgcolor holding a text link"
+            assert "color:#ffffff" in m.group(0) and "background-color:#1a2b4a" in m.group(0)
+
+    def test_plain_text_part_has_the_link_on_its_own_line(self):
+        for lang in ("en", "he"):
+            _s, _h, plain = self._render(lang)
+            assert "https://app.example-site.com/register?token=abc" in plain.split("\n")
+            assert "Glad you are in" in plain and "April 30, 2026" in plain
