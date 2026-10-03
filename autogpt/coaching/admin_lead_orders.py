@@ -62,7 +62,7 @@ def lead_page() -> HTMLResponse:
 a{color:#166e61}.layout{display:grid;grid-template-columns:minmax(230px,1fr) minmax(330px,2fr);gap:20px}
 section{border:1px solid #ddd;border-radius:8px;padding:16px}button,input{font:inherit;padding:9px;margin:5px 0;box-sizing:border-box}
 label{display:block;margin:7px 0}label input{display:block;width:100%}.item{display:block;width:100%;text-align:right;background:white;border:0;border-bottom:1px solid #ddd;padding:12px}
-.item:hover,.item:focus{background:#eff5f3}#answers{white-space:pre-wrap;overflow-wrap:anywhere}
+.item{color:#1a2b4a;font-weight:600}.item:hover,.item:focus{background:#dbe7f5;outline:2px solid #1a2b4a}#stageFilter{border:2px solid #1a2b4a;font-weight:700;padding:8px;background:#fff;color:#1a2b4a}#stageFilter.on{background:#1a2b4a;color:#fff}#answers{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:680px){.layout{display:block}section{margin:12px 0}}</style></head><body>
 <a href="/admin?lang=he">חזרה למסך האדמין</a><h1>פניות אימון</h1>
 <p>השאלון יוצר ליד בלבד. פרטי הקשר משמשים לשיחה מקדימה ולקביעת פגישת איבחון. הזמנת עבודה מכינים בנפרד ורק אחרי המפגש.</p>
@@ -88,7 +88,7 @@ async function load(){try{const res=await fetch('/admin/coaching-leads/data');if
 const data=await res.json();allLeads=data.leads;labels=data.stage_labels||{};
 if(filter.options.length<2)for(const [k,v] of Object.entries(labels)){const o=document.createElement('option');o.value=k;o.textContent=v;filter.append(o)}
 render();}catch(e){list.textContent='לא ניתן לטעון את הפניות: '+e.message}}
-filter.onchange=render;
+filter.onchange=()=>{filter.classList.toggle('on',!!filter.value);render()};
 const actionNames={held:'התקיימה',no_show:'לא הגיע / נדחתה',won:'הזמנת עבודה',lost:'נסגר בלי הזמנה'};
 async function stage(action){const res=await fetch('/admin/coaching-leads/'+selected+'/stage',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
 result.textContent=res.ok?'השלב עודכן.':'עדכון השלב נכשל';await load();if(res.ok)selectLead(selected)}
