@@ -85,6 +85,30 @@ ClickUp: {clickup_url or 'יצירת המשימה לא אושרה - נדרשת �
         return False
 
 
+def send_interest_notification(lead_name: str, lead_email: str, lead_phone: str, source: str = "") -> bool:
+    """Notify Adi of an interest-form lead; True means SMTP acceptance, not inbox delivery."""
+    body = _coaching_body(f"""התעניינות חדשה - Change Navigator
+
+שם: {lead_name}
+אימייל: {lead_email}
+טלפון: {lead_phone}
+מקור: {source or 'interest-page'}
+
+הפונה מופנה אוטומטית לקביעת שיחת היכרות.""")
+    msg = MIMEMultipart()
+    msg["From"] = SMTP_FROM
+    msg["To"] = COACH_NOTIFICATION_EMAIL
+    msg["Subject"] = "[Change Navigator | התעניינות] " + " ".join(lead_name.split())[:80]
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+    try:
+        _send(msg)
+        logger.info("Interest notification accepted by SMTP")
+        return True
+    except Exception as exc:
+        logger.error("Interest notification SMTP failed (%s)", type(exc).__name__)
+        return False
+
+
 def send_lead_response(lead_name: str, lead_email: str, verdict: str) -> bool:
     """Hebrew coaching lead response, with no admission or response-time promise."""
     if not lead_email or "@" not in lead_email:
