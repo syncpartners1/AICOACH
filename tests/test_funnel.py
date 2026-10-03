@@ -130,7 +130,7 @@ def test_page_has_search_stage_filter_and_no_write_controls(monkeypatch):
 def test_module_writes_only_to_the_marks_and_notes_tables_and_the_sync_call():
     src = Path(funnel.__file__).read_text()
     assert not re.search(r"\b(DELETE FROM|DROP|ALTER|TRUNCATE)\b", src)
-    assert re.findall(r"INSERT INTO (\w+)", src) == ["person_marks", "person_notes"]
+    assert re.findall(r"INSERT INTO (\w+)", src) == ["person_marks", "person_notes", "join_invites_pending"]
     assert re.findall(r"UPDATE (\w+) SET (\w+)", src) == [("person_notes", "hidden")]  # a note is hidden, never deleted
     assert src.count("sync_people()") >= 1
 
@@ -370,3 +370,108 @@ def test_page_has_not_lead_and_notes_controls_and_still_one_post_helper(monkeypa
     page = client(monkeypatch).get("/admin/funnel").text
     assert "בטל לא ליד" in page and 'data-mk="not_lead"' in page and "שמור הערה" in page and "הסתר" in page
     assert page.count("method:'POST'") == 1
+
+
+def invite_db(calls, order=None, status=None, created=1):
+    def q(sql, params=None, fetch_all=False, fetch_one=False, commit=False, **kw):
+        if sql.lstrip().startswith("INSERT INTO join_invites_pending"):
+            calls.append((sql, params, commit))
+            return created
+        if "FROM person_links pl JOIN work_order_drafts" in sql:
+            return order
+        if "FROM join_invites_pending" in sql:
+            return {"status": status} if status else None
+        if "FROM person_notes" in sql:
+            return fake_query(sql, params, fetch_all, fetch_one)
+        if "SELECT 1 AS ok FROM people" in sql:
+            return {"ok": 1}
+        if "SELECT value FROM person_identifiers" in sql:
+            return {"value": "+972501234567"}
+        return fake_query(sql, params, fetch_all, fetch_one)
+    return q
+
+
+ORDER = {"customer_name": "דנה כהן", "customer_email": "dana@client.co.il", "customer_phone": "+972501234567"}
+
+
+def test_prepare_invite_needs_admin_and_origin_and_a_work_order_email(monkeypatch):
+    c = client(monkeypatch)
+    url = "/admin/funnel/person/%s/prepare-invite" % PID
+    calls = []
+    assert TestClient(app).post(url).status_code == 403
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db(calls, order=ORDER)):
+        assert c.post(url).status_code == 403  # no origin header
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db(calls, order=None)):
+        assert c.post(url, headers=ORIGIN).status_code == 400  # no work order, nothing is guessed
+    bad = dict(ORDER, customer_email="x@example.com")
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db(calls, order=bad)):
+        assert c.post(url, headers=ORIGIN).status_code == 400  # reserved test domain
+    assert calls == []
+
+
+def test_prepare_invite_inserts_one_pending_row_with_the_work_order_email_and_sends_nothing(monkeypatch):
+    c = client(monkeypatch)
+    calls = []
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db(calls, order=ORDER)), \
+         patch("autogpt.coaching.email_service.send_invite_email") as send, \
+         patch("autogpt.coaching.storage.create_invite") as create:
+        r = c.post("/admin/funnel/person/%s/prepare-invite" % PID, headers=ORIGIN)
+        assert r.status_code == 200 and r.json()["created"] is True and r.json()["email"] == "dana@client.co.il"
+        assert send.call_count == 0 and create.call_count == 0  # approving and sending is the next change
+    sql, params, commit = calls[0]
+    assert commit is True and "ON CONFLICT (person_id) WHERE status IN ('pending', 'sending') DO NOTHING" in " ".join(sql.split())
+    assert params == (PID, "+972501234567", "דנה כהן", "dana@client.co.il", "+972501234567")
+    src = Path(funnel.__file__).read_text()
+    assert "send_invite_email(" not in src and "create_invite(" not in src
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db([], order=ORDER, created=0)):
+        assert c.post("/admin/funnel/person/%s/prepare-invite" % PID, headers=ORIGIN).json()["created"] is False
+
+
+def test_card_shows_the_invite_status(monkeypatch):
+    c = client(monkeypatch)
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db([], status="pending")):
+        assert c.get("/admin/funnel/person/" + PID).json()["join_invite"] == "pending"
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db([])):
+        assert c.get("/admin/funnel/person/" + PID).json()["join_invite"] is None
+    page = c.get("/admin/funnel").text
+    assert "הכן הזמנה להצטרפות" in page and "/admin/join-invites" in page and "/prepare-invite" in page
+
+
+def test_join_invites_screen_is_admin_only_read_only_and_lists_pending_first(monkeypatch):
+    c = client(monkeypatch)
+    assert TestClient(app).get("/admin/join-invites").status_code == 403
+    assert TestClient(app).get("/admin/join-invites/data").status_code == 403
+    rows = [{"pending_id": 3, "person_id": PID, "name": "דנה", "email": "d@client.co.il", "phone": None,
+             "language": "he", "note": None, "status": "pending", "created_at": "2026-10-04T00:00:00", "decided_at": None}]
+    seen = []
+
+    def q(sql, params=None, fetch_all=False, **kw):
+        seen.append(sql)
+        return rows
+    with patch("autogpt.coaching.join_invites.execute_query", side_effect=q):
+        d = c.get("/admin/join-invites/data").json()
+    assert d["invites"][0]["status_label"] == "ממתינה לאישור" and d["invites"][0]["email"] == "d@client.co.il"
+    assert seen[0].lstrip().startswith("SELECT") and "ORDER BY (status IN ('pending', 'sending')) DESC" in seen[0]
+    page = c.get("/admin/join-invites")
+    assert page.status_code == 200 and "הזמנות להצטרפות" in page.text and "method:'POST'" not in page.text
+    src = Path(funnel.__file__).with_name("join_invites.py").read_text()
+    assert not re.search(r"\b(INSERT|UPDATE|DELETE|DROP|ALTER)\b", src) and "send_invite_email" not in src.replace("nothing here sends", "")
+
+
+def test_leads_list_hides_a_lead_whose_person_has_an_open_or_sent_join_invite(monkeypatch):
+    from tests.test_admin_lead_orders import client as lead_client
+    seen = []
+
+    def q(sql, params=None, **kw):
+        seen.append(sql)
+        return []
+    with patch("autogpt.coaching.admin_lead_orders.execute_query", side_effect=q):
+        assert lead_client(monkeypatch).get("/admin/coaching-leads/data").status_code == 200
+    sql = seen[0]
+    assert "join_invites_pending" in sql and "jp.status IN ('pending', 'sending', 'sent')" in sql  # cancelled returns the lead
+    assert "pl.source_table = 'coaching_lead_submissions'" in sql
+
+
+def test_admin_page_links_to_the_join_invites_screen(monkeypatch):
+    html = client(monkeypatch).get("/admin?lang=he").text
+    assert 'href="/admin/join-invites"' in html and 'href="/admin/funnel"' in html

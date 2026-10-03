@@ -119,7 +119,11 @@ load();</script></body></html>''', admin=True), headers={"Cache-Control": "no-st
 def list_leads() -> dict:
     rows = execute_query("""SELECT l.submission_id,l.name,l.email,l.source,l.verdict,l.clickup_state,
         l.created_at,s.stage FROM coaching_lead_submissions l
-        LEFT JOIN coaching_lead_stage s USING (submission_id) ORDER BY l.created_at DESC LIMIT 100""",
+        LEFT JOIN coaching_lead_stage s USING (submission_id)
+        WHERE NOT EXISTS (SELECT 1 FROM person_links pl JOIN join_invites_pending jp ON jp.person_id = pl.person_id
+          WHERE pl.source_table = 'coaching_lead_submissions' AND pl.source_key = l.submission_id::text
+            AND jp.status IN ('pending', 'sending', 'sent'))
+        ORDER BY l.created_at DESC LIMIT 100""",
         fetch_all=True)
     return {"leads": rows, "stage_labels": lead_stage.STAGE_LABELS}
 
