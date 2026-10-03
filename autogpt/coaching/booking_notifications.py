@@ -10,6 +10,7 @@ import json
 import logging
 from datetime import datetime
 from html import escape
+from typing import Optional
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from autogpt.coaching.bridge import verify_bridge_secret
 from autogpt.coaching.db import get_db_cursor
+from autogpt.coaching.phone import require_phone
 from autogpt.coaching.work_orders import _admin, _origin_guard
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,15 @@ class NewBooking(BaseModel):
     end: datetime
     meet_link: str = Field(default='', max_length=2000)
     location: str = Field(default='', max_length=500)
+    phone: Optional[str] = Field(default=None, max_length=40)
+
+    @field_validator('phone')
+    @classmethod
+    def phone_valid(cls, value):
+        # Older senders omit it. When given it must be a real number, stored as E.164.
+        if value is None or not value.strip():
+            return None
+        return require_phone(value)
 
     @field_validator('email')
     @classmethod
@@ -66,7 +77,7 @@ class NewBooking(BaseModel):
 
 
 def store_booking(booking: NewBooking):
-    payload = booking.model_dump(mode='json')
+    payload = booking.model_dump(mode='json', exclude_none=True)
     with get_db_cursor(commit=True) as cur:
         cur.execute('''INSERT INTO booking_notifications(event_id,payload) VALUES (%s,%s::jsonb)
             ON CONFLICT(event_id) DO NOTHING RETURNING event_id''',
@@ -105,7 +116,7 @@ def notify_email(booking):
     start = booking.start.astimezone(ZoneInfo('Asia/Jerusalem')).strftime('%d/%m/%Y %H:%M')
     end = booking.end.astimezone(ZoneInfo('Asia/Jerusalem')).strftime('%H:%M')
     lines = ['נקבעה פגישה חדשה ב-Change Navigator.',
-             'שם: '+booking.name, 'אימייל: '+booking.email,
+             'שם: '+booking.name, 'אימייל: '+booking.email, *(['טלפון: '+booking.phone] if booking.phone else []),
              'מועד: '+start+' עד '+end+' (שעון ישראל)',
              'סוג: '+(booking.meeting_type or 'לא צוין'), 'נושא: '+(booking.subject or 'לא צוין')]
     if booking.location: lines.append('מיקום: '+booking.location)

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from autogpt.coaching import lead_stage
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.db import execute_query, get_db_cursor
+from autogpt.coaching.phone import normalize_phone
 from autogpt.coaching.theme import apply_theme
 from autogpt.coaching.work_orders import _admin, _origin_guard
 
@@ -146,9 +147,9 @@ class ContactInfo(BaseModel):
 
 @router.put("/{submission_id}/contact", dependencies=[Depends(_admin), Depends(_origin_guard)])
 def save_contact(submission_id: str, body: ContactInfo) -> dict:
-    name, email, phone = body.name.strip(), body.email.strip(), body.mobile_phone.strip()
+    name, email, phone = body.name.strip(), body.email.strip(), normalize_phone(body.mobile_phone)
     if not name or parseaddr(email)[1] != email or "@" not in email or not phone:
-        raise HTTPException(422, "Full name, email and mobile phone required")
+        raise HTTPException(422, "Full name, email and a valid mobile phone required")
     try:
         submission_id = str(uuid.UUID(submission_id))
     except ValueError:

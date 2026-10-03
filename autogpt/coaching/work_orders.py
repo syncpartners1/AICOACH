@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 import logging
 
 from autogpt.coaching.db import execute_query
+from autogpt.coaching.phone import normalize_phone
 from autogpt.coaching.theme import apply_theme
 
 _log = logging.getLogger(__name__)
@@ -237,8 +238,15 @@ def update_price(price_key: str, body: PriceUpdate) -> dict:
             "vat_mode": DEFAULT_PRICES[price_key][1]}
 
 
+def _phone(body: DraftInput) -> str:
+    """The customer's phone as E.164. _checked_fields has already rejected an invalid one."""
+    return normalize_phone(body.customer_phone) or body.customer_phone.strip()
+
+
 def _checked_fields(body: DraftInput) -> tuple[int, str]:
     """Validate a draft form. Returns (amount_agorot, vat_mode). Shared by create and edit."""
+    if normalize_phone(body.customer_phone) is None:
+        raise HTTPException(422, "Invalid phone number")
     if "@" not in body.customer_email or body.customer_email.count("@") != 1:
         raise HTTPException(422, "Invalid email")
     if body.track not in ("personal", "family", "business") or body.plan not in ("full", "intro", "per_session"):
@@ -275,7 +283,7 @@ def create_draft(body: DraftInput) -> dict:
        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'draft')""",
        (order_id, body.customer_name.strip(), body.customer_identity.strip(),
         body.organization_contact.strip(), body.customer_email.strip(),
-        body.customer_phone.strip(), body.customer_address.strip(), body.track, body.plan, body.price_key,
+        _phone(body), body.customer_address.strip(), body.track, body.plan, body.price_key,
         agorot, vat_mode, body.notes.strip()), commit=True)
     return {"order_id": order_id, "status": "draft"}
 
@@ -296,7 +304,7 @@ def update_draft(order_id: uuid.UUID, body: DraftInput) -> dict:
         WHERE order_id=%s AND NOT EXISTS (SELECT 1 FROM work_order_links WHERE order_id=%s)
         RETURNING order_id""",
         (body.customer_name.strip(), body.customer_identity.strip(), body.organization_contact.strip(),
-         body.customer_email.strip(), body.customer_phone.strip(), body.customer_address.strip(),
+         body.customer_email.strip(), _phone(body), body.customer_address.strip(),
          body.track, body.plan, body.price_key, agorot, vat_mode, body.notes.strip(), oid, oid),
         fetch_one=True, commit=True)
     if not row:

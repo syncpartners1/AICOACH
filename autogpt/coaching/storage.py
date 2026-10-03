@@ -61,13 +61,35 @@ def _row_to_profile(row: dict) -> UserProfile:
     )
 
 
+def _phone_forms(phone_number: str) -> list:
+    """E.164 first, then the text as given: rows saved before normalization keep their old format."""
+    from autogpt.coaching.phone import normalize_phone
+    forms = []
+    for value in (normalize_phone(phone_number), (phone_number or "").strip()):
+        if value and value not in forms:
+            forms.append(value)
+    return forms
+
+
+def _phone_taken(db, phone_number: str) -> bool:
+    return any(db.table("user_profiles").select("user_id").eq("phone_number", form).execute().data
+               for form in _phone_forms(phone_number))
+
+
+def _stored_phone(phone_number: str) -> str:
+    """Save E.164 when the number is valid. Unrecognised text is kept as given, never dropped."""
+    forms = _phone_forms(phone_number)
+    return forms[0] if forms else phone_number
+
+
 def register_user(name: str, email: str, password: str, phone_number: str) -> UserProfile:
     """Create a new user with email + password + phone. Raises ValueError on duplicates."""
     db = _get_client()
     if db.table("user_profiles").select("user_id").eq("email", email).execute().data:
         raise ValueError("Email already registered.")
-    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
+    if _phone_taken(db, phone_number):
         raise ValueError("Phone number already registered.")
+    phone_number = _stored_phone(phone_number)
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
         "user_id": uid,
@@ -101,8 +123,9 @@ def register_user_by_phone(
     """Create a new user identified by phone number (Telegram/WhatsApp join).
     Raises ValueError on duplicate."""
     db = _get_client()
-    if db.table("user_profiles").select("user_id").eq("phone_number", phone_number).execute().data:
+    if _phone_taken(db, phone_number):
         raise ValueError("Phone number already registered.")
+    phone_number = _stored_phone(phone_number)
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
         "user_id": uid,
@@ -143,16 +166,18 @@ def google_auth(
         row = by_email.data[0]
         upd: dict = {"google_id": google_id}
         if not row.get("phone_number") and phone_number:
-            upd["phone_number"] = phone_number
+            upd["phone_number"] = _stored_phone(phone_number)
         db.table("user_profiles").update(upd).eq("user_id", row["user_id"]).execute()
         row.update(upd)
         return _row_to_profile(row)
     # 3. Phone matches an existing account (e.g. registered via Telegram/WhatsApp) — merge
     if phone_number:
-        by_phone = db.table("user_profiles").select("*").eq(
-            "phone_number", phone_number
-        ).execute()
-        if by_phone.data:
+        by_phone = None
+        for form in _phone_forms(phone_number) or [phone_number]:
+            by_phone = db.table("user_profiles").select("*").eq("phone_number", form).execute()
+            if by_phone.data:
+                break
+        if by_phone is not None and by_phone.data:
             row = by_phone.data[0]
             upd: dict = {"google_id": google_id}
             if not row.get("email") and email:
@@ -170,6 +195,7 @@ def google_auth(
         "account_status": account_status.value,
     }
     if phone_number:
+        phone_number = _stored_phone(phone_number)
         row_data["phone_number"] = phone_number
     db.table("user_profiles").insert(row_data).execute()
     return UserProfile(user_id=uid, name=name, email=email, phone_number=phone_number,
@@ -978,12 +1004,13 @@ def get_user_by_telegram(telegram_user_id: int) -> Optional[UserProfile]:
 
 def get_user_by_phone(phone_number: str) -> Optional[UserProfile]:
     db = _get_client()
-    result = db.table("user_profiles").select(
-        "user_id,name,phone_number,email,account_status,language"
-    ).eq("phone_number", phone_number).execute()
-    if not result.data:
-        return None
-    return _row_to_profile(result.data[0])
+    for form in _phone_forms(phone_number) or [phone_number]:
+        result = db.table("user_profiles").select(
+            "user_id,name,phone_number,email,account_status,language"
+        ).eq("phone_number", form).execute()
+        if result.data:
+            return _row_to_profile(result.data[0])
+    return None
 
 
 # ── Invites ───────────────────────────────────────────────────────────────────
