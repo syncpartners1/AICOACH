@@ -167,9 +167,37 @@ def test_lookup_finds_old_format_row_by_its_own_text():
         assert storage.get_user_by_phone("+972501234567") is None  # unchanged: old rows need the cleanup step
 
 
-def test_unrecognised_number_is_kept_as_given_for_signup():
+def test_signup_with_invalid_phone_is_blocked_and_nothing_is_written():
     from autogpt.coaching import storage
+    from autogpt.coaching.phone import InvalidPhoneError
+    for bad in ("tg-12345", "12", ""):
+        db, table = _db([])
+        with patch.object(storage, "_get_client", return_value=db):
+            with pytest.raises(InvalidPhoneError):
+                storage.register_user_by_phone("A", bad)
+            with pytest.raises(InvalidPhoneError):
+                storage.register_user("A", "a@example.test", "pw", bad)
+        assert table.inserted == []
+
+
+def test_google_signup_new_user_with_invalid_phone_is_blocked():
+    from autogpt.coaching import storage
+    from autogpt.coaching.phone import InvalidPhoneError
     db, table = _db([])
     with patch.object(storage, "_get_client", return_value=db):
-        storage.register_user_by_phone("A", "tg-12345")
-    assert table.inserted[0]["phone_number"] == "tg-12345"
+        with pytest.raises(InvalidPhoneError):
+            storage.google_auth("g1", "A", "a@example.test", "not-a-phone")
+    assert table.inserted == []
+
+
+def test_registration_endpoints_answer_422_for_invalid_phone_not_409():
+    from autogpt.coaching import api
+    import autogpt.coaching.auth as auth_mod  # noqa: F401
+    client = TestClient(app)
+    with patch.object(api, "register_user_by_phone", side_effect=__import__("autogpt.coaching.phone", fromlist=["x"]).InvalidPhoneError("Invalid phone number")):
+        app.dependency_overrides[api.verify_api_key] = lambda: "k"
+        try:
+            res = client.post("/auth/register/phone", json={"name": "A", "phone_number": "12"})
+        finally:
+            app.dependency_overrides.pop(api.verify_api_key, None)
+    assert res.status_code == 422, res.text

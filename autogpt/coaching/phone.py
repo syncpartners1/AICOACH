@@ -42,9 +42,13 @@ def _israeli_national(digits: str) -> bool:
     return digits.isdigit() and 8 <= len(digits) <= 9 and digits[0] != "0"
 
 
+class InvalidPhoneError(ValueError):
+    """The text is not a usable phone number. A ValueError so existing handlers still catch it."""
+
+
 def require_phone(raw) -> str:
-    """E.164 or ValueError('Invalid phone number'); use for forms where a bad number must be blocked."""
+    """E.164, or InvalidPhoneError('Invalid phone number'). Use wherever a bad number must be blocked."""
     value = normalize_phone(raw)
     if value is None:
-        raise ValueError("Invalid phone number")
+        raise InvalidPhoneError("Invalid phone number")
     return value

@@ -720,6 +720,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await update.message.reply_text(t(lang, "link_contact_required"))
         return WAITING_PHONE
 
+    from autogpt.coaching.phone import InvalidPhoneError
     from autogpt.coaching.storage import (
         get_user_by_phone, register_user_by_phone, link_telegram_verified_contact,
     )
@@ -756,6 +757,9 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                 account_status=AccountStatus.PENDING,
                 language=lang,
             )
+        except InvalidPhoneError:
+            await update.message.reply_text(t(lang, "link_contact_required"))
+            return WAITING_PHONE
         except ValueError:
             await update.message.reply_text(t(lang, "phone_taken"))
             return WAITING_PHONE

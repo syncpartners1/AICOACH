@@ -77,9 +77,9 @@ def _phone_taken(db, phone_number: str) -> bool:
 
 
 def _stored_phone(phone_number: str) -> str:
-    """Save E.164 when the number is valid. Unrecognised text is kept as given, never dropped."""
-    forms = _phone_forms(phone_number)
-    return forms[0] if forms else phone_number
+    """The E.164 text to save. An unusable number raises InvalidPhoneError and nothing is written."""
+    from autogpt.coaching.phone import require_phone
+    return require_phone(phone_number)
 
 
 def register_user(name: str, email: str, password: str, phone_number: str) -> UserProfile:
@@ -87,9 +87,10 @@ def register_user(name: str, email: str, password: str, phone_number: str) -> Us
     db = _get_client()
     if db.table("user_profiles").select("user_id").eq("email", email).execute().data:
         raise ValueError("Email already registered.")
-    if _phone_taken(db, phone_number):
-        raise ValueError("Phone number already registered.")
+    entered = phone_number
     phone_number = _stored_phone(phone_number)
+    if _phone_taken(db, phone_number) or _phone_taken(db, entered):
+        raise ValueError("Phone number already registered.")
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
         "user_id": uid,
@@ -123,9 +124,10 @@ def register_user_by_phone(
     """Create a new user identified by phone number (Telegram/WhatsApp join).
     Raises ValueError on duplicate."""
     db = _get_client()
-    if _phone_taken(db, phone_number):
-        raise ValueError("Phone number already registered.")
+    entered = phone_number
     phone_number = _stored_phone(phone_number)
+    if _phone_taken(db, phone_number) or _phone_taken(db, entered):
+        raise ValueError("Phone number already registered.")
     uid = str(uuid.uuid4())
     db.table("user_profiles").insert({
         "user_id": uid,
