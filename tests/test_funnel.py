@@ -29,7 +29,7 @@ def test_questionnaire_is_stage_2_and_stage_1_stays_empty():
 
 def test_intro_booking_types_are_stage_3_and_diagnostic_is_stage_4():
     for t in ("הכרות", "Introduction Meeting", "intro_30"):
-        assert st({"bookings": [{"payload": {"meeting_type": t}, "created_at": "x"}]}, 3) == FULL
+        assert st({"bookings": [{"payload": {"meeting_type": t}, "created_at": "x"}]}, 3) == PARTIAL  # a booking is half
     for t in ("פגישת איבחון", "Diagnostic meeting", "diagnostic_60"):
         assert st({"bookings": [{"payload": {"meeting_type": t}, "created_at": "x"}]}, 4) == PARTIAL
     general = {"bookings": [{"payload": {"meeting_type": "30 דק׳ · כללי"}, "created_at": "x"}]}
@@ -81,8 +81,13 @@ def test_everything_needs_admin_and_sync_needs_origin(monkeypatch):
         assert r.status_code == 200 and s.call_count == 1
 
 
+MARKS: dict = {}
+
+
 def fake_query(sql, params=None, fetch_all=False, fetch_one=False, **kw):
     assert not re.match(r"\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)", sql, re.I)
+    if "FROM person_marks" in sql or "JOIN person_marks" in sql:
+        return MARKS.get("rows", [])
     if "FROM people_review" in sql:
         return [{"value": "same@example.test", "person_ids": [PID]}]
     if "FROM person_identifiers" in sql:
@@ -115,7 +120,7 @@ def test_page_has_search_stage_filter_and_no_write_controls(monkeypatch):
     page = c.get("/admin/funnel")
     assert page.status_code == 200 and 'id="q"' in page.text and 'id="f"' in page.text
     assert "פגישת איבחון" in page.text and "QMark" not in page.text
-    assert "לא ליד" not in page.text  # the mark waits for step 3
+    assert "p.hidden&&!q" in page.text  # a "not a lead" person shows only when searched for
     assert page.text.count("method:'POST'") == 1 and "/admin/funnel/sync" in page.text
 
 
@@ -154,3 +159,67 @@ def test_funnel_loads_interest_rows_through_person_links():
     with patch("autogpt.coaching.funnel.execute_query", side_effect=q):
         p = funnel.build_rows()["people"][0]
     assert p["stages"]["1"]["state"] == FULL and any("JOIN coaching_interest" in s for s in seen)
+
+
+INTRO = {"payload": {"meeting_type": "הכרות"}, "created_at": "2026-10-01T10:00:00"}
+
+
+def mk(kind, state, at):
+    return {kind: {"state": state, "at": at}}
+
+
+def test_intro_held_mark_makes_stage_3_full_and_no_show_is_half_with_a_red_flag():
+    s = derive_stages({"bookings": [INTRO]})["stages"][3]
+    assert s["state"] == PARTIAL and s["no_show"] is False
+    held = derive_stages({"bookings": [INTRO], "marks": mk("intro", "held", "2026-10-02T10:00:00")})["stages"][3]
+    assert held["state"] == FULL and held["no_show"] is False
+    ns = derive_stages({"bookings": [INTRO], "marks": mk("intro", "no_show", "2026-10-02T10:00:00")})["stages"][3]
+    assert ns["state"] == PARTIAL and ns["no_show"] is True
+    # a new booking after the no-show removes the red flag
+    again = {"payload": {"meeting_type": "הכרות"}, "created_at": "2026-10-05T10:00:00"}
+    nb = derive_stages({"bookings": [INTRO, again], "marks": mk("intro", "no_show", "2026-10-02T10:00:00")})["stages"][3]
+    assert nb["state"] == PARTIAL and nb["no_show"] is False
+    # a manual held mark works even without a booking, and "cleared" changes nothing
+    assert derive_stages({"marks": mk("intro", "held", "a")})["stages"][3]["state"] == FULL
+    assert derive_stages({"bookings": [INTRO], "marks": mk("intro", "cleared", "z")})["stages"][3]["state"] == PARTIAL
+
+
+def test_diagnostic_latest_event_wins_between_the_status_and_the_manual_mark():
+    ls = lambda stage, at: {"lead_stage": [{"stage": stage, "updated_at": at}]}  # noqa: E731
+    # status says no_show, a later manual mark says held: held wins and the flag goes away
+    d = derive_stages({**ls("no_show", "2026-10-01T00:00:00"), "marks": mk("diagnostic", "held", "2026-10-03T00:00:00")})
+    assert d["stages"][4]["state"] == FULL and d["stages"][4]["no_show"] is False
+    # status held is newer than an old manual no_show: the status wins
+    d = derive_stages({**ls("held", "2026-10-04T00:00:00"), "marks": mk("diagnostic", "no_show", "2026-10-03T00:00:00")})
+    assert d["stages"][4]["state"] == FULL and d["stages"][4]["no_show"] is False
+    # status no_show alone shows the red flag
+    d = derive_stages(ls("no_show", "2026-10-01T00:00:00"))
+    assert d["stages"][4]["state"] == PARTIAL and d["stages"][4]["no_show"] is True
+    d = derive_stages({**ls("booked", "2026-10-01T00:00:00"), "marks": mk("diagnostic", "no_show", "2026-10-02T00:00:00")})
+    assert d["stages"][4]["state"] == PARTIAL and d["stages"][4]["no_show"] is True
+
+
+def test_not_lead_mark_hides_the_person_but_the_data_still_has_the_row(monkeypatch):
+    assert derive_stages({"marks": mk("not_lead", "on", "a")})["not_lead"] is True
+    assert derive_stages({"marks": mk("not_lead", "off", "b")})["not_lead"] is False
+    assert derive_stages({})["not_lead"] is False
+    MARKS["rows"] = [{"person_id": PID, "kind": "not_lead", "state": "on", "created_at": "2026-10-03T00:00:00"}]
+    try:
+        with patch("autogpt.coaching.funnel.execute_query", side_effect=fake_query):
+            p = funnel.build_rows()["people"][0]
+    finally:
+        MARKS.clear()
+    assert p["hidden"] is True and p["stages"]["3"]["no_show"] is False
+
+
+def test_marks_are_matched_by_person_id_or_by_the_stable_key_of_an_identifier():
+    seen = []
+
+    def q(sql, params=None, fetch_all=False, fetch_one=False, **kw):
+        seen.append(sql)
+        return fake_query(sql, params, fetch_all, fetch_one)
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=q):
+        funnel.load_facts()
+    sql = [s for s in seen if "person_marks" in s][0]
+    assert "m.person_id = p.person_id" in sql and "m.stable_key IN" in sql and "DISTINCT ON (p.person_id, m.kind)" in sql
+    assert "ORDER BY p.person_id, m.kind, m.mark_id DESC" in sql

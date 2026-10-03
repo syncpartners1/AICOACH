@@ -44,12 +44,18 @@ def _later(a, b):
     return b if a is None or (b is not None and str(b) > str(a)) else a
 
 
+def _k(value):
+    return _iso(value) or ""
+
+
 def derive_stages(facts: dict) -> dict:
     """facts: lists of source rows for one person. Returns {1..7: {state, at}} and the furthest stage.
 
     state is FULL (done), PARTIAL (started, for example a work order sent but not signed) or EMPTY.
     """
-    st = {n: {"state": EMPTY, "at": None} for n, _ in STAGES}
+    st = {n: {"state": EMPTY, "at": None, "no_show": False} for n, _ in STAGES}
+    marks = facts.get("marks") or {}
+    last_intro = last_diag = None  # latest booking or status row, used so a newer event beats an older manual mark
 
     def put(n, state, at):
         order = {EMPTY: 0, PARTIAL: 1, FULL: 2}
@@ -65,12 +71,20 @@ def derive_stages(facts: dict) -> dict:
     for r in facts.get("bookings", []):
         mt = str((r.get("payload") or {}).get("meeting_type") or "").strip()
         if mt in INTRO_TYPES:
-            put(3, FULL, r.get("created_at"))
+            put(3, PARTIAL, r.get("created_at"))  # a booking is half; only a manual "held" makes it full
+            last_intro = _later(last_intro, r.get("created_at"))
         elif lead_stage.is_diagnostic(mt):
             put(4, PARTIAL, r.get("created_at"))
+            last_diag = _later(last_diag, r.get("created_at"))
+    ls_latest = None
     for r in facts.get("lead_stage", []):
         # booked means a booking exists; held/won/lost mean the meeting happened.
         put(4, FULL if r.get("stage") in ("held", "won", "lost") else PARTIAL, r.get("updated_at"))
+        if ls_latest is None or _k(r.get("updated_at")) >= _k(ls_latest.get("updated_at")):
+            ls_latest = r
+        last_diag = _later(last_diag, r.get("updated_at"))
+    if ls_latest and ls_latest.get("stage") == "no_show" and _k(ls_latest.get("updated_at")) >= _k(last_diag):
+        st[4]["no_show"] = True
     for r in facts.get("orders", []):
         if r.get("signed_at"):
             put(5, FULL, r["signed_at"])
@@ -83,8 +97,22 @@ def derive_stages(facts: dict) -> dict:
             put(6, PARTIAL, r.get("created_at"))
     for r in facts.get("users", []):
         put(7, FULL if int(r.get("sessions") or 0) > 0 else PARTIAL, r.get("last_session") or r.get("created_at"))
+    m3 = marks.get("intro")
+    if m3 and m3.get("state") == "held":
+        put(3, FULL, m3.get("at"))
+    elif m3 and m3.get("state") == "no_show" and _k(m3.get("at")) >= _k(last_intro):
+        put(3, PARTIAL, m3.get("at"))
+        st[3]["no_show"] = True  # a newer booking removes the red mark
+    m4 = marks.get("diagnostic")
+    if m4 and m4.get("state") in ("held", "no_show") and _k(m4.get("at")) >= _k(last_diag):
+        # the latest thing that happened wins: an older status or booking never overrides a newer manual mark
+        st[4]["state"] = FULL if m4["state"] == "held" else PARTIAL
+        st[4]["no_show"] = m4["state"] == "no_show"
+        st[4]["at"] = _later(st[4]["at"], m4.get("at"))
     furthest = max((n for n, v in st.items() if v["state"] != EMPTY), default=0)
-    return {"stages": st, "furthest": furthest, "furthest_at": st[furthest]["at"] if furthest else None}
+    not_lead = (marks.get("not_lead") or {}).get("state") == "on"
+    return {"stages": st, "furthest": furthest, "furthest_at": st[furthest]["at"] if furthest else None,
+            "not_lead": not_lead}
 
 
 def load_facts() -> dict:
@@ -118,6 +146,13 @@ def load_facts() -> dict:
         FROM person_links pl JOIN user_profiles u ON pl.source_table='user_profiles' AND u.user_id::text=pl.source_key
         LEFT JOIN coaching_sessions c ON c.user_id=u.user_id GROUP BY pl.person_id, u.user_id, u.created_at"""),
         "users", None)
+    # Manual marks: the latest row per person and kind. A mark belongs to the person by person_id, or, when the
+    # people were rebuilt by the sync, by its stable key (phone or email) matching one of the person's identifiers.
+    for r in q("""SELECT DISTINCT ON (p.person_id, m.kind) p.person_id, m.kind, m.state, m.created_at
+        FROM people p JOIN person_marks m ON m.person_id = p.person_id
+          OR m.stable_key IN (SELECT i.value FROM person_identifiers i WHERE i.person_id = p.person_id)
+        ORDER BY p.person_id, m.kind, m.mark_id DESC"""):
+        out.setdefault(str(r["person_id"]), {}).setdefault("marks", {})[r["kind"]] = {"state": r["state"], "at": r["created_at"]}
     return out
 
 
@@ -142,7 +177,9 @@ def build_rows() -> dict:
         rows.append({
             "person_id": pid, "name": p["display_name"],
             "phones": [v for k, v in ids if k == "phone"], "emails": [v for k, v in ids if k == "email"],
-            "stages": {str(n): {"state": v["state"], "at": _iso(v["at"])} for n, v in d["stages"].items()},
+            "stages": {str(n): {"state": v["state"], "at": _iso(v["at"]), "no_show": v["no_show"]}
+                       for n, v in d["stages"].items()},
+            "hidden": d["not_lead"],
             "furthest": d["furthest"], "furthest_at": _iso(d["furthest_at"]), "review": review.get(pid, []),
         })
     last = max((p["updated_at"] for p in ppl), default=None)
@@ -196,8 +233,9 @@ input,select,button{font:inherit;padding:6px 10px;border:1px solid #c9d0da;borde
 table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden}
 th,td{padding:8px 10px;text-align:right;border-bottom:1px solid #eef0f3;font-size:14px}
 tr.p{cursor:pointer}tr.p:hover{background:#f0f5ff}
-.c{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid #9aa5b5;margin-left:3px;box-sizing:border-box}
+.c{position:relative;display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid #9aa5b5;margin-left:3px;box-sizing:border-box}
 .c.full{background:#2a9d6a;border-color:#2a9d6a}.c.partial{background:linear-gradient(90deg,#e0a21b 50%,#fff 50%);border-color:#e0a21b}
+.c.nos::after{content:"";position:absolute;top:-5px;left:-5px;width:7px;height:7px;border-radius:50%;background:#d93025;border:1px solid #fff}
 .badge{background:#fde7c8;color:#8a5200;border-radius:10px;padding:1px 8px;font-size:12px}
 #card{background:#fff;border-radius:10px;padding:12px;margin:12px 0;display:none}
 .muted{color:#6b7686;font-size:13px}
@@ -212,12 +250,12 @@ tr.p{cursor:pointer}tr.p:hover{background:#f0f5ff}
 var NAMES=__STAGES__,DATA=[],E=function(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML};
 var f=document.getElementById('f');NAMES.forEach(function(n,i){f.insertAdjacentHTML('beforeend','<option value="'+(i+1)+'">'+E(n)+'</option>')});
 function fmt(d){return d?new Date(d).toLocaleDateString('he-IL'):''}
-function circles(p){return NAMES.map(function(n,i){var s=p.stages[i+1];return '<span class="c '+s.state+'" title="'+E(n)+'"></span>'}).join('')}
+function circles(p){return NAMES.map(function(n,i){var s=p.stages[i+1];return '<span class="c '+s.state+(s.no_show?' nos':'')+'" title="'+E(n)+(s.no_show?' (לא הגיע)':'')+'"></span>'}).join('')}
 function draw(){var q=document.getElementById('q').value.trim().toLowerCase(),fs=f.value,h='';
-DATA.filter(function(p){if(fs&&p.stages[fs].state==='empty')return false;
+DATA.filter(function(p){if(p.hidden&&!q)return false;if(fs&&p.stages[fs].state==='empty')return false;
 return !q||(p.name+' '+p.phones.join(' ')+' '+p.emails.join(' ')).toLowerCase().indexOf(q)>=0}).forEach(function(p){
 h+='<tr class="p" data-id="'+E(p.person_id)+'"><td>'+E(p.name)+'</td><td>'+circles(p)+'</td><td>'+(p.furthest?E(NAMES[p.furthest-1]):'')+
-'</td><td>'+fmt(p.furthest_at)+'</td><td>'+(p.review.length?'<span class="badge">לבדיקה</span>':'')+'</td></tr>'});
+'</td><td>'+fmt(p.furthest_at)+'</td><td>'+(p.hidden?'<span class="badge">לא ליד</span> ':'')+(p.review.length?'<span class="badge">לבדיקה</span>':'')+'</td></tr>'});
 document.getElementById('b').innerHTML=h||'<tr><td colspan="5" class="muted">אין תוצאות</td></tr>'}
 function load(){return fetch('/admin/funnel/data',{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(d){
 DATA=d.people;document.getElementById('sync').textContent=d.synced_at?'סנכרון אחרון: '+new Date(d.synced_at).toLocaleString('he-IL'):'טרם סונכרן';draw();return d})}
@@ -228,7 +266,7 @@ fetch('/admin/funnel/person/'+tr.dataset.id,{credentials:'same-origin'}).then(fu
 var c=document.getElementById('card');c.style.display='block';
 c.innerHTML='<b>'+E(p.name)+'</b><div class="muted">'+E(p.phones.join(' , '))+' '+E(p.emails.join(' , '))+'</div>'+
 (p.review.length?'<div><span class="badge">לבדיקה</span> אימייל משותף לכמה אנשים עם טלפונים שונים: '+E(p.review.join(' , '))+'</div>':'')+
-'<ul>'+NAMES.map(function(n,i){var s=p.stages[i+1];return '<li>'+E(n)+': '+(s.state==='full'?'בוצע':s.state==='partial'?'בתהליך':'אין')+(s.at?' ('+fmt(s.at)+')':'')+'</li>'}).join('')+'</ul>'+
+'<ul>'+NAMES.map(function(n,i){var s=p.stages[i+1];return '<li>'+E(n)+': '+(s.state==='full'?'בוצע':s.no_show?'לא הגיע':s.state==='partial'?'בתהליך':'אין')+(s.at?' ('+fmt(s.at)+')':'')+'</li>'}).join('')+'</ul>'+
 '<div class="muted">מקורות: '+p.links.length+'</div>'})};
 load().then(function(d){if(d.stale)sync()});
 </script></body></html>"""
