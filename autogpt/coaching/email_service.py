@@ -162,6 +162,35 @@ def _send_message(*, to_email: str, subject: str, html_body: str, plain_body: st
         return False
 
 
+def render_invite_email(
+    *,
+    to_email: str,
+    to_name: str,
+    register_url: str,
+    coach_name: str,
+    program_name: str = "Change Navigator",
+    invite_note: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    language: str = "en",
+) -> tuple[str, str, str]:
+    """Render the invitation email without sending it: (subject, html_body, plain_body).
+
+    send_invite_email sends exactly this, so a preview shows what the recipient gets."""
+    params = {
+        "to_name": to_name or "there",
+        "to_email": to_email,
+        "coach_name": coach_name,
+        "program_name": program_name,
+        "register_url": register_url,
+        "invite_note": invite_note or "",
+        "expires_at": expires_at or "",
+    }
+    lang = language if language in _INVITE_TEMPLATES else "en"
+    html_body = render_template(_INVITE_TEMPLATES[lang], params)
+    plain_body = _html_to_text(html_body) + _SIGNATURE_PLAIN
+    return _INVITE_SUBJECTS[lang].format(program_name=program_name), html_body, plain_body
+
+
 def send_invite_email(
     *,
     to_email: str,
@@ -179,21 +208,12 @@ def send_invite_email(
     unsupported codes fall back to English.
     """
     validate_recipient_address(to_email)
-    params = {
-        "to_name": to_name or "there",
-        "to_email": to_email,
-        "coach_name": coach_name,
-        "program_name": program_name,
-        "register_url": register_url,
-        "invite_note": invite_note or "",
-        "expires_at": expires_at or "",
-    }
-    lang = language if language in _INVITE_TEMPLATES else "en"
-    html_body = render_template(_INVITE_TEMPLATES[lang], params)
-    plain_body = _html_to_text(html_body) + _SIGNATURE_PLAIN
+    subject, html_body, plain_body = render_invite_email(
+        to_email=to_email, to_name=to_name, register_url=register_url, coach_name=coach_name,
+        program_name=program_name, invite_note=invite_note, expires_at=expires_at, language=language)
     return _send_message(
         to_email=to_email,
-        subject=_INVITE_SUBJECTS[lang].format(program_name=program_name),
+        subject=subject,
         html_body=html_body,
         plain_body=plain_body,
     )

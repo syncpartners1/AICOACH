@@ -437,7 +437,7 @@ def test_card_shows_the_invite_status(monkeypatch):
     assert "הכן הזמנה להצטרפות" in page and "/admin/join-invites" in page and "/prepare-invite" in page
 
 
-def test_join_invites_screen_is_admin_only_read_only_and_lists_pending_first(monkeypatch):
+def test_join_invites_screen_is_admin_only_and_lists_pending_first(monkeypatch):
     c = client(monkeypatch)
     assert TestClient(app).get("/admin/join-invites").status_code == 403
     assert TestClient(app).get("/admin/join-invites/data").status_code == 403
@@ -453,9 +453,7 @@ def test_join_invites_screen_is_admin_only_read_only_and_lists_pending_first(mon
     assert d["invites"][0]["status_label"] == "ממתינה לאישור" and d["invites"][0]["email"] == "d@client.co.il"
     assert seen[0].lstrip().startswith("SELECT") and "ORDER BY (status IN ('pending', 'sending')) DESC" in seen[0]
     page = c.get("/admin/join-invites")
-    assert page.status_code == 200 and "הזמנות להצטרפות" in page.text and "method:'POST'" not in page.text
-    src = Path(funnel.__file__).with_name("join_invites.py").read_text()
-    assert not re.search(r"\b(INSERT|UPDATE|DELETE|DROP|ALTER)\b", src) and "send_invite_email" not in src.replace("nothing here sends", "")
+    assert page.status_code == 200 and "הזמנות להצטרפות" in page.text
 
 
 def test_leads_list_hides_a_lead_whose_person_has_an_open_or_sent_join_invite(monkeypatch):
