@@ -191,6 +191,7 @@ app.include_router(_bridge_router)
 
 # Private, draft-only work order preparation. Signing/delivery are later PRs.
 from autogpt.coaching.phone import InvalidPhoneError  # noqa: E402
+from autogpt.coaching.theme import apply_theme  # noqa: E402
 from autogpt.coaching.work_orders import router as _work_orders_router  # noqa: E402
 app.include_router(_work_orders_router)
 from autogpt.coaching.admin_lead_orders import router as _admin_lead_orders_router  # noqa: E402
@@ -3437,7 +3438,7 @@ h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
 .section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
   text-transform:uppercase;letter-spacing:.5px}
 label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
-input[type=text],input[type=email],textarea{width:100%;padding:10px 12px;
+input[type=text],input[type=email],input[type=tel],textarea{width:100%;padding:10px 12px;
   border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
   font-family:inherit;transition:border-color .2s}
 input:focus,textarea:focus{border-color:#1a2b4a}
@@ -3461,6 +3462,7 @@ textarea{resize:vertical;min-height:70px}
 .thanks p{color:#475569;font-size:14px;line-height:1.6}
 .err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
   padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+.hint{font-size:12px;color:#64748b;margin-top:4px}
 </style></head>
 <body>
 <h2>שאלון מוכנות — Co-Navigator</h2>
@@ -3519,6 +3521,7 @@ textarea{resize:vertical;min-height:70px}
     <h3>פרטי קשר</h3>
     <div class="field"><label>שם מלא *</label><input type="text" id="q8" placeholder="שם פרטי ושם משפחה"></div>
     <div class="field"><label>כתובת אימייל *</label><input type="email" id="q9" placeholder="your@email.com"></div>
+    <div class="field"><label>מספר טלפון *</label><input type="tel" id="q11" dir="ltr" autocomplete="tel" placeholder="050-123-4567"><div class="hint">מספר מחו״ל מתחיל בסימן פלוס (+). מספר בלי פלוס נחשב ישראלי.</div></div>
     <div class="field"><label>איך הגעת אלינו?</label><input type="text" id="q10" placeholder="LinkedIn, המלצה, גוגל..."></div>
   </div>
   <button class="btn-submit" id="submitBtn" onclick="submitForm()">שליחת השאלון ←</button>
@@ -3529,6 +3532,22 @@ textarea{resize:vertical;min-height:70px}
   <p>השאלון התקבל. עדי יבדוק את הפנייה ויחזור אליך לגבי השלב הבא.</p>
 </div>
 <script>
+function normPhone(raw){
+  var t=String(raw||'').replace(/[\s\-().\u200e\u200f\u202a-\u202e]/g,'');
+  if(!t)return null;
+  var intl=false;
+  if(t.charAt(0)==='+'){intl=true;t=t.slice(1);}
+  else if(t.slice(0,2)==='00'){intl=true;t=t.slice(2);}
+  if(!/^[0-9]+$/.test(t))return null;
+  var il=function(d){return /^[1-9][0-9]{7,8}$/.test(d);};
+  if(!intl){
+    if(t.slice(0,3)==='972')t=t.slice(3);else if(t.charAt(0)==='0')t=t.slice(1);
+    return il(t)?'+972'+t:null;
+  }
+  if(t.slice(0,3)==='972')return il(t.slice(3))?'+972'+t.slice(3):null;
+  if(t.charAt(0)==='0'||t.length<8||t.length>15)return null;
+  return '+'+t;
+}
 var answers={q3:'',q4:'',q5:'',q6:'',q7:''};
 function setYN(f,el,v){
   answers[f]=v;
@@ -3542,15 +3561,18 @@ function submitForm(){
   var q2=document.getElementById('q2').value.trim();
   var q8=document.getElementById('q8').value.trim();
   var q9=document.getElementById('q9').value.trim();
-  if(!q1||!q2||!q8||!q9){err.textContent='יש למלא את כל השדות המסומנים ב-*';err.style.display='block';return;}
+  var q11=document.getElementById('q11').value.trim();
+  if(!q1||!q2||!q8||!q9||!q11){err.textContent='יש למלא את כל השדות המסומנים ב-*';err.style.display='block';return;}
   if(!q9.includes('@')){err.textContent='כתובת האימייל אינה תקינה';err.style.display='block';return;}
+  var phone=normPhone(q11);
+  if(!phone){err.textContent='מספר הטלפון אינו תקין';err.style.display='block';return;}
   var u=Object.keys(answers).filter(function(k){return answers[k]==='';});
   if(u.length>0){err.textContent='יש לענות על כל שאלות הכן/לא';err.style.display='block';return;}
   var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='שולח...';
   var submissionId=window._coachingSubmissionId||(window._coachingSubmissionId=crypto.randomUUID());
   var payload={submission_id:submissionId,q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
     q5_commit_tasks:answers.q5,q6_coaching:answers.q6,q7_capability:answers.q7,
-    q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
+    q8_name:q8,q9_email:q9,q11_phone:phone,q10_source:document.getElementById('q10').value.trim()};
   fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
   .then(function(r){
     if(r.ok){
@@ -3558,12 +3580,12 @@ function submitForm(){
       document.getElementById('form-wrap').style.display='none';
       document.getElementById('thanksMsg').style.display='block';
     }
-    else{r.text().then(function(t){err.textContent='שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
+    else{r.text().then(function(t){err.textContent=r.status===422&&t.indexOf('phone')>=0?'מספר הטלפון אינו תקין':'שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
   }).catch(function(){err.textContent='בעיית תקשורת. נסה/י שוב.';err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});
 }
 </script>
 </body></html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=apply_theme(html))
 
 
 @app.get("/qualify-form-en", response_class=HTMLResponse, include_in_schema=False)
@@ -3585,7 +3607,7 @@ h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
 .section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
   text-transform:uppercase;letter-spacing:.5px}
 label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
-input[type=text],input[type=email],textarea{width:100%;padding:10px 12px;
+input[type=text],input[type=email],input[type=tel],textarea{width:100%;padding:10px 12px;
   border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
   font-family:inherit;transition:border-color .2s}
 input:focus,textarea:focus{border-color:#1a2b4a}
@@ -3609,6 +3631,7 @@ textarea{resize:vertical;min-height:70px}
 .thanks p{color:#475569;font-size:14px;line-height:1.6}
 .err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
   padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+.hint{font-size:12px;color:#64748b;margin-top:4px}
 </style></head>
 <body>
 <h2>Coaching Program Readiness Evaluation</h2>
@@ -3667,6 +3690,7 @@ textarea{resize:vertical;min-height:70px}
     <h3>Contact Details</h3>
     <div class="field"><label>Full Name *</label><input type="text" id="q8" placeholder="First and last name"></div>
     <div class="field"><label>Email Address *</label><input type="email" id="q9" placeholder="your@email.com"></div>
+    <div class="field"><label>Phone Number *</label><input type="tel" id="q11" dir="ltr" autocomplete="tel" placeholder="+1 212 555 0100 or 050-123-4567"><div class="hint">International numbers start with +. Without +, we assume Israel.</div></div>
     <div class="field"><label>How did you find us?</label><input type="text" id="q10" placeholder="LinkedIn, referral, Google..."></div>
   </div>
   <button class="btn-submit" id="submitBtn" onclick="submitForm()">Submit Questionnaire &rarr;</button>
@@ -3677,6 +3701,22 @@ textarea{resize:vertical;min-height:70px}
   <p>Your questionnaire has been received.<br>Adi will be in touch within 24 hours with the next step.</p>
 </div>
 <script>
+function normPhone(raw){
+  var t=String(raw||'').replace(/[\s\-().\u200e\u200f\u202a-\u202e]/g,'');
+  if(!t)return null;
+  var intl=false;
+  if(t.charAt(0)==='+'){intl=true;t=t.slice(1);}
+  else if(t.slice(0,2)==='00'){intl=true;t=t.slice(2);}
+  if(!/^[0-9]+$/.test(t))return null;
+  var il=function(d){return /^[1-9][0-9]{7,8}$/.test(d);};
+  if(!intl){
+    if(t.slice(0,3)==='972')t=t.slice(3);else if(t.charAt(0)==='0')t=t.slice(1);
+    return il(t)?'+972'+t:null;
+  }
+  if(t.slice(0,3)==='972')return il(t.slice(3))?'+972'+t.slice(3):null;
+  if(t.charAt(0)==='0'||t.length<8||t.length>15)return null;
+  return '+'+t;
+}
 var answers={q3:'',q4:'',q5:'',q6:'',q7:''};
 function setYN(f,el,v){
   answers[f]=v;
@@ -3690,15 +3730,18 @@ function submitForm(){
   var q2=document.getElementById('q2').value.trim();
   var q8=document.getElementById('q8').value.trim();
   var q9=document.getElementById('q9').value.trim();
-  if(!q1||!q2||!q8||!q9){err.textContent='Please fill in all required fields (*)';err.style.display='block';return;}
+  var q11=document.getElementById('q11').value.trim();
+  if(!q1||!q2||!q8||!q9||!q11){err.textContent='Please fill in all required fields (*)';err.style.display='block';return;}
   if(!q9.includes('@')){err.textContent='Please enter a valid email address';err.style.display='block';return;}
+  var phone=normPhone(q11);
+  if(!phone){err.textContent='Please enter a valid phone number';err.style.display='block';return;}
   var u=Object.keys(answers).filter(function(k){return answers[k]==='';});
   if(u.length>0){err.textContent='Please answer all Yes/No questions';err.style.display='block';return;}
   var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='Submitting...';
   var submissionId=window._coachingSubmissionId||(window._coachingSubmissionId=crypto.randomUUID());
   var payload={submission_id:submissionId,q1_challenge:q1,q2_outcome:q2,q3_priority:answers.q3,q4_commit_time:answers.q4,
     q5_commit_tasks:answers.q5,q6_coaching:answers.q6,q7_capability:answers.q7,
-    q8_name:q8,q9_email:q9,q10_source:document.getElementById('q10').value.trim()};
+    q8_name:q8,q9_email:q9,q11_phone:phone,q10_source:document.getElementById('q10').value.trim()};
   fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
   .then(function(r){
     if(r.ok){
@@ -3706,12 +3749,12 @@ function submitForm(){
       document.getElementById('form-wrap').style.display='none';
       document.getElementById('thanksMsg').style.display='block';
     }
-    else{r.text().then(function(t){err.textContent='Error: '+t;err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});}
+    else{r.text().then(function(t){err.textContent=r.status===422&&t.indexOf('phone')>=0?'Please enter a valid phone number':'Error: '+t;err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});}
   }).catch(function(){err.textContent='Connection error. Please try again.';err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});
 }
 </script>
 </body></html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=apply_theme(html))
 
 
 @app.get("/consult-form", response_class=HTMLResponse, include_in_schema=False)

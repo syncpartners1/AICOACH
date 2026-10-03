@@ -11,8 +11,9 @@ from datetime import datetime
 from typing import Optional, Tuple
 
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from autogpt.coaching.gmail_service import BOOKING_URL, send_qualify_notification, send_lead_response
+from autogpt.coaching.phone import normalize_phone
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,20 @@ class CoachingQualPayload(BaseModel):
     q8_name:         str
     q9_email:        str
     q10_source:      Optional[str] = ""
+    # Optional so the bot and older Wix forms keep working. The website forms
+    # require it. When given it must be a real number and is kept as E.164.
+    q11_phone:       Optional[str] = ""
     submission_id:   Optional[uuid.UUID] = None  # stable browser retry ID; older Wix clients omit it
+
+    @field_validator("q11_phone", mode="before")
+    @classmethod
+    def _phone_e164(cls, value):
+        if value is None or not str(value).strip():
+            return ""
+        phone = normalize_phone(value)
+        if phone is None:
+            raise ValueError("Invalid phone number")
+        return phone
 
 
 def compute_score(p: CoachingQualPayload) -> str:
@@ -120,12 +134,13 @@ def save_coaching_submission(payload: CoachingQualPayload, verdict: str) -> Tupl
     answers = {k: v for k, v in payload.model_dump().items() if k != 'submission_id'}
     row = execute_query("""
         INSERT INTO coaching_lead_submissions
-          (submission_id, email, name, source, verdict, answers)
-        VALUES (%(id)s, %(email)s, %(name)s, %(source)s, %(verdict)s, %(answers)s::jsonb)
+          (submission_id, email, name, source, verdict, answers, phone_e164)
+        VALUES (%(id)s, %(email)s, %(name)s, %(source)s, %(verdict)s, %(answers)s::jsonb, %(phone)s)
         ON CONFLICT (submission_id) DO NOTHING RETURNING submission_id
     """, {'id': submission_id, 'email': payload.q9_email, 'name': payload.q8_name,
           'source': payload.q10_source or '', 'verdict': verdict,
-          'answers': json.dumps(answers, ensure_ascii=False)}, fetch_one=True, commit=True)
+          'answers': json.dumps(answers, ensure_ascii=False),
+          'phone': payload.q11_phone or None}, fetch_one=True, commit=True)
     return submission_id, bool(row)
 
 
@@ -226,6 +241,7 @@ def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: 
         email_accepted = send_qualify_notification(
             lead_name    = payload.q8_name,
             lead_email   = payload.q9_email,
+            lead_phone   = payload.q11_phone or "",
             challenge    = payload.q1_challenge,
             outcome      = payload.q2_outcome,
             yes_count    = sum(1 for v in [payload.q3_priority, payload.q4_commit_time,

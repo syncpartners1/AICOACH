@@ -49,7 +49,8 @@ def _coaching_body(text: str) -> str:
 
 def send_qualify_notification(
     lead_name: str, lead_email: str, challenge: str, outcome: str,
-    yes_count: int, verdict: str, clickup_url: str, booking_url: str
+    yes_count: int, verdict: str, clickup_url: str, booking_url: str,
+    lead_phone: str = "",
 ) -> bool:
     """Notify Adi of a saved lead; True means SMTP acceptance, not inbox delivery."""
     label = {
@@ -65,6 +66,7 @@ def send_qualify_notification(
 תשובות כן: {yes_count}/5
 שם: {lead_name}
 אימייל: {lead_email}
+טלפון: {lead_phone or 'לא נמסר'}
 האתגר: {challenge}
 התוצאה הרצויה: {outcome}
 {booking_line}
