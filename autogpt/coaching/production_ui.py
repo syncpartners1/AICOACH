@@ -5,7 +5,7 @@ Template variables injected at request time:
   {coach_name}        — COACHING_COACH_NAME value
   {telegram_url}      — t.me/<TELEGRAM_BOT_USERNAME> or empty string
   {google_oauth_url}  — /auth/google/url?redirect_to=... or empty string
-  {scheduler_url}     — SCHEDULER_URL value (booking page)
+  {scheduler_url}     — BOOKING_PAGE_URL value (public booking page)
 """
 
 PRODUCTION_HTML = """<!DOCTYPE html>
