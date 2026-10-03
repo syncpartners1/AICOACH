@@ -124,9 +124,10 @@ def test_page_has_search_stage_filter_and_no_write_controls(monkeypatch):
     assert page.text.count("method:'POST'") == 1 and "/admin/funnel/sync" in page.text
 
 
-def test_module_has_no_write_sql_except_the_sync_call():
+def test_module_writes_only_to_person_marks_and_the_sync_call():
     src = Path(funnel.__file__).read_text()
-    assert not re.search(r"\b(INSERT INTO|UPDATE \w+ SET|DELETE FROM|DROP|ALTER|TRUNCATE)\b", src)
+    assert not re.search(r"\b(UPDATE \w+ SET|DELETE FROM|DROP|ALTER|TRUNCATE)\b", src)
+    assert re.findall(r"INSERT INTO (\w+)", src) == ["person_marks"]
     assert src.count("sync_people()") >= 1
 
 
@@ -223,3 +224,71 @@ def test_marks_are_matched_by_person_id_or_by_the_stable_key_of_an_identifier():
     sql = [s for s in seen if "person_marks" in s][0]
     assert "m.person_id = p.person_id" in sql and "m.stable_key IN" in sql and "DISTINCT ON (p.person_id, m.kind)" in sql
     assert "ORDER BY p.person_id, m.kind, m.mark_id DESC" in sql
+
+
+ORIGIN = {"origin": "https://changenavigator.web.app"}
+
+
+def mark_db(calls, person_exists=True, changed=1):
+    def q(sql, params=None, fetch_all=False, fetch_one=False, commit=False, **kw):
+        if sql.lstrip().startswith("INSERT INTO person_marks"):
+            calls.append((sql, params, commit))
+            return changed
+        if "SELECT 1 AS ok FROM people" in sql:
+            return {"ok": 1} if person_exists else None
+        if "SELECT value FROM person_identifiers" in sql:
+            return {"value": "+972501234567"}
+        return fake_query(sql, params, fetch_all, fetch_one)
+    return q
+
+
+def test_mark_needs_admin_and_the_origin_header_and_validates_input(monkeypatch):
+    c = client(monkeypatch)
+    url = "/admin/funnel/person/%s/mark" % PID
+    assert TestClient(app).post(url, json={"kind": "intro", "state": "held"}).status_code == 403
+    calls = []
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=mark_db(calls)):
+        assert c.post(url, json={"kind": "intro", "state": "held"}).status_code == 403  # no origin header
+        assert c.post(url, json={"kind": "not_lead", "state": "on"}, headers=ORIGIN).status_code == 400
+        assert c.post(url, json={"kind": "intro", "state": "won"}, headers=ORIGIN).status_code == 400
+        assert c.post("/admin/funnel/person/not-a-uuid/mark", json={"kind": "intro", "state": "held"},
+                      headers=ORIGIN).status_code == 404
+    assert calls == []
+
+
+def test_mark_unknown_person_is_404_and_writes_nothing(monkeypatch):
+    c = client(monkeypatch)
+    calls = []
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=mark_db(calls, person_exists=False)):
+        r = c.post("/admin/funnel/person/%s/mark" % PID, json={"kind": "diagnostic", "state": "held"}, headers=ORIGIN)
+    assert r.status_code == 404 and calls == []
+
+
+def test_mark_inserts_one_history_row_with_the_stable_key(monkeypatch):
+    c = client(monkeypatch)
+    calls = []
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=mark_db(calls)):
+        r = c.post("/admin/funnel/person/%s/mark" % PID, json={"kind": "intro", "state": "no_show"}, headers=ORIGIN)
+    assert r.status_code == 200 and r.json()["ok"] is True and r.json()["changed"] is True
+    assert len(calls) == 1
+    sql, params, commit = calls[0]
+    assert commit is True
+    assert params[:4] == (PID, "+972501234567", "intro", "no_show")
+    assert "UPDATE" not in sql and "DELETE" not in sql  # a new row every time, history is never edited
+    assert "<> %s" in sql  # a repeated click adds no row
+
+
+def test_mark_can_clear_and_reports_no_change_for_a_repeat(monkeypatch):
+    c = client(monkeypatch)
+    calls = []
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=mark_db(calls, changed=0)):
+        r = c.post("/admin/funnel/person/%s/mark" % PID, json={"kind": "diagnostic", "state": "cleared"}, headers=ORIGIN)
+    assert r.status_code == 200 and r.json()["changed"] is False and calls[0][1][2:4] == ("diagnostic", "cleared")
+
+
+def test_page_has_mark_buttons_in_rows_and_the_card_and_no_extra_post(monkeypatch):
+    page = client(monkeypatch).get("/admin/funnel").text
+    assert "mkbtns(p.person_id,'intro'" in page and "mkbtns(p.person_id,'diagnostic'" in page  # inline in the rows
+    assert "בטל סימון" in page and "התקיימה" in page and "לא הגיע" in page  # in the card
+    assert page.count("method:'POST'") == 1  # one helper does every POST
+    assert "/admin/funnel/person/'+id+'/mark" in page
