@@ -2532,7 +2532,7 @@ def chat_page(request: Request) -> Response:
 <title>Account Inactive</title></head><body style="font-family:sans-serif;text-align:center;padding:60px">
 <h2>Your account is {user.account_status.value}.</h2>
 <p>Please contact your coach to reactivate.</p></body></html>""")
-    scheduler_url = coaching_config.scheduler_url.strip() if coaching_config.scheduler_url else ""
+    scheduler_url = (coaching_config.booking_page_url or "").strip()
     user_lang = user.language if user.language in ("en", "he") else "en"
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="{user_lang}" dir="{'rtl' if user_lang == 'he' else 'ltr'}"><head>
@@ -3207,7 +3207,7 @@ def root() -> HTMLResponse:
 
     html = PRODUCTION_HTML.format(
         coach_name=coaching_config.coach_name,
-        scheduler_url=coaching_config.scheduler_url,
+        scheduler_url=coaching_config.booking_page_url,
         telegram_button=telegram_button,
         google_button=google_button,
     )
@@ -3227,7 +3227,7 @@ def demo_page(request: Request) -> HTMLResponse:
         api_base="",
         demo_key=(coaching_config.demo_key or "").strip(),
         coach_name=coaching_config.coach_name,
-        scheduler_url=coaching_config.scheduler_url,
+        scheduler_url=coaching_config.booking_page_url,
     )
     return HTMLResponse(content=html)
 

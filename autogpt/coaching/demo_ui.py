@@ -5,7 +5,7 @@ Template variables injected at request time:
   {api_base}      — Railway service URL (e.g. https://abn.up.railway.app)
   {demo_key}      — COACHING_DEMO_KEY value
   {coach_name}    — COACHING_COACH_NAME value
-  {scheduler_url} — SCHEDULER_URL value (booking page)
+  {scheduler_url} — BOOKING_PAGE_URL value (public booking page)
 """
 
 # NOTE: JavaScript braces are doubled ({{ }}) to escape Python's str.format().

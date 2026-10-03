@@ -1446,8 +1446,8 @@ def _format_summary(summary) -> str:
         excerpt = summary.summary_for_coach[:280]
         html_excerpt = markdown_to_html(excerpt)
         lines.append(f"\n{t(lang, 'summary_coach_notes')} {html_excerpt}…")
-    if coaching_config.scheduler_url:
-        esc_url = html.escape(coaching_config.scheduler_url)
+    if coaching_config.booking_page_url:
+        esc_url = html.escape(coaching_config.booking_page_url)
         lines.append(f"\n📅 <a href=\"{esc_url}\">Book your next session</a>")
     return "\n".join(lines)
 
