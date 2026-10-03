@@ -123,3 +123,14 @@ def test_module_has_no_write_sql_except_the_sync_call():
     src = Path(funnel.__file__).read_text()
     assert not re.search(r"\b(INSERT INTO|UPDATE \w+ SET|DELETE FROM|DROP|ALTER|TRUNCATE)\b", src)
     assert src.count("sync_people()") >= 1
+
+
+def test_review_badge_works_when_the_database_returns_uuid_array_as_text(monkeypatch):
+    def q(sql, params=None, fetch_all=False, fetch_one=False, **kw):
+        if "FROM people_review" in sql:
+            assert "::text[]" in sql
+            return [{"value": "same@example.test", "person_ids": "{%s,22222222-2222-4222-8222-222222222222}" % PID}]
+        return fake_query(sql, params, fetch_all, fetch_one)
+    with patch("autogpt.coaching.funnel.execute_query", side_effect=q):
+        p = funnel.build_rows()["people"][0]
+    assert p["review"] == ["same@example.test"]
