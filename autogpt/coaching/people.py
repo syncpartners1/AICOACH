@@ -7,7 +7,7 @@ Matching rules (same as the funnel spec):
   d. the same email on people with different phones is never merged. It is listed for a manual look;
   e. a name alone never merges anyone.
 compute_people() is pure. sync_people() reads the source tables and writes only people, person_identifiers,
-person_links and people_review, in one transaction. Existing tables are never written.
+person_links and people_review, in one transaction. Existing tables are never written. Five sources plus the interest form (coaching_interest).
 """
 from __future__ import annotations
 
@@ -25,9 +25,10 @@ SUBMISSIONS = "coaching_lead_submissions"
 BOOKINGS = "booking_notifications"
 ORDERS = "work_order_drafts"
 INVITES = "invites"
+INTEREST = "coaching_interest"
 USERS = "user_profiles"
 # Which source gives the display name first.
-NAME_PRIORITY = (USERS, ORDERS, SUBMISSIONS, BOOKINGS, INVITES)
+NAME_PRIORITY = (USERS, ORDERS, SUBMISSIONS, BOOKINGS, INVITES, INTEREST)
 _NAMESPACE = uuid.UUID("5f0c2d8e-3a1b-4c55-9d27-6b1e0f4a7c10")
 _LOCK_KEY = 7420261004
 
@@ -175,6 +176,9 @@ def load_records(cur) -> list:
     cur.execute("SELECT invite_id, name, email, phone FROM invites")
     for r in cur.fetchall():
         add(make_rec(INVITES, r["invite_id"], r["name"], [r["phone"]], [r["email"]]))
+    cur.execute("SELECT interest_id, name, email, phone_e164 FROM coaching_interest")
+    for r in cur.fetchall():
+        add(make_rec(INTEREST, r["interest_id"], r["name"], [r["phone_e164"]], [r["email"]]))
     cur.execute("SELECT user_id, name, email, phone_number FROM user_profiles")
     for r in cur.fetchall():
         add(make_rec(USERS, r["user_id"], r["name"], [r["phone_number"]], [r["email"]]))

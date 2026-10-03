@@ -1,7 +1,7 @@
 """Read-only funnel screen: /admin/funnel. Shows every person with the seven funnel circles.
 
 Nothing here writes to a source table. The only write is POST /admin/funnel/sync, which runs
-people.sync_people() (rebuilds the four people tables). Stage 1 (/interest form) stays empty until step 4.
+people.sync_people() (rebuilds the four people tables). Stage 1 comes from the interest form (coaching_interest).
 """
 from __future__ import annotations
 
@@ -58,6 +58,8 @@ def derive_stages(facts: dict) -> dict:
         if state != EMPTY:
             st[n]["at"] = _later(st[n]["at"], at)
 
+    for r in facts.get("interest", []):
+        put(1, FULL, r.get("created_at"))
     for r in facts.get("submissions", []):
         put(2, FULL, r.get("created_at"))
     for r in facts.get("bookings", []):
@@ -94,6 +96,9 @@ def load_facts() -> dict:
         for r in rows:
             out.setdefault(str(r["person_id"]), {}).setdefault(name, []).append(dict(r))
 
+    add(q("""SELECT pl.person_id, i.created_at FROM person_links pl
+        JOIN coaching_interest i ON pl.source_table='coaching_interest' AND i.interest_id::text=pl.source_key"""),
+        "interest", None)
     add(q("""SELECT pl.person_id, s.created_at FROM person_links pl
         JOIN coaching_lead_submissions s ON pl.source_table='coaching_lead_submissions' AND s.submission_id::text=pl.source_key"""),
         "submissions", None)
