@@ -206,6 +206,8 @@ from autogpt.coaching.funnel import router as _funnel_router  # noqa: E402
 app.include_router(_funnel_router)
 from autogpt.coaching.interest import router as _interest_router  # noqa: E402
 app.include_router(_interest_router)
+from autogpt.coaching.interest_page import router as _interest_page_router  # noqa: E402
+app.include_router(_interest_page_router)
 
 # ── Rate limiting (slowapi) ───────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
