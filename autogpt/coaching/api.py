@@ -202,6 +202,8 @@ from autogpt.coaching.work_order_contract import router as _work_order_contract_
 app.include_router(_work_order_contract_router)
 from autogpt.coaching.work_order_mail import router as _work_order_mail_router  # noqa: E402
 app.include_router(_work_order_mail_router)
+from autogpt.coaching.funnel import router as _funnel_router  # noqa: E402
+app.include_router(_funnel_router)
 
 # ── Rate limiting (slowapi) ───────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
