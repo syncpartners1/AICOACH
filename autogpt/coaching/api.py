@@ -184,6 +184,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from autogpt.coaching.canonical_host import CanonicalHostMiddleware  # noqa: E402
+
+app.add_middleware(CanonicalHostMiddleware)
+
 # Internal bridge for the consolidated Telegram bot (scheduler-google → coaching engine)
 from autogpt.coaching.bridge import router as _bridge_router  # noqa: E402
 
