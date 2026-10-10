@@ -343,6 +343,7 @@ class UserProgressSummary(BaseModel):
     name: str
     phone_number: str
     email: Optional[str] = None
+    google_email: Optional[str] = None  # from the verified Google link, display only
     account_status: AccountStatus = AccountStatus.ACTIVE
     objectives_count: int = 0
     avg_kr_pct: float = 0.0

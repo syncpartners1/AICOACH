@@ -26,7 +26,7 @@ def test_other_profile_or_revocation_no_write(binding):
 
 @pytest.mark.parametrize('existing',[None,{'user_id':UID,'revoked_at':None}])
 def test_confirmation_preserves_history_and_notification(existing):
-    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID,'subject':'sub','source':'telegram_google_dual_proof'},{'account_status':'active'},existing]
+    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID,'subject':'sub','source':'telegram_google_dual_proof','google_email':'g@example.com'},{'account_status':'active'},existing]
     @contextmanager
     def cursor(**kw):assert kw=={'commit':True};yield cur
     with patch.object(ie,'get_db_cursor',side_effect=cursor):

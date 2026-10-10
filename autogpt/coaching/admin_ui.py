@@ -53,6 +53,8 @@ def render_admin(
         last_plan = u.last_weekly_plan.strftime("%d-%m-%Y") if u.last_weekly_plan else "—"
         contact = u.phone_number or u.email or "—"
         email_cell = escape(u.email) if u.email else "—"
+        if getattr(u, "google_email", None):
+            email_cell += f'<div style="font-size:11px;color:#1a56b0;margin-top:2px">Google: {escape(u.google_email)}</div>'
         # Use the current host instead of a potentially stale PUBLIC_URL.
         dashboard_url = f"/dashboard/{u.user_id}?lang={lang}"
         track_key = f"admin_track_{u.program_type}"
