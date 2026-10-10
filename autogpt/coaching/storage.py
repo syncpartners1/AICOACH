@@ -460,19 +460,19 @@ def _as_date(value: str | date) -> date:
 
 # ── History ───────────────────────────────────────────────────────────────────
 
-def get_past_sessions(user_id: str, limit: int = 5, include_structured: bool = False) -> List[PastSession]:
-    """Return the most recent session summaries for a user."""
+def get_past_sessions(user_id: str, limit: int = 5, include_structured: bool = False,
+                      manual_only: bool = False) -> List[PastSession]:
+    """Return the most recent session summaries for a user (manual_only: coach-recorded 1:1 meetings only)."""
     db = _get_client()
-    rows = (
+    query = (
         db.table("coaching_sessions")
         .select("session_id,timestamp,alert_level,summary_for_coach,coach_notes,is_manual"
                 + (",focus_goal,meeting_number,leading_value_snapshot" if include_structured else ""))
         .eq("user_id", user_id)
-        .order("timestamp", desc=True)
-        .limit(limit)
-        .execute()
-        .data or []
     )
+    if manual_only:
+        query = query.eq("is_manual", True)
+    rows = query.order("timestamp", desc=True).limit(limit).execute().data or []
     # Session-specific KR snapshots, never the current master OKR values.
     snapshots = {}
     if include_structured:
@@ -500,6 +500,26 @@ def get_past_sessions(user_id: str, limit: int = 5, include_structured: bool = F
         )
         for r in rows
     ]
+
+
+def get_chat_context_sessions(user_id: str, limit: int = 3) -> List[PastSession]:
+    """Sessions for the web chat's coach context.
+
+    The `limit` most recent sessions of any channel, plus the latest coach-recorded 1:1 meeting even when newer chat
+    sessions would push it out (so at most limit + 1). Manual 1:1 meetings carry their full record: notes, meeting
+    number, focus and agreed tasks. Chat sessions stay summary only, as before.
+    """
+    recent = get_past_sessions(user_id, limit=limit)
+    try:
+        manual = get_past_sessions(user_id, limit=limit, include_structured=True, manual_only=True)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not load 1:1 meetings for the chat context")
+        return recent
+    recent_ids = {ps.session_id for ps in recent}
+    detailed = [m for i, m in enumerate(manual) if i == 0 or m.session_id in recent_ids]
+    detailed_ids = {m.session_id for m in detailed}
+    merged = [ps for ps in recent if ps.session_id not in detailed_ids] + detailed
+    return sorted(merged, key=lambda ps: ps.timestamp, reverse=True)
 
 
 def update_session_notes(session_id: str, coach_notes: str) -> None:

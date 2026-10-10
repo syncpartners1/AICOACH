@@ -35,6 +35,24 @@ def _build_history_context(past_sessions: "List[PastSession]") -> str:
 
     lines = ["<b>Recent Session Highlights</b>\n"]
     for ps in past_sessions:
+        if getattr(ps, "is_manual", False):
+            number = f" #{ps.meeting_number}" if getattr(ps, "meeting_number", None) else ""
+            lines.append(f"<b>1:1 meeting with the coach{number} (פגישת 1:1 עם המאמן), {ps.timestamp[:10]}</b>"
+                         " - recorded by the coach, offline")
+            lines.append(f"Summary: {ps.summary_for_coach}" if ps.summary_for_coach else "Summary: none recorded")
+            if ps.coach_notes:
+                lines.append(f"Coach notes: {ps.coach_notes}")
+            if ps.focus_goal:
+                lines.append(f"Focus: {ps.focus_goal}")
+            if ps.leading_value_snapshot:
+                lines.append(f"Leading value: {ps.leading_value_snapshot}")
+            for a in ps.assignments or []:
+                done = a.get("completed")
+                state = "unreported" if done is None else ("done" if done else "not done")
+                due = f", due {a['due_date']}" if a.get("due_date") else ""
+                lines.append(f"Agreed task: {a.get('description', '')} ({state}{due})")
+            lines.append("")
+            continue
         lines.append(f"<b>Session {ps.timestamp[:10]}</b> (Alert: {ps.alert_level.upper()})")
         lines.append(f"{ps.summary_for_coach}")
         lines.append("")
@@ -129,6 +147,7 @@ to persistent objectives must be confirmed before saving.
 ## Past Report Requests
 
 If the user asks to be reminded of a past report or session highlights, summarise the relevant information from the recent session history provided above. Be concise — pick the 2–3 most important points.
+If they ask about the last meeting with the coach, use the most recent entry labelled "1:1 meeting with the coach": its summary, notes, focus and agreed tasks. Do not substitute the goals or key results. Never show internal ids.
 """ if past_sessions else ""
 
     return f"""You are "Navigator", the AI Co-Navigator for ABN Consulting. You assist top executives in their change management journey and support the coaching process led by {coach_name}.
