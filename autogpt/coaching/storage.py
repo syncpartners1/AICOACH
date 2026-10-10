@@ -460,6 +460,18 @@ def _as_date(value: str | date) -> date:
 
 # ── History ───────────────────────────────────────────────────────────────────
 
+def get_last_meeting_number(user_id: str) -> int:
+    """Highest meeting number among the coach's recorded 1:1 sessions; 0 when none.
+
+    Source of truth for the coaching timeline. It does not read the phase field.
+    """
+    rows = (_get_client().table("coaching_sessions").select("meeting_number")
+            .eq("user_id", user_id).eq("is_manual", True).limit(1000).execute().data or [])
+    numbers = [r["meeting_number"] for r in rows
+               if isinstance(r.get("meeting_number"), int) and not isinstance(r.get("meeting_number"), bool)]
+    return max(numbers) if numbers else 0
+
+
 def get_past_sessions(user_id: str, limit: int = 5, include_structured: bool = False,
                       manual_only: bool = False) -> List[PastSession]:
     """Return the most recent session summaries for a user (manual_only: coach-recorded 1:1 meetings only)."""
