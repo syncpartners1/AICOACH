@@ -346,6 +346,7 @@ S_EN = {
     "db_admin_banner": "👁 <strong>Admin View</strong> — {name}'s Dashboard",
     "db_admin_back": "← Back to Admin Console",
     "db_add_session_record": "➕ Add 1:1 Coaching Session Record",
+    "db_manage_program": "Manage program",
     "db_session_date": "Session Date",
     "db_session_summary_label": "Summary",
     "db_session_summary_placeholder": "Brief session summary…",
