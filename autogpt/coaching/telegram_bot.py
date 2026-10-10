@@ -1380,6 +1380,26 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(result.text, parse_mode=result.parse_mode)
 
 
+GOOGLE_LINK_URL = "https://app.changenavigator.co.il/identity/link"
+
+
+async def google_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/google: a button to the Google-linking page. Opening it in a regular browser matters: the linking flow
+    needs the browser's own cookie, which Telegram's in-app browser does not keep reliably."""
+    tg_id = update.effective_user.id
+    user = _get_linked_user(tg_id)
+    lang = _lang(user, update.message.text or "")
+    if update.effective_chat.type != "private":
+        await update.message.reply_text(t(lang, "google_link_private"))
+        return
+    if not user:
+        await update.message.reply_text(t(lang, "google_link_need_link"))
+        return
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "google_link_btn"), url=GOOGLE_LINK_URL)]])
+    await update.message.reply_text(t(lang, "google_link_intro"), parse_mode="HTML", reply_markup=keyboard,
+                                    disable_web_page_preview=True)
+
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tg_id = update.effective_user.id
     user = _get_linked_user(tg_id)
@@ -1850,6 +1870,7 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("lang", set_language))
     app.add_handler(CommandHandler("goal", goal_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("google", google_command))
     app.add_handler(CommandHandler("refresh", refresh_command))
 
     # Funnel: post-conversation callbacks (fire after ConversationHandler.END)
@@ -1901,6 +1922,7 @@ async def register_command_menu(application: Application) -> None:
             BotCommand("highlight",   "Log today's highlight"),
             BotCommand("book",        "Book a 1:1 session"),
             BotCommand("mybookings",  "View your bookings"),
+            BotCommand("google",      "Link your Google account"),
             BotCommand("lang",        "Switch language (עב / EN)"),
             BotCommand("suspend",     "Pause the program"),
             BotCommand("resume",      "Resume the program"),

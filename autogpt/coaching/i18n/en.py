@@ -217,6 +217,14 @@ S_EN = {
     # ── Bot: /lang ────────────────────────────────────────────────────────
     "lang_set_he": "🇮🇱 Language set to <b>Hebrew</b>. Bot messages will now appear in Hebrew.",
     "lang_set_en": "🇬🇧 Language set to <b>English</b>. Bot messages will now appear in English.",
+    "google_link_btn": "Link your Google account",
+    "google_link_intro": (
+        "<b>Link your Google account</b>\n"
+        "Tap the button. The page opens in a browser. If it opens inside Telegram, choose \"Open in browser\" (Chrome or Safari).\n"
+        "Steps: 1) confirm with Telegram on the page  2) sign in with the Google account you want to keep  3) final confirmation. Use the same browser for all of it, within 10 minutes."
+    ),
+    "google_link_need_link": "First connect Telegram to your account: send /link and share your phone number.",
+    "google_link_private": "Google linking works only in a private chat with the bot. Send me /google in a private message.",
     "lang_usage": "Usage: /lang en  or  /lang he",
     # ── Bot: /goal ────────────────────────────────────────────────────────
     "goal_usage": "Usage: /goal — view, /goal goal <text> — set central goal, /goal value <text> — set leading value",
@@ -242,6 +250,7 @@ S_EN = {
         "/done — End session and receive summary\n"
         "/suspend — Pause your coaching\n"
         "/resume — Reactivate a paused coaching account\n"
+        "/google — Link your Google account\n"
         "/lang — Change language (/lang en or /lang he)\n"
         "/cancel — Cancel current operation\n"
         "/help — Show this list"
