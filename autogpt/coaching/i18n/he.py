@@ -249,9 +249,9 @@ S_HE = {
     "help_admin": (
         "\n\n<b>פקודות מנהל:</b>\n"
         "/users — רשימת כל חברי התוכנית\n"
-        "/report <user_id> — דוח מלא למשתמש\n"
+        "/report &lt;user_id&gt; — דוח מלא למשתמש\n"
         "/invite [name] [contact] — צור קישור הזמנה\n"
-        "/broadcast <text> — שלח הודעה לכל המשתמשים"
+        "/broadcast &lt;text&gt; — שלח הודעה לכל המשתמשים"
     ),
     # ── Dashboard: section titles ─────────────────────────────────────────
     "db_title": "לוח הבקרה שלי",
