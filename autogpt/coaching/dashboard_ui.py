@@ -72,6 +72,7 @@ def render_dashboard(
     weekly_reports: Optional[List[dict]] = None,
     general_goal: str = "",
     leading_value: str = "",
+    suggested_meeting_number: Optional[int] = None,
 ) -> str:
     lang = language
     is_rtl = lang == "he"
@@ -174,7 +175,8 @@ def render_dashboard(
 
     # ── Recent sessions ───────────────────────────────────────────────────────
     sess_html = ""
-    for s in past_sessions:
+    # Newest meeting first, whatever order the caller passed in.
+    for s in sorted(past_sessions, key=lambda x: str(x.timestamp), reverse=True):
         dot_color = {"green": "#16a34a", "yellow": "#d97706", "red": "#dc2626"}.get(
             s.alert_level, "#6b7280"
         )
@@ -263,6 +265,8 @@ def render_dashboard(
 
     # ── Admin: add manual session form ────────────────────────────────────────
     add_session_form = ""
+    meeting_value_attr = (f' value="{int(suggested_meeting_number)}"'
+                          if isinstance(suggested_meeting_number, int) and suggested_meeting_number >= 1 else "")
     if is_admin_view:
         add_session_form = f"""
 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;
@@ -286,7 +290,7 @@ def render_dashboard(
     style="width:100%;font-size:13px;border:1px solid #d1d5db;border-radius:6px;
            padding:6px 8px;margin-bottom:8px">
   <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px">{t(lang, 'db_session_notes_label')}</label>
-  <label>{t(lang, "db_meeting_number")} <input type="number" id="new_sess_number" min="1"></label>
+  <label>{t(lang, "db_meeting_number")} <input type="number" id="new_sess_number" min="1"{meeting_value_attr}></label>
   <label style="display:block">{t(lang, "db_assignments_entry")}</label>
   <textarea id="new_sess_actions" maxlength="5010" style="width:100%;min-height:80px;box-sizing:border-box"></textarea>
   <label>{t(lang, "db_leading_value")} <input id="new_sess_value" maxlength="500"></label>
@@ -408,6 +412,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
 <div class="container">
   {'' if is_admin_view else '<p><a href="/chat/install">הוספה למסך הבית / Install app</a></p>'}
   {suspended_banner}{archived_banner}
+  {add_session_form}
 
   <div class="section-title">{t(lang, "db_section_week")} &mdash; {week_label}</div>
 
@@ -421,7 +426,6 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
 
   <div class="section-title">{t(lang, "db_section_sessions")}</div>
   {sess_html}
-  {add_session_form}
 
 </div>
 <script>

@@ -914,6 +914,14 @@ def user_dashboard(
     objectives = get_user_objectives(user_id)
     weekly_plan = get_weekly_plan(user_id, parsed_week)
     past_sessions = get_past_sessions(user_id, limit=5, include_structured=is_admin_view)
+    suggested_meeting_number = None
+    if is_admin_view:
+        # Suggest the next 1:1 number from the recorded sessions; blank if the lookup fails.
+        try:
+            from autogpt.coaching.storage import get_last_meeting_number
+            suggested_meeting_number = get_last_meeting_number(user_id) + 1
+        except Exception:
+            logger.exception("Meeting number suggestion failed for user %s", user_id)
     from autogpt.coaching.weekly_reports import list_weekly_reports
     weekly_reports = list_weekly_reports(user_id)
     program = get_coaching_program(user_id)
@@ -950,6 +958,7 @@ def user_dashboard(
         weekly_reports=weekly_reports,
         general_goal=general_goal,
         leading_value=leading_value,
+        suggested_meeting_number=suggested_meeting_number,
     )
     resp = HTMLResponse(content=html)
     if not is_admin_view:
