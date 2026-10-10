@@ -230,3 +230,19 @@ def test_phase_label_helper():
     assert phase_label("en", "ongoing") == "Ongoing coaching"
     assert phase_label("he", "qmark") == "פגישת איבחון"
     assert phase_label("en", "bogus") == "Not set yet"
+
+
+def test_admin_lang_values_are_normalised_to_two_constants():
+    mocks = _dashboard_route_mocks(language="he")
+    for m in mocks:
+        m.start()
+    try:
+        odd = TestClient(app).get("/dashboard/u1?lang=%3Cb%3Ezzprobe")
+        en = TestClient(app).get("/dashboard/u1?lang=en")
+        he = TestClient(app).get("/dashboard/u1?lang=he")
+    finally:
+        for m in mocks:
+            m.stop()
+    assert "zzprobe" not in odd.text
+    assert odd.text == he.text
+    assert "This Week" in en.text and "This Week" not in odd.text
