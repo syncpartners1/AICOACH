@@ -661,10 +661,11 @@ async def _start_coaching_session(
     lang: str = "en",
 ) -> None:
     from autogpt.coaching.session import CoachingSession
-    from autogpt.coaching.storage import get_user_objectives, get_past_sessions, get_coaching_program
+    from autogpt.coaching.storage import get_user_objectives, get_chat_context_sessions, get_coaching_program
 
     objectives = get_user_objectives(user_id) if user_id else []
-    past_sessions = get_past_sessions(user_id, limit=3) if user_id else []
+    # Same context as the web chat: recent sessions plus the full latest 1:1 meeting record.
+    past_sessions = get_chat_context_sessions(user_id, limit=3) if user_id else []
 
     session = CoachingSession(
         client_id=f"telegram_{tg_id}",

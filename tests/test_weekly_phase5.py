@@ -26,8 +26,8 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def _program(phase="meeting_7", actions=("כתיבת הצעה", "שיחת לקוח")):
-    return {"phase": phase, "plan_json": {"weekly_actions": list(actions)}}
+def _program(phase="meeting_7", actions=("כתיבת הצעה", "שיחת לקוח"), active=True):
+    return {"phase": phase, "success_plan_active": active, "plan_json": {"weekly_actions": list(actions)}}
 
 
 @pytest.fixture()
@@ -83,8 +83,8 @@ def test_core_weekly_same_result_both_channels(storage_mocks):
 
 
 def test_core_weekly_task_source_boundaries():
-    # meeting_6: plan weekly_actions ignored -> falls back to previous week
-    with patch("autogpt.coaching.storage.get_coaching_program", return_value=_program(phase="meeting_6")), \
+    # switch off: plan weekly_actions ignored -> falls back to previous week, whatever the phase
+    with patch("autogpt.coaching.storage.get_coaching_program", return_value=_program(phase="meeting_9", active=False)), \
          patch.object(weekly_reports, "get_weekly_report", return_value=None), \
          patch.object(weekly_reports, "previous_week_tasks", return_value=["משימה ישנה"]):
         _, state = _run(start_flow("weekly", CommandContext(user=_user(), lang="he")))

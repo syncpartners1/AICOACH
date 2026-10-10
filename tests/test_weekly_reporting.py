@@ -28,7 +28,7 @@ def test_weekly_flow_confirms_and_binds_to_telegram_identity():
     ctx = SimpleNamespace(user_data={})
     user = _user()
     with patch("autogpt.coaching.telegram_bot._get_linked_user", return_value=user), \
-         patch("autogpt.coaching.storage.get_coaching_program", return_value={"phase":"meeting_7", "plan_json":{"weekly_actions":["Write proposal", "Call client"]}}), \
+         patch("autogpt.coaching.storage.get_coaching_program", return_value={"phase":"meeting_7", "success_plan_active": True, "plan_json":{"weekly_actions":["Write proposal", "Call client"]}}), \
          patch.object(weekly_reports, "get_weekly_report", return_value=None), \
          patch.object(weekly_reports, "previous_week_tasks", return_value=[]), \
          patch.object(weekly_reports, "save_participant_report") as save:

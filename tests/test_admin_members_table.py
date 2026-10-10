@@ -61,5 +61,5 @@ def test_email_placeholder_when_missing():
 
 def test_empty_members_colspan_covers_email_column():
     page = _page(users=[])
-    assert 'colspan="11"' in page
+    assert 'colspan="12"' in page
     assert 'colspan="10"' not in page

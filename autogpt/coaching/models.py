@@ -352,3 +352,4 @@ class UserProgressSummary(BaseModel):
     telegram_user_id: Optional[int] = None
     program_type: str = "base"
     phase: str = "unassigned"
+    success_plan_active: bool = False

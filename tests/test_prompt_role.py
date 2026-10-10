@@ -16,13 +16,14 @@ def test_role_section_is_in_the_prompt_before_the_program_context_and_names_the_
 
 def test_the_three_jobs_are_stated():
     p = prompt()
-    assert "Make sure the participant carries out the coaching actions agreed" in p.replace("1. Make", "Make") or "carry out the coaching actions agreed" in p
-    assert "From meeting 7 onward" in p and "success plan" in p
+    assert "carries out the coaching actions agreed" in p
+    assert "Success plan: follow the" in p
     for term in ("leading value (ערך מוביל)", "main goal (מטרה ראשית)", "weekly\n   or monthly OKRs"):
         assert term in p
 
 
-def test_meeting_seven_rule_depends_on_the_coach_set_phase_not_on_assumption():
-    p = prompt(program={"program_type": "base", "phase": "unassigned"})
-    assert "never assume a meeting happened" in p
+def test_the_prompt_never_reads_the_phase_number_for_the_success_plan():
+    p = prompt(program={"program_type": "base", "phase": "meeting_9"})
+    assert "From meeting 7 onward" not in p
+    assert "Success plan mode: off" in p
     assert "Only the human coach updates these fields." in p
