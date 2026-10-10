@@ -3285,8 +3285,9 @@ def success_plan_page() -> HTMLResponse:
 
 
 class ProgramUpdate(BaseModel):
-    program_type: str
-    phase: str
+    program_type: Optional[str] = None
+    phase: Optional[str] = None
+    success_plan_active: Optional[bool] = None
 
 
 @app.get("/admin/users/{user_id}/program/manage", response_class=HTMLResponse,
@@ -3314,7 +3315,17 @@ def admin_set_program(user_id: str, body: ProgramUpdate,
     if not get_user_profile(user_id):
         raise HTTPException(status_code=404, detail="User not found.")
     try:
-        return set_coaching_program(user_id, body.program_type, body.phase)
+        if body.program_type is None and body.phase is None:
+            # Switch only (the users table checkbox): track and phase stay untouched.
+            if body.success_plan_active is None:
+                raise HTTPException(status_code=422, detail="Nothing to update.")
+            from autogpt.coaching.storage import set_success_plan_active
+            return set_success_plan_active(user_id, body.success_plan_active)
+        if body.program_type is None or body.phase is None:
+            raise HTTPException(status_code=422, detail="Track and phase are required together.")
+        if body.success_plan_active is None:
+            return set_coaching_program(user_id, body.program_type, body.phase)
+        return set_coaching_program(user_id, body.program_type, body.phase, body.success_plan_active)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

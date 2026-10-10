@@ -379,7 +379,8 @@ async def weekly_start(ctx: CommandContext) -> Tuple[List[FlowReply], Optional[d
     try:
         existing = get_weekly_report(ctx.user.user_id, start)
         program = get_coaching_program(ctx.user.user_id)
-        planned = _tasks_from_plan(program) if _meeting_seven_or_later(program.get("phase", "")) else []
+        # The coach's success plan switch decides, not the phase number.
+        planned = _tasks_from_plan(program) if program.get("success_plan_active") is True else []
         if not planned:
             planned = previous_week_tasks(ctx.user.user_id, start)
         if existing and existing.get("submitted_at"):

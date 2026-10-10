@@ -25,6 +25,7 @@ def render_program_editor(user, program: dict) -> str:
         f'<option value="{value}"{" selected" if current_phase == value else ""}>{PHASE_LABELS[value]}</option>'
         for value in PROGRAM_PHASES
     )
+    plan_checked = " checked" if program.get("success_plan_active") is True else ""
     from autogpt.coaching.theme import apply_admin_bar
     return apply_admin_bar(f"""<!DOCTYPE html>
 <html lang="he" dir="rtl"><head><meta charset="utf-8">
@@ -42,6 +43,8 @@ select{{display:block;width:100%;padding:12px;border:1px solid #94a3b8;border-ra
 font:inherit;background:white;color:#1a2b4a}}
 button{{margin-top:28px;background:#1a2b4a;color:white;border:0;border-radius:8px;
 padding:12px 22px;font:inherit;cursor:pointer}}button:disabled{{opacity:.5;cursor:wait}}
+label.check{{display:flex;align-items:center;gap:10px;font-weight:bold;margin:24px 0 8px}}
+label.check input{{width:20px;height:20px}}
 #status{{min-height:26px;margin-top:12px}}.hint{{font-size:14px}}
 </style></head><body>
 <header>ABN Consulting · ניהול תוכנית האימון</header>
@@ -51,6 +54,8 @@ padding:12px 22px;font:inherit;cursor:pointer}}button:disabled{{opacity:.5;curso
 <form id="program" data-user-id="{user_id}">
 <label for="track">מסלול אימון</label><select id="track" name="program_type">{track_options}</select>
 <label for="phase">שלב נוכחי</label><select id="phase" name="phase">{phase_options}</select>
+<label class="check"><input type="checkbox" id="plan_active" name="success_plan_active"{plan_checked}> תוכנית הצלחה פעילה</label>
+<p class="hint">מופעל: הבוט מצפה שהמתאמן יכתוב תוכנית הצלחה (OKR, ערך מוביל ומטרה מרכזית). כבוי: הבוט בודק את המשימות מפגישת ה-1:1 האחרונה.</p>
 <button type="submit">שמירת מסלול ושלב</button><p id="status" role="status" aria-live="polite"></p>
 </form></section></main>
 <script>
@@ -64,11 +69,13 @@ form.addEventListener('submit', async event => {{
   try {{
     const response = await fetch('/admin/users/' + encodeURIComponent(form.dataset.userId) + '/program', {{
       method: 'PUT', credentials: 'same-origin', headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{program_type: form.elements.namedItem('program_type').value, phase: form.elements.namedItem('phase').value}})
+      body: JSON.stringify({{program_type: form.elements.namedItem('program_type').value, phase: form.elements.namedItem('phase').value,
+        success_plan_active: form.elements.namedItem('success_plan_active').checked}})
     }});
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const result = await response.json();
-    if (result.program_type !== form.elements.namedItem('program_type').value || result.phase !== form.elements.namedItem('phase').value)
+    if (result.program_type !== form.elements.namedItem('program_type').value || result.phase !== form.elements.namedItem('phase').value
+        || result.success_plan_active !== form.elements.namedItem('success_plan_active').checked)
       throw new Error('המענה לא תואם את הבחירה');
     status.textContent = 'נשמר. המסלול והשלב עודכנו.';
     status.style.color = '#166534';

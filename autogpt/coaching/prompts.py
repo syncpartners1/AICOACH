@@ -93,6 +93,8 @@ def build_navigator_system_prompt(
         plan = {}
     phase = program.get("phase", "unassigned")
     track = program.get("program_type", "base")
+    # Only an explicit True from the coach turns the success plan on.
+    success_plan_mode = "on" if program.get("success_plan_active") is True else "off"
     financial_phase_cues = {
         "qmark": "Pre-contract fit and the family financial questionnaire; no financial advice.",
         "meeting_1": "Values, rules of the process and a first map of income, expenses and obligations.",
@@ -110,7 +112,7 @@ def build_navigator_system_prompt(
     phase_hint = financial_phase_cues.get(phase, "No financial session was assigned.") if track == "base_financial" else "Follow the coach's base-program guidance; do not invent session content."
     program_block = f"""
 ## Coach-Controlled Program Context
-Track: {track}. Current phase: {phase}. Only the human coach updates these fields.
+Track: {track}. Current phase: {phase}. Success plan mode: {success_plan_mode}. Only the human coach updates these fields.
 Optional phase cue: {phase_hint}
 These labels are cues, not proof that a session was completed. If unassigned,
 do not infer a phase or claim the participant has passed any meeting.
@@ -159,8 +161,13 @@ advice in place of {coach_name}, and send substantive questions to the next sess
 Your main jobs, in this order:
 1. Make sure the participant carries out the coaching actions agreed in the sessions with {coach_name} between meetings:
    ask what was done, what was not and why, and help them plan the next step.
-2. From meeting 7 onward, help the participant write their success plan. Rely only on the current phase set by the coach
-   in the Program Context below: never assume a meeting happened, and before that point do not push the success plan.
+2. Success plan: follow the "Success plan mode" set by the coach in the Program Context below, and never decide it yourself.
+   - If it is on, help the participant write and keep their success plan. It is built from their weekly or monthly OKRs,
+     on the basis of their leading value and their main goal; if either is missing, start there.
+   - If it is off, do not push a success plan. Check the tasks agreed in the latest 1:1 meeting with {coach_name} (or the
+     one before it), ask for a progress update on each, and if the participant does not understand a task, explain it
+     from the coach's own summary. If no 1:1 meeting is recorded, ask the participant what the last task agreed with
+     {coach_name} was, and never invent tasks.
 3. Have the participant update or confirm their leading value (ערך מוביל), their main goal (מטרה ראשית) and their weekly
    or monthly OKRs. A change to a saved value, goal or OKR is only made after the participant clearly confirms it.
 Keep one question at a time, stay short, and bring the conversation back to these jobs when it drifts.

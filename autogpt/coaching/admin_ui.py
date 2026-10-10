@@ -102,6 +102,10 @@ def render_admin(
   <td style="padding:10px 12px;text-align:center">{status_pill}</td>
   <td style="padding:10px 12px;font-size:12px">{track_label}</td>
   <td style="padding:10px 12px;font-size:12px">{phase_txt}</td>
+  <td style="padding:10px 12px;text-align:center">
+    <input type="checkbox" aria-label="Success plan" style="width:18px;height:18px;cursor:pointer"
+       onchange="setSuccessPlan('{u.user_id}', this)"{" checked" if getattr(u, "success_plan_active", False) else ""}>
+  </td>
   <td style="padding:10px 12px;text-align:center">{u.objectives_count}</td>
   <td style="padding:10px 12px;white-space:nowrap">
     <span style="font-weight:600">{u.avg_kr_pct:.0f}%</span>
@@ -123,7 +127,7 @@ def render_admin(
 </tr>"""
 
     if not user_rows:
-        user_rows = f'<tr><td colspan="11" style="padding:20px;color:#9ca3af;text-align:center">{t(lang, "admin_no_users")}</td></tr>'
+        user_rows = f'<tr><td colspan="12" style="padding:20px;color:#9ca3af;text-align:center">{t(lang, "admin_no_users")}</td></tr>'
 
     # ── Pending registration rows ─────────────────────────────────────────────
     pending_rows = ""
@@ -279,7 +283,7 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
       <thead><tr>
         <th>{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th>
         <th>{t(lang, "admin_col_email")}</th>
-        <th>{t(lang, "admin_col_status")}</th><th>מסלול</th><th>שלב</th><th>{t(lang, "admin_col_okrs")}</th>
+        <th>{t(lang, "admin_col_status")}</th><th>מסלול</th><th>שלב</th><th>תוכנית הצלחה</th><th>{t(lang, "admin_col_okrs")}</th>
         <th>{t(lang, "admin_col_progress")}</th><th>{t(lang, "admin_col_last_session")}</th>
         <th>{t(lang, "admin_col_last_plan")}</th><th class="col-actions">{t(lang, "admin_col_actions")}</th>
       </tr></thead>
@@ -363,6 +367,24 @@ async function setStatus(userId, newStatus) {{
   }});
   if (res.ok) location.reload();
   else alert('{t(lang, "admin_status_update_failed")}');
+}}
+
+async function setSuccessPlan(userId, box) {{
+  const wanted = box.checked;
+  box.disabled = true;
+  try {{
+    const res = await fetch(`/admin/users/${{userId}}/program`, {{
+      method: 'PUT',
+      credentials: 'include',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{success_plan_active: wanted}})
+    }});
+    const data = res.ok ? await res.json() : null;
+    if (!data || data.success_plan_active !== wanted) throw new Error('failed');
+  }} catch (e) {{
+    box.checked = !wanted;
+    alert('העדכון נכשל, נסה שוב.');
+  }} finally {{ box.disabled = false; }}
 }}
 
 async function approveUser(userId) {{

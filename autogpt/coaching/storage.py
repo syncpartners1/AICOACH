@@ -593,17 +593,45 @@ def get_coaching_program(user_id: str) -> dict:
     rows = (_get_client().table("coaching_programs").select("*")
             .eq("user_id", user_id).limit(1).execute().data or [])
     return rows[0] if rows else {"user_id": user_id, "program_type": "base",
-                                 "phase": "unassigned", "plan_json": {}}
+                                 "phase": "unassigned", "plan_json": {},
+                                 "success_plan_active": False}
 
 
-def set_coaching_program(user_id: str, program_type: str, phase: str) -> dict:
-    """Coach-only metadata update; preserve the participant's current plan."""
+def success_plan_is_active(program: dict | None) -> bool:
+    """True only for an explicit True from the coach; a missing or odd value means off."""
+    return bool(program) and program.get("success_plan_active") is True
+
+
+def set_success_plan_active(user_id: str, active: bool) -> dict:
+    """Coach-only switch; touches nothing but the success plan flag."""
+    if type(active) is not bool:
+        raise ValueError("success_plan_active must be true or false")
+    db = _get_client()
+    rows = db.table("coaching_programs").select("user_id").eq("user_id", user_id).execute().data or []
+    payload = {"success_plan_active": active, "updated_at": datetime.utcnow().isoformat()}
+    if rows:
+        db.table("coaching_programs").update(payload).eq("user_id", user_id).execute()
+    else:
+        db.table("coaching_programs").insert({"user_id": user_id, **payload}).execute()
+    return get_coaching_program(user_id)
+
+
+def set_coaching_program(user_id: str, program_type: str, phase: str,
+                         success_plan_active: bool | None = None) -> dict:
+    """Coach-only metadata update; preserve the participant's current plan.
+
+    success_plan_active None leaves the switch as it is.
+    """
     if program_type not in ("base", "base_financial") or phase not in PROGRAM_PHASES:
         raise ValueError("Invalid program type or phase")
     db = _get_client()
     rows = db.table("coaching_programs").select("user_id").eq("user_id", user_id).execute().data or []
     payload = {"program_type": program_type, "phase": phase,
                "updated_at": datetime.utcnow().isoformat()}
+    if success_plan_active is not None:
+        if type(success_plan_active) is not bool:
+            raise ValueError("success_plan_active must be true or false")
+        payload["success_plan_active"] = success_plan_active
     if rows:
         db.table("coaching_programs").update(payload).eq("user_id", user_id).execute()
     else:
@@ -1243,6 +1271,7 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
             telegram_user_id=u.get("telegram_user_id"),
             program_type=program.get("program_type") or "base",
             phase=program.get("phase") or "unassigned",
+            success_plan_active=success_plan_is_active(program),
         ))
     return summaries
 
