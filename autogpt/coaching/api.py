@@ -937,7 +937,7 @@ def user_dashboard(
     render_lang = user.language
     if is_admin_view:
         # Admin screens default to Hebrew; ?lang=en still switches to English.
-        render_lang = lang if lang in ("en", "he") else "he"
+        render_lang = "en" if lang == "en" else "he"
     html = render_dashboard(
         user=user,
         objectives=objectives,
@@ -1189,8 +1189,7 @@ function verifyOtp() {{
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 def admin_dashboard(request: Request, lang: str = Query(default="he")) -> HTMLResponse:
     """Admin overview dashboard — requires login. Hebrew by default; ?lang=en switches to English."""
-    if lang not in ("en", "he"):
-        lang = "he"
+    lang = "en" if lang == "en" else "he"
     if not _is_admin_authenticated(request):
         return HTMLResponse(content=_login_page(), status_code=200)
 
