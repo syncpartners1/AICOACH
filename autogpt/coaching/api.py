@@ -72,6 +72,7 @@ from autogpt.coaching.storage import (
     get_invite,
     get_invite_by_id,
     get_past_sessions,
+    get_chat_context_sessions,
     get_coaching_program,
     save_coaching_plan,
     set_coaching_program,
@@ -2306,7 +2307,7 @@ def start_session(
                 )
             user_name = profile.name
         objectives = get_user_objectives(req.user_id)
-        past_sessions = get_past_sessions(req.user_id, limit=3)
+        past_sessions = get_chat_context_sessions(req.user_id, limit=3)
 
     session = CoachingSession(
         client_id=req.client_id,
@@ -3019,7 +3020,7 @@ def user_session_start(request: Request, req: UserSessionStartRequest) -> dict:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Account is not active.")
     objectives = get_user_objectives(user_id)
-    past_sessions = get_past_sessions(user_id, limit=3)
+    past_sessions = get_chat_context_sessions(user_id, limit=3)
     session = CoachingSession(
         client_id=f"web_{user_id}",
         client_name=profile.name,
