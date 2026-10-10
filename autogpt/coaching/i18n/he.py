@@ -346,6 +346,7 @@ S_HE = {
     "db_admin_banner": "👁 <strong>תצוגת מנהל</strong> — לוח הבקרה של {name}",
     "db_admin_back": "← חזרה ללוח בקרה למנהל",
     "db_add_session_record": "➕ הוסף תיעוד פגישת אימון 1:1",
+    "db_manage_program": "ניהול תוכנית",
     "db_session_date": "תאריך פגישה",
     "db_session_summary_label": "סיכום",
     "db_session_summary_placeholder": "סיכום קצר של הפגישה...",

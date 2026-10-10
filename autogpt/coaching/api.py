@@ -935,8 +935,9 @@ def user_dashboard(
     # authenticated admin may override it (?lang=he|en) so the coach sees
     # the dashboard in their own UI language regardless of the trainee's.
     render_lang = user.language
-    if is_admin_view and lang in ("en", "he"):
-        render_lang = lang
+    if is_admin_view:
+        # Admin screens default to Hebrew; ?lang=en still switches to English.
+        render_lang = lang if lang in ("en", "he") else "he"
     html = render_dashboard(
         user=user,
         objectives=objectives,
@@ -1186,10 +1187,10 @@ function verifyOtp() {{
 
 
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
-def admin_dashboard(request: Request, lang: str = Query(default="en")) -> HTMLResponse:
-    """Admin overview dashboard — requires login. ?lang=en|he switches UI language."""
+def admin_dashboard(request: Request, lang: str = Query(default="he")) -> HTMLResponse:
+    """Admin overview dashboard — requires login. Hebrew by default; ?lang=en switches to English."""
     if lang not in ("en", "he"):
-        lang = "en"
+        lang = "he"
     if not _is_admin_authenticated(request):
         return HTMLResponse(content=_login_page(), status_code=200)
 
@@ -1657,6 +1658,38 @@ def admin_update_session_notes(
     return {"ok": True, "session_id": session_id}
 
 
+def _advance_phase_from_session(user_id: str, meeting_number: Optional[int]) -> Dict[str, Any]:
+    """Move the phase forward to meeting_N after a recorded 1:1. Never fails the save.
+
+    Rules: no number or a number outside 1-10 changes nothing; ongoing and qmark
+    stay manual; an equal or lower number than the current numbered phase is
+    never applied (no downgrade); program type and the success plan switch are
+    left as they are.
+    """
+    if meeting_number is None or not 1 <= meeting_number <= 10:
+        return {"changed": False, "reason": "no_valid_meeting_number"}
+    try:
+        program = get_coaching_program(user_id)
+        current = program.get("phase") or "unassigned"
+        if current in ("ongoing", "qmark"):
+            return {"changed": False, "reason": "manual_phase", "phase": current}
+        if current.startswith("meeting_"):
+            try:
+                current_n = int(current.split("_", 1)[1])
+            except ValueError:
+                current_n = 0
+            if meeting_number == current_n:
+                return {"changed": False, "reason": "same_phase", "phase": current}
+            if meeting_number < current_n:
+                return {"changed": False, "reason": "lower_than_current", "phase": current}
+        new_phase = f"meeting_{meeting_number}"
+        set_coaching_program(user_id, program.get("program_type") or "base", new_phase)
+        return {"changed": True, "from": current, "phase": new_phase}
+    except Exception:
+        logger.exception("Phase advance after manual session failed for user %s", user_id)
+        return {"changed": False, "reason": "error"}
+
+
 @app.post("/admin/users/{user_id}/sessions", summary="Admin: create manual coaching session record")
 def admin_create_manual_session(
     user_id: str,
@@ -1687,6 +1720,7 @@ def admin_create_manual_session(
         if not isinstance(plan, dict):
             plan = {}
         save_coaching_plan(user_id, {**plan, "leading_value": body.leading_value_snapshot.strip()})
+    phase_update = _advance_phase_from_session(user_id, body.meeting_number)
     # Propose OKR mutations from the coach's summary for dashboard approval.
     # Extraction must never fail the session save - empty means "no proposals".
     proposed: List[Dict[str, Any]] = []
@@ -1714,7 +1748,8 @@ def admin_create_manual_session(
         except Exception:
             logger.exception("Manual-session OKR extraction failed for user %s", user_id)
             proposed = []
-    return {"ok": True, "session_id": session_id, "proposed_okr_changes": proposed}
+    return {"ok": True, "session_id": session_id, "proposed_okr_changes": proposed,
+            "phase_update": phase_update}
 
 
 # ── Admin: apply coach-approved OKR changes (manual-session proposal flow) ────

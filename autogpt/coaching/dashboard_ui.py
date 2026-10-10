@@ -269,6 +269,9 @@ def render_dashboard(
             margin-top:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
   <div style="font-size:14px;font-weight:700;color:#1a2b4a;margin-bottom:12px">
     {t(lang, 'db_add_session_record')}
+    <a href="/admin/users/{html.escape(str(user.user_id), quote=True)}/program/manage"
+       style="float:inline-end;font-size:12px;background:#dcfce7;color:#166534;border:1px solid #86efac;
+              border-radius:999px;padding:3px 12px;text-decoration:none;font-weight:600">{t(lang, 'db_manage_program')}</a>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
     <div>

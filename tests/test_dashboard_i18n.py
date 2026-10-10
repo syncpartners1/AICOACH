@@ -124,7 +124,7 @@ def test_admin_view_lang_override_renders_hebrew_for_english_trainee():
     assert "This Week" not in res.text
 
 
-def test_trainee_language_used_when_no_override():
+def test_admin_view_defaults_to_hebrew_without_lang():
     mocks = _dashboard_route_mocks(language="en")
     for m in mocks:
         m.start()
@@ -134,7 +134,52 @@ def test_trainee_language_used_when_no_override():
         for m in mocks:
             m.stop()
     assert res.status_code == 200
+    assert "השבוע" in res.text
+    assert "This Week" not in res.text
+    assert "/admin/users/u1/program/manage" in res.text
+    assert "ניהול תוכנית" in res.text
+
+
+def test_admin_view_lang_en_still_works():
+    mocks = _dashboard_route_mocks(language="he")
+    for m in mocks:
+        m.start()
+    try:
+        res = TestClient(app).get("/dashboard/u1?lang=en")
+    finally:
+        for m in mocks:
+            m.stop()
+    assert res.status_code == 200
     assert "This Week" in res.text
+    assert "Manage program" in res.text
+
+
+def test_trainee_own_view_keeps_profile_language_and_no_program_button():
+    mocks = _dashboard_route_mocks(language="en")
+    mocks[0] = patch("autogpt.coaching.api._is_admin_authenticated", return_value=False)
+    mocks.append(patch("autogpt.coaching.api._get_user_id_from_cookie", return_value="u1"))
+    for m in mocks:
+        m.start()
+    try:
+        res = TestClient(app).get("/dashboard/u1")
+    finally:
+        for m in mocks:
+            m.stop()
+    assert res.status_code == 200
+    assert "This Week" in res.text
+    assert "program/manage" not in res.text
+
+
+def test_admin_console_defaults_to_hebrew_and_en_still_works():
+    with patch("autogpt.coaching.api._is_admin_authenticated", return_value=True), \
+         patch("autogpt.coaching.api.get_all_users_progress", return_value=[]):
+        he = TestClient(app).get("/admin")
+        en = TestClient(app).get("/admin?lang=en")
+        bad = TestClient(app).get("/admin?lang=xx")
+    assert he.status_code == 200 and '<html lang="he" dir="rtl">' in he.text
+    assert '<html lang="en"' in en.text
+    assert '<html lang="he"' in bad.text
+    assert bad.text == he.text
 
 
 # ── Admin panel: links carry the lang, labels follow it ──────────────────────
