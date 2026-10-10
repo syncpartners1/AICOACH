@@ -2124,10 +2124,30 @@ def login_page(
         "userinfo_failed": "Could not retrieve your account info from Google. Please try again.",
         "incomplete_profile": "Google did not return a valid account. Try a different Google account.",
         "server_error": "A temporary server error occurred. Please try again in a moment.",
+        "login_unavailable": "Sign-in is temporarily unavailable. Please try again in a moment.",
+        "invalid_state": "The sign-in session expired or was opened in a different browser. Please start again from this page, in one browser.",
+        "invalid_proof": "Google sign-in could not be verified. Please try again.",
+        "invalid_return": "Sign-in could not be completed. Please start again from this page.",
+        "configuration_unavailable": "Google sign-in is not available right now. Please contact your coach.",
+        "account_inactive": "This account is not active. Please contact your coach.",
+        "cancelled": "Sign-in was cancelled.",
     }
     error_html = ""
-    if error:
-        msg = _ERROR_MESSAGES.get(error, f"Sign-in failed ({error}). Please try again.")
+    if error == "recovery_required":
+        # Safe HTML, constant text. The Google account is verified but not linked to a profile yet.
+        error_html = (
+            '<div class="error-banner">'
+            '<div>This Google account is not linked to a coaching profile yet. '
+            '<a href="/identity/link">Link it here</a> (open in your browser, confirm with Telegram, '
+            'then choose this Google account), or send /google to the Telegram bot.</div>'
+            '<div dir="rtl" style="margin-top:8px">חשבון ה-Google הזה עדיין לא מקושר לפרופיל. '
+            '<a href="/identity/link">לחיבור לחצו כאן</a> (בדפדפן, אימות בטלגרם ואז בחירת חשבון ה-Google), '
+            'או שלחו /google לבוט בטלגרם.</div>'
+            '</div>')
+    elif error:
+        # The code comes from the query string: always escaped.
+        import html as _html
+        msg = _ERROR_MESSAGES.get(error) or f"Sign-in failed ({_html.escape(error[:60])}). Please try again."
         error_html = f'<div class="error-banner">{msg}</div>'
 
     return HTMLResponse(content=f"""<!DOCTYPE html>
