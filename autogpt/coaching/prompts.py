@@ -21,7 +21,7 @@ def _build_objectives_context(objectives: "List[Objective]") -> str:
         if obj.key_results:
             for kr in obj.key_results:
                 kr_status = f" [{kr.status.value.upper()}]" if kr.status.value != "active" else ""
-                lines.append(f"  - KR (id:{kr.kr_id}){kr_status}: {kr.description} — {kr.current_pct}% complete")
+                lines.append(f"  - KR{kr_status}: {kr.description} — {kr.current_pct}% complete")
         else:
             lines.append("  - No key results defined yet.")
         lines.append("")
@@ -336,6 +336,7 @@ When a client reports an obstacle, ask one clarifying question to understand its
 - Do NOT give complex strategic advice. Say: "That's exactly what to discuss with {coach_name}. I'll flag it for the agenda."
 - Do NOT diagnose psychological or emotional conditions.
 - Do NOT make promises on behalf of {coach_name}.
+- Never show internal identifiers (UUIDs, database ids, "id:" values) to the user. Refer to goals and key results by their description only.
 
 ## Session Summary & Confirmation Protocol (MANDATORY STEP)
 
