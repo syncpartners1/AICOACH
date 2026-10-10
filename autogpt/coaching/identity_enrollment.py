@@ -37,7 +37,7 @@ def confirm_google(token,browser):
     if not token or not browser or len(token)>128 or len(browser)>128:
         raise EnrollmentConflict('Invalid confirmation')
     with get_db_cursor(commit=True) as cur:
-        cur.execute('''SELECT user_id,subject,source FROM identity_link_confirmations
+        cur.execute('''SELECT user_id,subject,source,google_email FROM identity_link_confirmations
             WHERE token_hash=%s AND browser_hash=%s AND expires_at>now()
             AND consumed_at IS NULL FOR UPDATE''',(hashed(token),hashed(browser)))
         intent=cur.fetchone()
@@ -54,10 +54,10 @@ def confirm_google(token,browser):
         if credential and (str(credential['user_id'])!=str(intent['user_id']) or credential['revoked_at'] is not None):
             raise EnrollmentConflict('Google credential already claimed; manual review required')
         if not credential:
-            cur.execute('''INSERT INTO google_login_credentials(subject,user_id,verified_at,source)
-                VALUES (%s,%s,now(),%s)''',(intent['subject'],intent['user_id'],intent['source']))
+            cur.execute('''INSERT INTO google_login_credentials(subject,user_id,verified_at,source,google_email)
+                VALUES (%s,%s,now(),%s,%s)''',(intent['subject'],intent['user_id'],intent['source'],intent['google_email']))
         cur.execute('UPDATE identity_link_confirmations SET consumed_at=now() WHERE token_hash=%s',(hashed(token),))
-        # No user_profiles.email/google_id/phone/history/account_status update.
+        # No user_profiles.email/google_id/phone/history/account_status update (the address is kept on the credential, for display).
     return str(intent['user_id'])
 
 def telegram_profile(payload):

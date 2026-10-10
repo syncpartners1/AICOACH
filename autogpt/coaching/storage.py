@@ -1131,6 +1131,22 @@ def use_invite(token: str, user_id: str) -> bool:
 
 # ── Admin: user progress overview ─────────────────────────────────────────────
 
+def _google_emails_by_user() -> dict:
+    """user_id -> Google address of the user's active verified Google link (display only).
+
+    Never raises: before the migration is applied, or if the table is unreachable, the admin table just shows no
+    Google address."""
+    try:
+        from autogpt.coaching.db import execute_query
+        rows = execute_query(
+            "SELECT user_id::text AS user_id, google_email FROM google_login_credentials "
+            "WHERE revoked_at IS NULL AND google_email IS NOT NULL ORDER BY verified_at", fetch_all=True) or []
+        return {r["user_id"]: r["google_email"] for r in rows}
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not read linked Google addresses for the admin table")
+        return {}
+
+
 def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgressSummary]:
     """Return a lightweight progress snapshot for registered users.
 
@@ -1148,6 +1164,7 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
         .execute()
         .data or []
     )
+    google_emails = _google_emails_by_user()
     summaries = []
     for u in users:
         uid = u["user_id"]
@@ -1197,6 +1214,7 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
             name=u["name"],
             phone_number=u.get("phone_number") or "",
             email=u.get("email"),
+            google_email=google_emails.get(str(uid)),
             account_status=AccountStatus(u.get("account_status", "active")),
             objectives_count=len(obj_rows),
             avg_kr_pct=round(avg_pct, 1),
