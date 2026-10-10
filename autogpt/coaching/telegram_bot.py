@@ -45,6 +45,7 @@ from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
+    ChatMemberHandler,
     ContextTypes,
     ConversationHandler,
     MessageHandler,
@@ -1130,8 +1131,12 @@ async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode="HTML",
         )
         await msg.reply_text(t("en", "admin_reply_ok"))
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to deliver admin reply to tg user %s", original_user_tg_id)
+        from autogpt.coaching.telegram_reachability import record_unreachable, unreachable_reason
+        reason = unreachable_reason(exc)
+        if reason:
+            await record_unreachable(context.bot, original_user_tg_id, reason)
         await msg.reply_text(t("en", "admin_reply_fail"))
 
 
@@ -1341,17 +1346,30 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
     sent = 0
     emailed = 0
+    unreachable = 0
+    from autogpt.coaching.telegram_reachability import blocked_telegram_ids, record_unreachable, unreachable_reason
+    already_blocked = blocked_telegram_ids()
     for row in rows:
         try:
             html_text = markdown_to_html(text)
             body = f"📢 <b>Message from Adi Ben Nesher:</b>\n\n{html_text}"
-            await context.bot.send_message(
-                chat_id=row["telegram_user_id"],
-                text=body,
-                parse_mode="HTML",
-            )
-            sent += 1
-            # Email leg in parallel - every notification reaches every channel
+            if row["telegram_user_id"] in already_blocked:
+                unreachable += 1  # known unreachable: skip the failing send, the email below still goes
+            else:
+                try:
+                    await context.bot.send_message(
+                        chat_id=row["telegram_user_id"],
+                        text=body,
+                        parse_mode="HTML",
+                    )
+                    sent += 1
+                except Exception as exc:
+                    reason = unreachable_reason(exc)
+                    if reason is None:
+                        raise
+                    unreachable += 1
+                    await record_unreachable(context.bot, row["telegram_user_id"], reason)
+            # Email leg in parallel - every notification reaches every channel, also when Telegram is unreachable
             from types import SimpleNamespace
             from autogpt.coaching.i18n import t as _t
             from autogpt.coaching.notifications import notify_email_leg
@@ -1364,7 +1382,8 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         except Exception:
             pass
 
-    await update.message.reply_text(f"✅ Broadcast sent to {sent} user(s), {emailed} email(s).")
+    extra = f", {unreachable} not reachable on Telegram" if unreachable else ""
+    await update.message.reply_text(f"✅ Broadcast sent to {sent} user(s), {emailed} email(s){extra}.")
 
 
 # ── /help ──────────────────────────────────────────────────────────────────────
@@ -1871,6 +1890,8 @@ def _build_app(token: str) -> Application:
     app.add_handler(CommandHandler("goal", goal_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("google", google_command))
+    from autogpt.coaching.telegram_reachability import on_my_chat_member
+    app.add_handler(ChatMemberHandler(on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(CommandHandler("refresh", refresh_command))
 
     # Funnel: post-conversation callbacks (fire after ConversationHandler.END)
