@@ -365,6 +365,8 @@ S_EN = {
     "db_alert_green": "GREEN",
     "db_alert_yellow": "YELLOW",
     "db_alert_red": "RED",
+    "db_alert_no_summary": "NO SUMMARY",
+    "db_session_summary_failed": "The automatic summary could not be generated for this session.",
     "db_status_update_failed": "Could not update status. Please try again.",
     "db_note_save_failed": "Failed to save notes. Please try again.",
     "db_session_date_required": "Please select a session date.",
