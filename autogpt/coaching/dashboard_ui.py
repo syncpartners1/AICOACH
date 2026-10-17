@@ -327,14 +327,14 @@ def render_dashboard(
         status_action = (
             f'<button onclick="setStatus(\'suspend\')" '
             f'style="font-size:12px;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;'
-            f'padding:4px 12px;border-radius:8px;cursor:pointer;margin-{("right" if is_rtl else "left")}:10px">'
+            f'padding:4px 12px;border-radius:8px;cursor:pointer">'
             f'{t(lang, "db_btn_pause")}</button>'
         )
     elif status_val == "suspended":
         status_action = (
             f'<button onclick="setStatus(\'reactivate\')" '
             f'style="font-size:12px;background:#dcfce7;color:#166534;border:1px solid #86efac;'
-            f'padding:4px 12px;border-radius:8px;cursor:pointer;margin-{("right" if is_rtl else "left")}:10px">'
+            f'padding:4px 12px;border-radius:8px;cursor:pointer">'
             f'{t(lang, "db_btn_resume")}</button>'
         )
     else:
@@ -368,7 +368,7 @@ def render_dashboard(
         hdr_actions = ""
     else:
         hdr_actions = (
-            f'<div style="margin-left:auto;display:flex;gap:8px;align-items:center">'
+            f'<div class="hdr-actions">'
             f'<a href="/chat" style="color:#fff;font-size:12px;font-weight:600;text-decoration:none;'
             f'background:#16a34a;padding:6px 14px;border-radius:8px;">{t(lang, "db_btn_start_session")}</a>'
             f'<a href="/user/logout" style="color:rgba(255,255,255,.65);font-size:12px;'
@@ -389,9 +389,14 @@ def render_dashboard(
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
      {'Noto Sans Hebrew,' if is_rtl else ''}'Arial',sans-serif;
      background:#f0f4f8;color:#111827;direction:{'rtl' if is_rtl else 'ltr'}}}
-.hdr{{background:#1a2b4a;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:12px}}
+.hdr{{background:#1a2b4a;color:#fff;padding:14px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:12px}}
+.hdr-logo{{flex:0 0 auto;border-radius:8px}}
+.hdr-main{{flex:1 1 150px;min-width:0}}
 .hdr-title{{font-size:17px;font-weight:700}}
-.hdr-sub{{font-size:12px;opacity:.7;margin-top:1px}}
+.hdr-sub{{font-size:12px;margin-top:4px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}}
+.hdr-sub button,.hdr-actions a{{white-space:nowrap}}
+.hdr-actions{{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-inline-start:auto}}
+@media (max-width:520px){{.hdr{{padding:12px 16px}}.hdr-actions{{flex:1 1 100%;margin-inline-start:0}}}}
 .container{{max-width:900px;margin:0 auto;padding:24px 16px}}
 .section-title{{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
                color:#6b7280;margin:28px 0 12px;text-align:{text_align}}}
@@ -401,11 +406,11 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
 <body>
 {admin_banner}
 <div class="hdr">
-  <img src="/static/android-chrome-192x192.png" width="36" height="36"
-       style="border-radius:8px" alt="logo">
-  <div>
+  <img class="hdr-logo" src="/static/android-chrome-192x192.png" width="36" height="36"
+       alt="logo">
+  <div class="hdr-main">
     <div class="hdr-title">{t(lang, "db_title")}</div>
-    <div class="hdr-sub">{user.name} &nbsp;{status_badge}{status_action}</div>
+    <div class="hdr-sub"><span style="opacity:.7">{user.name}</span>{status_badge}{status_action}</div>
   </div>
   {hdr_actions}
 </div>
