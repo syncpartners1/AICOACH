@@ -365,6 +365,8 @@ S_HE = {
     "db_alert_green": "ירוק",
     "db_alert_yellow": "צהוב",
     "db_alert_red": "אדום",
+    "db_alert_no_summary": "ללא סיכום",
+    "db_session_summary_failed": "הסיכום האוטומטי לא הופק לפגישה זו.",
     "db_status_update_failed": "לא ניתן לעדכן את הסטטוס. נסה שוב.",
     "db_note_save_failed": "שמירת ההערות נכשלה. נסה שוב.",
     "db_session_date_required": "יש לבחור תאריך פגישה.",

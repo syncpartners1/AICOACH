@@ -11,6 +11,7 @@ from autogpt.coaching.config import coaching_config
 from autogpt.coaching.models import (
     Alert,
     AlertLevel,
+    EXTRACTION_FAILED_SUMMARY,
     KeyResult,
     Obstacle,
     Objective,
@@ -168,8 +169,8 @@ class CoachingSession:
         try:
             weekly_log, summary_text = self._parse_summary_json(raw)
         except (ValueError, TypeError):
-            weekly_log, summary_text = WeeklyLog(), "Could not extract structured summary from this session."
-        if summary_text == "Could not extract structured summary from this session.":
+            weekly_log, summary_text = WeeklyLog(), EXTRACTION_FAILED_SUMMARY
+        if summary_text == EXTRACTION_FAILED_SUMMARY:
             first_raw = raw
             try:
                 raw = chat_completion(
@@ -187,8 +188,8 @@ class CoachingSession:
             try:
                 weekly_log, summary_text = self._parse_summary_json(raw)
             except (ValueError, TypeError):
-                weekly_log, summary_text = WeeklyLog(), "Could not extract structured summary from this session."
-            if summary_text == "Could not extract structured summary from this session.":
+                weekly_log, summary_text = WeeklyLog(), EXTRACTION_FAILED_SUMMARY
+            if summary_text == EXTRACTION_FAILED_SUMMARY:
                 extraction_raw = json.dumps({"first": first_raw, "retry": raw}, ensure_ascii=False)
                 raw = ""  # never apply proposed OKR/plan changes from malformed output
         okr_changes = self._parse_okr_changes(raw)
@@ -222,7 +223,7 @@ class CoachingSession:
         try:
             data = json.loads(json_text)
         except json.JSONDecodeError:
-            return WeeklyLog(), "Could not extract structured summary from this session."
+            return WeeklyLog(), EXTRACTION_FAILED_SUMMARY
 
         key_results = [
             KeyResult(

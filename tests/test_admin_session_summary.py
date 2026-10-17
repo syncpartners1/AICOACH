@@ -38,7 +38,46 @@ def test_admin_summary_is_text_not_markup():
     assert '<script>alert("bad")</script>' not in page
 
 
-def test_short_summary_and_failure_marker_are_preserved():
+def test_short_summary_is_preserved():
     assert "סיכום קצר" in _render("סיכום קצר")
+
+
+def test_failure_marker_is_translated_in_admin_view():
     marker = "Could not extract structured summary from this session."
-    assert marker in _render(marker)
+    page = _render(marker)
+    assert marker not in page
+    assert "הסיכום האוטומטי לא הופק לפגישה זו." in page
+
+
+def test_failure_marker_keeps_red_signal_for_admin():
+    marker = "Could not extract structured summary from this session."
+    page = _render(marker)
+    assert "#dc2626" in page
+    assert "אדום" in page
+
+
+def test_failure_marker_gets_neutral_grey_card_for_trainee():
+    marker = "Could not extract structured summary from this session."
+    page = _render(marker, admin=False, language="he")
+    assert marker not in page
+    assert "הסיכום האוטומטי לא הופק לפגישה זו." in page
+    assert "border-right:3px solid #6b7280" in page
+    assert "ללא סיכום" in page
+    assert "#dc2626" not in page
+    assert "אדום" not in page
+
+
+def test_failure_marker_translation_english_trainee():
+    marker = "Could not extract structured summary from this session."
+    page = _render(marker, admin=False, language="en")
+    assert marker not in page
+    assert "The automatic summary could not be generated for this session." in page
+    assert "NO SUMMARY" in page
+    assert "border-left:3px solid #6b7280" in page
+
+
+def test_red_alert_with_real_summary_stays_red_for_trainee():
+    page = _render("סיכום רגיל של פגישה", admin=False, language="he")
+    assert "#dc2626" in page
+    assert "אדום" in page
+    assert "סיכום רגיל של פגישה" in page

@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from autogpt.coaching.i18n import t
 from autogpt.coaching.models import (
+    EXTRACTION_FAILED_SUMMARY,
     KRActivity,
     Objective,
     PastSession,
@@ -187,8 +188,16 @@ def render_dashboard(
             '<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;'
             'border-radius:6px;margin-left:6px">1:1</span>'
         ) if s.is_manual else ""
+        # A failed extraction stores an English marker: display a translated
+        # explanation instead. Trainees also get a neutral grey card; admins keep
+        # the red signal so a failed extraction stays visible to the coach.
+        extraction_failed = s.summary_for_coach == EXTRACTION_FAILED_SUMMARY
+        if extraction_failed and not is_admin_view:
+            dot_color = "#6b7280"
+            alert_label = t(lang, "db_alert_no_summary")
         # Admins need the complete stored summary, not the trainee preview.
-        excerpt = (html.escape(s.summary_for_coach) if is_admin_view else
+        excerpt = (html.escape(t(lang, "db_session_summary_failed")) if extraction_failed else
+                   html.escape(s.summary_for_coach) if is_admin_view else
                    (s.summary_for_coach[:160] + "…") if len(s.summary_for_coach) > 160
                    else s.summary_for_coach)
         summary_style = "white-space:pre-wrap;overflow-wrap:anywhere;" if is_admin_view else ""
