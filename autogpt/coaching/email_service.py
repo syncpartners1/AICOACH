@@ -131,6 +131,14 @@ def _html_to_text(rendered_html: str) -> str:
     return _WS_RE.sub(" ", text).strip()
 
 
+def _mask_email(addr: str) -> str:
+    """Mask an email address for logs: first local-part char + domain only."""
+    local, sep, domain = (addr or "").partition("@")
+    if not sep:
+        return "***"
+    return f"{local[:1]}***@{domain}" if local else f"***@{domain}"
+
+
 def _send_message(*, to_email: str, subject: str, html_body: str, plain_body: str,
                   cc: list[str] | None = None,
                   attachments: list[tuple[str, bytes, str]] | None = None) -> bool:
@@ -168,10 +176,10 @@ def _send_message(*, to_email: str, subject: str, html_body: str, plain_body: st
             smtp.ehlo()
             smtp.login(SMTP_USER, SMTP_PASS)
             smtp.send_message(msg)
-        logger.info("Email sent to %s — %s", to_email, subject)
+        logger.info("Email sent to %s", _mask_email(to_email))
         return True
     except Exception as exc:  # noqa: BLE001
-        logger.error("SMTP send to %s failed: %s", to_email, exc)
+        logger.error("SMTP send to %s failed: %s", _mask_email(to_email), exc)
         return False
 
 

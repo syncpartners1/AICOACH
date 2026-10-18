@@ -187,3 +187,12 @@ def test_endpoint_502_when_send_fails(monkeypatch):
     monkeypatch.setattr(email_service, "send_card_email", MagicMock(return_value=False))
     r = TestClient(app).post("/cards/send-email", json=_payload())
     assert r.status_code == 502
+
+
+def test_mask_email_hides_local_part():
+    from autogpt.coaching.email_service import _mask_email
+    assert _mask_email("izzy@example.com") == "i***@example.com"
+    assert _mask_email("a@b.co") == "a***@b.co"
+    assert _mask_email("") == "***"
+    assert _mask_email("not-an-email") == "***"
+    assert _mask_email("@domain.com") == "***@domain.com"
