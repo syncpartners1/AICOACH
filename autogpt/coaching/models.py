@@ -8,6 +8,11 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+# Stored verbatim as summary_for_coach when structured summary extraction fails.
+# Existing DB rows keep this exact value; display layers translate it, never rewrite it.
+EXTRACTION_FAILED_SUMMARY = "Could not extract structured summary from this session."
+
+
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
 class AlertLevel(str, Enum):
