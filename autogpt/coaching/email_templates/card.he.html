@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light" />
+<meta name="supported-color-schemes" content="light" />
+<title>קלף {{card_number}} מ-Change Navigator</title>
+</head>
+<body bgcolor="#f0f4f8" style="margin:0;padding:0;background-color:#f0f4f8;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f0f4f8" style="background-color:#f0f4f8;">
+<tr><td align="center" bgcolor="#f0f4f8" style="background-color:#f0f4f8;padding:24px 12px;">
+<table role="presentation" width="580" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:580px;background-color:#ffffff;">
+<tr><td bgcolor="#1a2b4a" align="center" dir="rtl" style="background-color:#1a2b4a;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:center;padding:32px 32px 28px;"><div style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;color:#ffffff;font-size:15px;font-weight:bold;line-height:20px;">🧭 Change Navigator</div>
+<h1 style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;color:#ffffff;font-size:26px;font-weight:bold;line-height:32px;margin:16px 0 0;">קלף מספר {{card_number}}</h1>
+<p style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;color:#dbe4f3;font-size:13px;font-style:italic;line-height:19px;margin:12px 0 0;">מתוך אפליקציית קלפי ההשראה של Change Navigator</p></td></tr>
+<tr><td bgcolor="#ffffff" dir="rtl" align="right" style="background-color:#ffffff;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;padding:32px;">
+{{#if card_image_url}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;"><tr><td align="center" style="padding:0;"><img src="{{card_image_url}}" alt="קלף {{card_number}}" width="280" style="display:block;width:100%;max-width:280px;height:auto;border-radius:12px;" /></td></tr></table>
+{{/if}}
+{{#if card_category}}
+<p style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;color:#1a2b4a;font-size:14px;font-weight:bold;line-height:21px;margin:0 0 12px;">נושא: {{card_category}}</p>
+{{/if}}
+{{#if card_quote}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px;"><tr><td bgcolor="#e8f0fe" dir="rtl" align="right" style="background-color:#e8f0fe;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;padding:14px 18px;border-right:4px solid #1a2b4a;"><p style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;color:#1f2937;font-size:14px;line-height:22px;font-style:italic;margin:0;">"{{card_quote}}"</p></td></tr></table>
+{{/if}}
+{{#if card_explanation}}
+<p style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;color:#1f2937;font-size:15px;line-height:24px;margin:0 0 16px;">{{card_explanation}}</p>
+{{/if}}
+{{#if user_note}}
+<p style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;color:#1a2b4a;font-size:14px;font-weight:bold;line-height:21px;margin:0 0 8px;">ההשראה שלי מהקלף:</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;"><tr><td bgcolor="#f3f4f6" dir="rtl" align="right" style="background-color:#f3f4f6;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;padding:14px 18px;border-radius:8px;"><p style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;color:#1f2937;font-size:14px;line-height:22px;margin:0;">{{user_note}}</p></td></tr></table>
+{{/if}}
+<p style="font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;text-align:right;color:#4b5563;font-size:14px;line-height:22px;margin:28px 0 0;border-top:1px solid #e5e7eb;padding-top:20px;">בברכה,<br/><strong>עדי בן נשר</strong><br/>מאמן לניווט שינויים<br/>אישי | כלכלי | עסקי</p></td></tr>
+<tr><td bgcolor="#f3f4f6" align="center" style="background-color:#f3f4f6;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;padding:20px 32px;text-align:center;color:#4b5563;font-size:12px;line-height:18px;border-top:1px solid #e5e7eb;">המייל נשלח אל {{to_email}} דרך אפליקציית הקלפים של Change Navigator.<br/>אם לא ציפית למייל הזה, אפשר פשוט להתעלם ממנו.<br/>&copy; 2026 עדי בן נשר. כל הזכויות שמורות.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>

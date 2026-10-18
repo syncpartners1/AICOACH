@@ -270,6 +270,50 @@ def send_notification_email(
     )
 
 
+_CARD_TEMPLATES = {"en": "card.html", "he": "card.he.html"}
+_CARD_SUBJECTS = {
+    "en": "Card {card_number} from Change Navigator",
+    "he": "קלף {card_number} מ-Change Navigator",
+}
+
+
+def send_card_email(
+    *,
+    to_email: str,
+    card_number: int,
+    card_image_url: str = "",
+    user_note: str = "",
+    language: str = "he",
+    card_category: str = "",
+    card_quote: str = "",
+    card_explanation: str = "",
+) -> bool:
+    """Send one inspiration card from the cards web app to any recipient.
+
+    Public endpoint behind it, so everything user-supplied stays escaped
+    template values and the image URL is validated by the caller.
+    """
+    validate_recipient_address(to_email)
+    lang = language if language in _CARD_TEMPLATES else "en"
+    params = {
+        "to_email": to_email,
+        "card_number": str(card_number),
+        "card_image_url": card_image_url,
+        "user_note": user_note,
+        "card_category": card_category,
+        "card_quote": card_quote,
+        "card_explanation": card_explanation,
+    }
+    html_body = render_template(_CARD_TEMPLATES[lang], params)
+    plain_body = _html_to_text_lines(html_body) + _SIGNATURE_PLAIN
+    return _send_message(
+        to_email=to_email,
+        subject=_CARD_SUBJECTS[lang].format(card_number=card_number),
+        html_body=html_body,
+        plain_body=plain_body,
+    )
+
+
 def send_welcome_email(
     *,
     to_email: str,
