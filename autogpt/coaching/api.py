@@ -238,6 +238,65 @@ def google_site_verification() -> Response:
     return Response(content="google-site-verification: google33b061ce0c60767e.html",
                     media_type="text/html")
 
+
+# ── Cards app: send-a-card email (public, rate-limited) ──────────────────────
+_CARD_IMAGE_PREFIX = "https://storage.googleapis.com/change-navigator-abn-cards-public/cards-"
+
+
+def _valid_card_image_url(url: str) -> bool:
+    """Only real card images inside the public cards bucket are allowed."""
+    if not url:
+        return True
+    if not url.startswith(_CARD_IMAGE_PREFIX) or not url.endswith(".png"):
+        return False
+    rest = url[len(_CARD_IMAGE_PREFIX):-len(".png")]
+    lang, sep, stem = rest.partition("/")
+    if not sep or lang not in ("he", "en") or len(stem) < 2:
+        return False
+    side, digits = stem[-1], stem[:-1]
+    return side in ("F", "B") and digits.isdigit() and 1 <= int(digits) <= 54
+
+
+class _CardEmailRequest(BaseModel):
+    to_email: str = Field(..., max_length=254)
+    card_number: int = Field(..., ge=1, le=54)
+    card_image_url: str = Field("", max_length=500)
+    user_note: str = Field("", max_length=1000)
+    language: str = Field("he", max_length=8)
+    card_category: str = Field("", max_length=300)
+    card_quote: str = Field("", max_length=300)
+    card_explanation: str = Field("", max_length=600)
+
+
+@app.post("/cards/send-email", include_in_schema=False)
+@limiter.limit("30/hour")
+@limiter.limit("5/minute")
+def cards_send_email(request: Request, payload: _CardEmailRequest):
+    """Relay one inspiration card from the static cards app through the house
+    SMTP service. Public by design (the cards app has no login); the abuse
+    surface is capped by the rate limits, the field length limits, the
+    recipient-domain guard inside email_service, and the image-URL allowlist."""
+    if not _valid_card_image_url(payload.card_image_url):
+        raise HTTPException(status_code=400, detail="Invalid card image URL.")
+    from autogpt.coaching import email_service
+    try:
+        sent = email_service.send_card_email(
+            to_email=payload.to_email,
+            card_number=payload.card_number,
+            card_image_url=payload.card_image_url,
+            user_note=payload.user_note,
+            language=payload.language,
+            card_category=payload.card_category,
+            card_quote=payload.card_quote,
+            card_explanation=payload.card_explanation,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not sent:
+        raise HTTPException(status_code=502, detail="Email sending failed.")
+    return {"ok": True}
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
