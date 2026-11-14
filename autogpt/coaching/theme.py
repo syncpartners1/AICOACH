@@ -72,18 +72,30 @@ def _inject(page: str, style: str, header: str) -> str:
     return page.replace(style, style + header, 1)
 
 
-def apply_theme(page: str, *, screen_only: bool = False, admin: bool = False) -> str:
+def apply_theme(page: str, *, screen_only: bool = False, admin: bool = False,
+                logo_url: str = LOGO_URL) -> str:
     """Return page with the shared theme and header added. Safe to call twice.
 
     screen_only keeps print and PDF output as it was: the theme sits inside
     @media screen and the header is hidden when printing.
     admin=True uses the admin bar (main menu, language, ADMIN badge, sign out) as the header.
+    logo_url overrides the header image for one page only; every other caller
+    keeps the default LOGO_URL and the byte-identical shared header. A custom
+    logo is rendered without the brand-text span and without the square-icon
+    sizing, so a wide wordmark keeps its aspect ratio and sharp corners.
     """
     if 'id="cn-theme"' in page:
         return page
     css = theme_css(screen_only) + (_ADMIN_CSS if admin else "")
     style = f'<style id="cn-theme">{css}</style>'
-    return _inject(page, style, _ADMIN_BAR if admin else _HEADER)
+    if admin:
+        header = _ADMIN_BAR
+    elif logo_url == LOGO_URL:
+        header = _HEADER
+    else:
+        header = (f'<div class="cn-hdr"><img src="{logo_url}" alt="" '
+                  f'style="height:28px;width:auto;border-radius:0"></div>')
+    return _inject(page, style, header)
 
 
 def apply_admin_bar(page: str) -> str:

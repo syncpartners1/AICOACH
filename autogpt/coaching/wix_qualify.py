@@ -98,7 +98,7 @@ def create_clickup_task(p: CoachingQualPayload, verdict: str) -> Optional[str]:
             f"Source:  {p.q10_source}\n\n"
             f"── Qualifying Answers ──────────────────\n"
             f"Priority right now?         {yes_no(p.q3_priority)}\n"
-            f"Ready to commit 3-6 months? {yes_no(p.q4_commit_time)}\n"
+            f"Ready to commit 3 months?   {yes_no(p.q4_commit_time)}\n"
             f"Can complete weekly tasks?  {yes_no(p.q5_commit_tasks)}\n"
             f"Wants coaching (not advice)?{yes_no(p.q6_coaching)}\n"
             f"Building capability (not quick fix)? {yes_no(p.q7_capability)}\n\n"
