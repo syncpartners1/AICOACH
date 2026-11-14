@@ -3572,22 +3572,24 @@ def coaching_qualify_form() -> HTMLResponse:
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>שאלון מוכנות — Co-Navigator</title>
+<title>שאלון מקדים לפגישת איבחון ללא עלות וללא התחייבות</title>
+<link rel="icon" type="image/png" href="/static/cn-icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@200..800&display=swap">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-  background:#f8fafc;color:#1e293b;padding:24px 16px;font-size:15px;direction:rtl}
-h2{color:#1a2b4a;font-size:20px;margin-bottom:6px}
+html body{font-family:'Assistant',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#ffffff;color:#1e293b;padding:24px 16px;font-size:1.15rem;line-height:1.75;direction:rtl}
+html body h2{color:#032b7d;font-size:20px;margin-bottom:6px}
 .sub{color:#64748b;font-size:13px;margin-bottom:24px}
 .section{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;
   box-shadow:0 1px 3px rgba(0,0,0,.07)}
-.section h3{font-size:14px;font-weight:700;color:#475569;margin-bottom:14px;
+.section h3{font-size:14px;font-weight:700;color:#032b7d;margin-bottom:14px;
   text-transform:uppercase;letter-spacing:.5px}
 label{display:block;font-size:14px;font-weight:600;color:#334155;margin-bottom:6px}
 input[type=text],input[type=email],input[type=tel],textarea{width:100%;padding:10px 12px;
   border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;
   font-family:inherit;transition:border-color .2s}
-input:focus,textarea:focus{border-color:#1a2b4a}
+input:focus,textarea:focus{border-color:#1c96f2}
 textarea{resize:vertical;min-height:70px}
 .field{margin-bottom:16px}
 .yn-wrap{display:flex;flex-direction:column;margin-bottom:12px}
@@ -3596,11 +3598,11 @@ textarea{resize:vertical;min-height:70px}
 .yn-btn{flex:1;padding:9px 4px;border:1.5px solid #cbd5e1;border-radius:8px;
   font-size:14px;font-weight:600;cursor:pointer;background:#fff;color:#475569;
   transition:all .15s;text-align:center}
-.yn-btn.active-yes{background:#dcfce7;border-color:#16a34a;color:#15803d}
-.yn-btn.active-no{background:#fee2e2;border-color:#dc2626;color:#b91c1c}
-.btn-submit{width:100%;padding:13px;background:#1a2b4a;color:#fff;border:none;
+.yn-btn.active-yes{background:#032b7d;border-color:#032b7d;color:#fff}
+.yn-btn.active-no{background:#e2e8f0;border-color:#94a3b8;color:#334155}
+.btn-submit{width:100%;padding:13px;background:#032b7d;color:#fff;border:none;
   border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
-.btn-submit:hover{background:#243d6b}
+.btn-submit:hover{background:#0a4f8f}
 .btn-submit:disabled{background:#94a3b8;cursor:not-allowed}
 .thanks{display:none;text-align:center;padding:40px 20px;background:#fff;
   border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
@@ -3608,11 +3610,14 @@ textarea{resize:vertical;min-height:70px}
 .thanks p{color:#475569;font-size:14px;line-height:1.6}
 .err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;
   padding:10px 14px;border-radius:8px;margin-top:12px;display:none}
+.intro{background:#eef6fe;border-inline-start:3px solid #032b7d;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:14px;line-height:1.6;color:#032b7d}
 .hint{font-size:12px;color:#64748b;margin-top:4px}
+body .cn-hdr{background:#032b7d}
 </style></head>
 <body>
-<h2>שאלון מוכנות — Co-Navigator</h2>
-<p class="sub">4 דקות. 7 שאלות. כדי שנוכל להכיר אותך לפני שיחת הגילוי.</p>
+<h2>שאלון מקדים לפגישת איבחון ללא עלות וללא התחייבות</h2>
+<p class="sub">4 דקות. 7 שאלות. כדי שנוכל להכיר אותך לפני פגישת האיבחון.</p>
+<div class="intro">אימון הוא תהליך ממוקד בעשייה בהווה ליצירת העתיד הרצוי: מגדירים מה רוצים לשנות, מזהים חסמים ומתקדמים בצעדים מעשיים. הוא אינו ייעוץ חד־פעמי ואינו טיפול פסיכולוגי.</div>
 <div id="form-wrap">
   <div class="section">
     <h3>הקשר</h3>
@@ -3635,7 +3640,7 @@ textarea{resize:vertical;min-height:70px}
       </div>
     </div>
     <div class="yn-wrap">
-      <span class="yn-label">אתה/את מוכן/ה להתחייב לתהליך מובנה של 3-6 חודשים?</span>
+      <span class="yn-label">אתה/את מוכן/ה להתחייב לתהליך מובנה של 3 חודשים?</span>
       <div class="yn-opts">
         <div class="yn-btn" onclick="setYN('q4',this,'yes')">✓ כן</div>
         <div class="yn-btn" onclick="setYN('q4',this,'no')">✗ לא</div>
@@ -3649,14 +3654,14 @@ textarea{resize:vertical;min-height:70px}
       </div>
     </div>
     <div class="yn-wrap">
-      <span class="yn-label">אתה/את מחפש/ת אימון אמיתי — לא רק ייעוץ וטיפים?</span>
+      <span class="yn-label">אתה/את מחפש/ת לבצע שינוי אמיתי, ולא ייעוץ חד-פעמי או טיפול פסיכולוגי?</span>
       <div class="yn-opts">
         <div class="yn-btn" onclick="setYN('q6',this,'yes')">✓ כן</div>
         <div class="yn-btn" onclick="setYN('q6',this,'no')">✗ לא</div>
       </div>
     </div>
     <div class="yn-wrap">
-      <span class="yn-label">המטרה שלך היא לבנות יכולת חדשה — לא רק פתרון מהיר?</span>
+      <span class="yn-label">המטרה שלך היא לבנות יכולת חדשה, לא רק פתרון מהיר?</span>
       <div class="yn-opts">
         <div class="yn-btn" onclick="setYN('q7',this,'yes')">✓ כן</div>
         <div class="yn-btn" onclick="setYN('q7',this,'no')">✗ לא</div>
@@ -3731,7 +3736,7 @@ function submitForm(){
 }
 </script>
 </body></html>"""
-    return HTMLResponse(content=apply_theme(html))
+    return HTMLResponse(content=apply_theme(html, logo_url="/static/cn-wordmark-white.svg"))
 
 
 @app.get("/qualify-form-en", response_class=HTMLResponse, include_in_schema=False)
