@@ -14,7 +14,7 @@ from typing import Optional
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -231,8 +231,14 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
     catch(x){e.textContent='הסימון לא נשמר. נסו שוב.';e.hidden=false;b.disabled=false;}}</script></main></body></html>''')
 
 
-@router.get('/admin/booking-notifications', dependencies=[Depends(_admin)], response_class=HTMLResponse, include_in_schema=False)
-def admin_bookings(page: int=Query(default=1,ge=1,le=10000)):
+@router.get('/admin/booking-notifications', response_class=HTMLResponse, include_in_schema=False)
+def admin_bookings(request: Request, page: int=Query(default=1,ge=1,le=10000)):
+    # Browser entry from the admin notification email: an unauthenticated admin
+    # gets the login page (same pattern as /admin/messages), not a bare JSON 403.
+    # Import inside the function to avoid importing api while its router is mounted.
+    from autogpt.coaching.api import _is_admin_authenticated, _login_page
+    if not _is_admin_authenticated(request):
+        return HTMLResponse(content=_login_page(), status_code=401)
     try:
         rows,count,more=list_bookings(page)
         return HTMLResponse(render_bookings(rows,count,page,more),headers={'Cache-Control':'no-store, private'})
