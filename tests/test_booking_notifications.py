@@ -122,7 +122,11 @@ def test_admin_and_bridge_auth_and_origin():
         with patch.object(b,'store_booking',return_value=True),patch.object(b,'claim_email',return_value=False):
             assert client.post('/internal/booking-notifications',headers={'X-Bridge-Secret':'test-secret'},json=booking().model_dump(mode='json')).status_code==200
     with patch.object(api,'_is_admin_authenticated',return_value=False):
-        assert client.get('/admin/booking-notifications').status_code==403
+        with patch.object(b,'list_bookings') as lb:
+            r=client.get('/admin/booking-notifications')
+        assert r.status_code==401 and 'action="/admin/login"' in r.text
+        lb.assert_not_called()
+        assert client.post('/admin/booking-notifications/evt_1/read').status_code==403
     with patch.object(api,'_is_admin_authenticated',return_value=True),patch.object(b,'list_bookings',return_value=([],0,False)):
         assert client.get('/admin/booking-notifications').status_code==200
         assert client.get('/admin/booking-notifications?page=0').status_code==422
