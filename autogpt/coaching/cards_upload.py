@@ -5,8 +5,9 @@ Flow (every endpoint requires the admin session; writes also pass the origin gua
                                           PRIVATE staging bucket (never the live bucket)
   2. the browser PUTs the PNG straight to the staging bucket
   3. POST /admin/cards-images/validate -> server reads the staged object back, decodes
-                                          it, verifies a real PNG at the exact deck
-                                          dimensions, and pins the staging generation
+                                          it, verifies a real PNG at accepted deck
+                                          dimensions, derives a Hebrew print master to
+                                          the stored trim, and pins the staging generation
   4. POST /admin/cards-images/promote  -> server re-checks the pinned generation, copies
                                           staging -> live with source AND destination
                                           preconditions, sets fresh-cache metadata, and
@@ -52,7 +53,12 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/admin/cards-images", tags=["admin cards images"])
 
-_DECKS = {"he": (615, 1028), "en": (750, 1125)}
+_DECKS = {"he": (615, 1028), "en": (750, 1125)}  # STORED dimensions per deck
+# Hebrew print masters (750x1125, with bleed) are accepted as upload input and
+# derived to the stored 615x1028 by _derive_he_master at validate time.
+_HE_MASTER_DIMS = (750, 1125)
+_HE_TRIM_BOX = (67, 48, 682, 1076)  # approved trim rect (TGC Mint Tin 52x87mm guide)
+_ACCEPTED_DIMS = {"he": {(615, 1028), _HE_MASTER_DIMS}, "en": {_DECKS["en"]}}
 _STEM_RE = re.compile(r"^(?:[1-9]|[1-4][0-9]|5[0-4])[FB]$")
 _INTENT_TTL_SECONDS = 600  # matches the signed-URL expiry
 _MIN_BYTES = 1024          # real card backs are ~48-83KB
@@ -190,8 +196,8 @@ def _valid_target(lang: str, stem: str) -> None:
         raise HTTPException(400, "Unknown card target.")
 
 
-def _check_png(data: bytes, lang: str) -> None:
-    """Decode-check: real PNG at exactly the deck's approved dimensions.
+def _check_png(data: bytes, lang: str) -> Tuple[int, int]:
+    """Decode-check: real PNG at the deck's accepted dimensions. Returns (w, h).
 
     Size is bounded before decode; dimensions are read from the header before
     the pixel data is decoded, so a hostile file cannot force an oversized
@@ -206,19 +212,50 @@ def _check_png(data: bytes, lang: str) -> None:
         raise ValueError("not a PNG (bad magic bytes)")
     if not data.endswith(_PNG_IEND):
         raise ValueError("incomplete PNG (missing IEND trailer)")
-    want_w, want_h = _DECKS[lang]
+    accepted = _ACCEPTED_DIMS[lang]
     from PIL import Image
     try:
         with Image.open(io.BytesIO(data)) as im:
             if im.format != "PNG":
                 raise ValueError(f"not a PNG (format={im.format!r})")
-            if im.size != (want_w, want_h):
-                raise ValueError(f"dimensions {im.size[0]}x{im.size[1]}, expected {want_w}x{want_h}")
+            size = im.size
+            if size not in accepted:
+                if lang == "he":
+                    raise ValueError(
+                        f"dimensions {size[0]}x{size[1]}, expected 615x1028 trimmed "
+                        "or 750x1125 print master"
+                    )
+                raise ValueError(f"dimensions {size[0]}x{size[1]}, expected 750x1125")
             im.load()
     except ValueError:
         raise
     except Exception as exc:
         raise ValueError(f"image cannot be decoded: {exc}")
+    return size
+
+
+def _derive_he_master(data: bytes) -> bytes:
+    """Literal approved transform: RGB crop (67,48,682,1076) -> 615x1028 PNG (optimize).
+
+    The same transform that produced the approved 108-file Hebrew digital set
+    (specimen 54B verified byte-identical against its sha256 manifest entry).
+    """
+    from PIL import Image
+    with Image.open(io.BytesIO(data)) as im:
+        derived = im.convert("RGB").crop(_HE_TRIM_BOX)
+        buf = io.BytesIO()
+        derived.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
+def _rewrite_staging(key: str, data: bytes, generation: int) -> int:
+    """Overwrite the staging object with derived bytes, pinned to the validated
+    generation; returns the new generation. Raises PreconditionFailed (412) if the
+    staged object changed after validation (e.g. signed-URL replay)."""
+    _, stg = _buckets()
+    blob = _client().bucket(stg).blob(key)
+    blob.upload_from_string(data, content_type="image/png", if_generation_match=generation)
+    return blob.generation
 
 
 # ── upload tickets (stateless, HMAC-signed; multi-instance safe) ─────────────
@@ -273,10 +310,22 @@ def _validate_intent(intent_token: str) -> Tuple[str, int]:
         raise HTTPException(400, f"Staged file size {size} outside {_MIN_BYTES}-{_MAX_BYTES} bytes.")
     data = _staging_bytes(payload["key"], generation)
     try:
-        _check_png(data, payload["lang"])
+        dims = _check_png(data, payload["lang"])
     except ValueError as exc:
         _delete_staging(payload["key"])
         raise HTTPException(400, f"Image rejected: {exc}")
+    if payload["lang"] == "he" and dims == _HE_MASTER_DIMS:
+        from google.api_core.exceptions import PreconditionFailed
+        try:
+            generation = _rewrite_staging(
+                payload["key"], _derive_he_master(data), generation
+            )
+        except PreconditionFailed:
+            # The staged object changed after validation (e.g. signed-URL
+            # replay): fail closed. Do NOT delete the newer object, no ticket.
+            raise HTTPException(
+                409, "Staged file changed during processing - validate again."
+            )
     ticket = _mint_token("promote", key=payload["key"], lang=payload["lang"],
                          stem=payload["stem"], generation=generation)
     return ticket, generation
@@ -386,7 +435,7 @@ _PAGE = """<!DOCTYPE html>
   </div>
   <label>תמונה נוכחית</label>
   <img id="preview" alt="" onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'">
-  <label>קובץ PNG חדש (במידות המדויקות של החפיסה)</label>
+  <label>קובץ PNG חדש (עברית: 750x1125 מקור להדפסה, ייחתך אוטומטית, או 615x1028 חתוך. אנגלית: 750x1125)</label>
   <input type="file" id="file" accept="image/png">
   <button id="go" disabled>העלאה והחלפה</button>
   <div id="status"></div>

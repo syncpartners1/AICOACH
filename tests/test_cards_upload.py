@@ -26,6 +26,16 @@ def _he_png():
     return HE_PNG
 
 
+HE_MASTER_PNG = None
+
+
+def _he_master_png():
+    global HE_MASTER_PNG
+    if HE_MASTER_PNG is None:
+        HE_MASTER_PNG = _png(750, 1125)
+    return HE_MASTER_PNG
+
+
 # ── target allowlist ─────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("lang,stem", [("he", "1F"), ("he", "54B"), ("en", "27F"), ("en", "9B")])
@@ -46,13 +56,35 @@ def test_invalid_targets_rejected(lang, stem):
 # ── decode check ─────────────────────────────────────────────────────────────
 
 def test_check_png_accepts_exact_deck_dimensions():
-    cu._check_png(_he_png(), "he")
-    cu._check_png(_png(750, 1125), "en")
+    assert cu._check_png(_he_png(), "he") == (615, 1028)         # stored trimmed size
+    assert cu._check_png(_he_master_png(), "he") == (750, 1125)  # print master input
+    assert cu._check_png(_png(750, 1125), "en") == (750, 1125)
 
 
 def test_check_png_rejects_swapped_deck_dimensions():
+    # The Hebrew trimmed size is not a valid ENGLISH upload (EN stores 750x1125).
     with pytest.raises(ValueError, match="dimensions"):
-        cu._check_png(_png(750, 1125), "he")
+        cu._check_png(_png(615, 1028), "en")
+
+
+def test_check_png_rejects_unknown_hebrew_dimensions():
+    # Neither the stored trimmed size nor the print master: reject.
+    with pytest.raises(ValueError, match="dimensions"):
+        cu._check_png(_png(800, 1200), "he")
+
+
+def test_derive_he_master_matches_literal_transform():
+    """In-module derivation equals the approved literal transform byte-for-byte."""
+    import hashlib
+    master = _he_master_png()
+    literal = Image.open(io.BytesIO(master)).convert("RGB").crop((67, 48, 682, 1076))
+    buf = io.BytesIO()
+    literal.save(buf, "PNG", optimize=True)
+    derived = cu._derive_he_master(master)
+    assert hashlib.sha256(derived).hexdigest() == hashlib.sha256(buf.getvalue()).hexdigest()
+    with Image.open(io.BytesIO(derived)) as im:
+        assert im.size == (615, 1028)
+        assert im.mode == "RGB"
 
 
 def test_check_png_rejects_non_png():
@@ -88,6 +120,7 @@ class FakeStore:
         self.generation = 100
         self.live_generation = 7
         self.promote_calls = []
+        self.rewrite_calls = []
         self.deleted = []
 
     def install(self, monkeypatch):
@@ -96,6 +129,7 @@ class FakeStore:
         monkeypatch.setattr(cu, "_staging_bytes", self.read)
         monkeypatch.setattr(cu, "_live_generation", lambda dest: self.live_generation)
         monkeypatch.setattr(cu, "_promote_copy", self.copy)
+        monkeypatch.setattr(cu, "_rewrite_staging", self.rewrite)
         monkeypatch.setattr(cu, "_delete_staging", self.delete)
 
     def head(self, key):
@@ -106,6 +140,15 @@ class FakeStore:
     def read(self, key, generation):
         assert generation == self.generation
         return self.staged
+
+    def rewrite(self, key, data, generation):
+        from google.api_core.exceptions import PreconditionFailed
+        if generation != self.generation:
+            raise PreconditionFailed("412 stale generation")
+        self.rewrite_calls.append(dict(key=key, size=len(data)))
+        self.staged = data
+        self.generation += 1
+        return self.generation
 
     def copy(self, key, generation, dest, expected_live_generation):
         self.promote_calls.append(
@@ -135,6 +178,71 @@ def test_happy_path_promotes_validated_bytes_once(monkeypatch):
     with pytest.raises(HTTPException) as e:      # replayed ticket: staging gone -> 409
         cu._promote_intent(ticket)
     assert e.value.status_code == 409
+
+
+def test_validate_derives_hebrew_master_and_rewrites_staging(monkeypatch):
+    store = FakeStore(_he_master_png())
+    store.install(monkeypatch)
+    intent_token, _ = cu._create_intent("he", "1F")
+    ticket, gen = cu._validate_intent(intent_token)
+    assert store.rewrite_calls  # master derived, staging rewritten
+    assert gen == 101           # ticket pins the REWRITTEN generation
+    with Image.open(io.BytesIO(store.staged)) as im:
+        assert im.size == (615, 1028)
+    import hashlib
+    assert hashlib.sha256(store.staged).hexdigest() == hashlib.sha256(
+        cu._derive_he_master(_he_master_png())).hexdigest()
+    dest, _ = cu._promote_intent(ticket)
+    assert store.promote_calls[0]["source_generation"] == 101
+
+
+def test_validate_rewrite_conflict_fails_closed_no_ticket_no_delete(monkeypatch):
+    """A signed-URL replay lands between our read and our rewrite: 409, the newer
+    staged bytes are left untouched, and no promote ticket is issued."""
+    store = FakeStore(_he_master_png())
+    store.install(monkeypatch)
+    intent_token, _ = cu._create_intent("he", "1F")
+    replay_bytes = _png(750, 1125)
+    original_read = store.read
+    def read_then_replay(key, generation):
+        data = original_read(key, generation)
+        store.generation = 101   # replay overwrites staging after our read
+        store.staged = replay_bytes
+        return data
+    monkeypatch.setattr(cu, "_staging_bytes", read_then_replay)
+    with pytest.raises(HTTPException) as e:
+        cu._validate_intent(intent_token)
+    assert e.value.status_code == 409
+    assert not store.rewrite_calls      # pinned generation mismatch: nothing written
+    assert store.staged is replay_bytes  # newer object preserved
+    assert not store.deleted             # and NOT deleted
+    assert not store.promote_calls
+
+
+def test_validate_prederived_hebrew_passthrough_no_double_crop(monkeypatch):
+    original = _he_png()
+    store = FakeStore(original)
+    store.install(monkeypatch)
+    intent_token, _ = cu._create_intent("he", "1F")
+    ticket, gen = cu._validate_intent(intent_token)
+    assert not store.rewrite_calls  # already trimmed: untouched, no double crop
+    assert gen == 100
+    assert store.staged is original
+    dest, _ = cu._promote_intent(ticket)
+    assert store.promote_calls[0]["source_generation"] == 100
+
+
+def test_validate_english_master_passthrough_no_rewrite(monkeypatch):
+    original = _png(750, 1125)
+    store = FakeStore(original)
+    store.install(monkeypatch)
+    intent_token, _ = cu._create_intent("en", "27F")
+    ticket, gen = cu._validate_intent(intent_token)
+    assert not store.rewrite_calls
+    assert gen == 100
+    assert store.staged is original
+    cu._promote_intent(ticket)
+    assert store.promote_calls[0]["dest"] == "cards-en/27F.png"
 
 
 def test_intent_token_cannot_promote_directly(monkeypatch):
