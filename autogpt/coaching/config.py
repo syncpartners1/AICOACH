@@ -69,6 +69,10 @@ class CoachingConfig(metaclass=Singleton):
         self.scheduler_api_key: str = os.getenv("SCHEDULER_API_KEY", "")
         self.scheduler_timezone: str = os.getenv("SCHEDULER_TIMEZONE", "Asia/Jerusalem")
 
+        # Cards app image replacement (admin upload screen, staged + validated)
+        self.cards_public_bucket: str = os.getenv("CARDS_PUBLIC_BUCKET", "change-navigator-abn-cards-public")
+        self.cards_staging_bucket: str = os.getenv("CARDS_STAGING_BUCKET", "change-navigator-abn-cards-staging")
+
     def validate(self) -> None:
         """Raise if required env vars are missing."""
         missing = []
