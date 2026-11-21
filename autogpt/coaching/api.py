@@ -2628,8 +2628,12 @@ def chat_manifest() -> Response:
         "background_color": "#f0f4f8",
         "theme_color": "#1a2b4a",
         "icons": [
-            {"src": "/static/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png"},
-            {"src": "/static/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/static/cn-icon-trainee-192.png", "sizes": "192x192",
+             "type": "image/png", "purpose": "any"},
+            {"src": "/static/cn-icon-trainee-512.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "any"},
+            {"src": "/static/cn-icon-trainee-maskable-512.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "maskable"},
         ],
     }
     return JSONResponse(content=manifest, media_type="application/manifest+json",
@@ -2690,10 +2694,10 @@ def chat_page(request: Request) -> Response:
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Change Navigator">
 <link rel="manifest" href="/chat/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/static/android-chrome-192x192.png">
+<link rel="apple-touch-icon" href="/static/cn-icon-trainee-apple-180.png">
 <title>AI Coaching Session – ABN Consulting</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
-<link rel="shortcut icon" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/cn-icon-trainee-192.png">
+<link rel="shortcut icon" href="/static/cn-icon-trainee-192.png">
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}

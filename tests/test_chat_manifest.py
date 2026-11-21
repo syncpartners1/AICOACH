@@ -15,8 +15,10 @@ def test_manifest_public_metadata_and_icons():
     manifest = response.json()
     assert (manifest["lang"], manifest["dir"], manifest["display"]) == ("he", "rtl", "standalone")
     assert manifest["start_url"] == manifest["scope"] == "/chat"
-    assert [icon["sizes"] for icon in manifest["icons"]] == ["192x192", "512x512"]
+    assert [icon["sizes"] for icon in manifest["icons"]] == ["192x192", "512x512", "512x512"]
+    assert [icon.get("purpose") for icon in manifest["icons"]] == ["any", "any", "maskable"]
     for icon in manifest["icons"]:
+        assert icon["src"].startswith("/static/cn-icon-trainee-")
         assert client.get(icon["src"]).status_code == 200
     assert client.get("/chat", follow_redirects=False).status_code == 302
 
@@ -30,4 +32,5 @@ def test_chat_markup_adapts_language_without_cached_private_html():
     assert '<html lang="he" dir="rtl">' in response.text
     assert '<link rel="manifest" href="/chat/manifest.webmanifest">' in response.text
     assert 'rel="apple-touch-icon"' in response.text
+    assert '/static/cn-icon-trainee-apple-180.png' in response.text
     assert "register('/chat/sw.js', { scope: '/chat' })" in response.text

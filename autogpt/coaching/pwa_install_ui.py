@@ -3,7 +3,7 @@ INSTALL_HTML = r'''
 <!doctype html><html lang="he" dir="rtl"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#1a2b4a"><meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="manifest" href="/chat/manifest.webmanifest"><link rel="apple-touch-icon" href="/static/android-chrome-192x192.png">
+<link rel="manifest" href="/chat/manifest.webmanifest"><link rel="apple-touch-icon" href="/static/cn-icon-trainee-apple-180.png">
 <title>הוספה למסך הבית | Change Navigator</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f0f4f8;color:#182b45;font:17px/1.7 Arial,sans-serif}
