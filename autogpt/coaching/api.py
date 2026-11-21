@@ -217,6 +217,8 @@ from autogpt.coaching.interest_page import router as _interest_page_router  # no
 app.include_router(_interest_page_router)
 from autogpt.coaching.cards_upload import router as _cards_upload_router  # noqa: E402
 app.include_router(_cards_upload_router)
+from autogpt.coaching.admin_site_content import router as _site_content_router  # noqa: E402
+app.include_router(_site_content_router)
 
 # ── Rate limiting (slowapi) ───────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)

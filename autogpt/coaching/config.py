@@ -72,6 +72,11 @@ class CoachingConfig(metaclass=Singleton):
         # Cards app image replacement (admin upload screen, staged + validated)
         self.cards_public_bucket: str = os.getenv("CARDS_PUBLIC_BUCKET", "change-navigator-abn-cards-public")
         self.cards_staging_bucket: str = os.getenv("CARDS_STAGING_BUCKET", "change-navigator-abn-cards-staging")
+        # Website content editing (admin site-content screen). The token is a
+        # fine-grained GitHub PAT limited to the CONTENT repo, from Secret Manager.
+        self.content_repo_gh_token: str = os.getenv("CONTENT_REPO_GH_TOKEN", "")
+        self.content_repo: str = os.getenv("CONTENT_REPO", "syncpartners1/change-navigator-content")
+        self.site_content_sha_url: str = os.getenv("SITE_CONTENT_SHA_URL", "")
 
     def validate(self) -> None:
         """Raise if required env vars are missing."""
