@@ -4,7 +4,8 @@ apply_theme() post-processes a finished HTML page: it adds the Change Navigator
 theme after the page's own <style> block (so the shared look wins) and a header
 bar with the logo. Page markup, element ids and scripts are not touched.
 """
-LOGO_URL = "/static/android-chrome-192x192.png"
+LOGO_URL = "/static/cn-logo-white.svg"
+PRINT_LOGO_URL = "/static/cn-logo-black.svg"
 BRAND_NAME = "Change Navigator"
 
 _THEME_RULES = (
@@ -12,7 +13,8 @@ _THEME_RULES = (
     "font-family:'Noto Sans Hebrew',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif}"
     ".cn-hdr{background:#1a2b4a;color:#fff;display:flex;align-items:center;gap:12px;"
     "padding:12px 20px;border-radius:12px;margin:0 0 18px;font-weight:700;font-size:17px}"
-    ".cn-hdr img{width:32px;height:32px;border-radius:8px}"
+    ".cn-hdr img{height:26px;width:auto}"
+    ".cn-print-logo{display:none}"
     "h1,h2{color:#1a2b4a}a{color:#243d6b}"
     "section{background:#fff;border-radius:12px;padding:16px}"
     ".notice{background:#e0e7ff;color:#1a2b4a;border-radius:10px}"
@@ -20,11 +22,14 @@ _THEME_RULES = (
     "cursor:pointer;font:inherit}button:disabled{opacity:.6}"
     "input,select,textarea{border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#111827}"
 )
-_PRINT_RULES = ".cn-hdr{display:none!important}"
+_PRINT_RULES = (".cn-hdr{display:none!important}"
+                ".cn-print-logo{display:block!important;height:40px;margin:0 0 14px}")
 
 _HEADER = (
-    f'<div class="cn-hdr"><img src="{LOGO_URL}" alt="">'
-    f"<span>{BRAND_NAME}</span></div>"
+    # The brand wordmark carries the "Change Navigator" name, so the header
+    # shows the logo alone: no duplicated brand-text span next to it.
+    f'<div class="cn-hdr"><img src="{LOGO_URL}" alt=""></div>'
+    f'<img class="cn-print-logo" src="{PRINT_LOGO_URL}" alt="{BRAND_NAME}">'
 )
 
 
@@ -37,7 +42,7 @@ def theme_css(screen_only: bool = False) -> str:
 _ADMIN_CSS = (
     ".cn-admin{background:#1a2b4a;color:#fff;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"
     "padding:10px 18px;margin:0 0 16px;font:14px Arial,sans-serif;box-sizing:border-box}"
-    ".cn-admin img{width:30px;height:30px;border-radius:8px}"
+    ".cn-admin img{height:24px;width:auto}"
     ".cn-admin-title{font-weight:700;font-size:16px;margin-inline-end:auto}"
     ".cn-admin a{color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.4);"
     "padding:5px 12px;border-radius:8px;font-size:13px}"
@@ -51,6 +56,7 @@ _ADMIN_CSS = (
 _ADMIN_BAR = (
     f'<div class="cn-admin" id="cn-admin"><img src="{LOGO_URL}" alt="">'
     f'<span class="cn-admin-title">{BRAND_NAME}</span>'
+    f'<img class="cn-print-logo" src="{PRINT_LOGO_URL}" alt="{BRAND_NAME}">'
     '<a href="/admin?lang=he">ראשי</a>'
     '<a href="/admin?lang=en">🇬🇧 EN</a>'
     '<span class="cn-admin-badge">מנהל</span>'
@@ -80,9 +86,9 @@ def apply_theme(page: str, *, screen_only: bool = False, admin: bool = False,
     @media screen and the header is hidden when printing.
     admin=True uses the admin bar (main menu, language, ADMIN badge, sign out) as the header.
     logo_url overrides the header image for one page only; every other caller
-    keeps the default LOGO_URL and the byte-identical shared header. A custom
-    logo is rendered without the brand-text span and without the square-icon
-    sizing, so a wide wordmark keeps its aspect ratio and sharp corners.
+    keeps the default LOGO_URL and the byte-identical shared header. The
+    wordmark carries the brand name, so no text span is added next to it;
+    wide wordmark sizing keeps its aspect ratio and sharp corners.
     """
     if 'id="cn-theme"' in page:
         return page
@@ -94,7 +100,8 @@ def apply_theme(page: str, *, screen_only: bool = False, admin: bool = False,
         header = _HEADER
     else:
         header = (f'<div class="cn-hdr"><img src="{logo_url}" alt="" '
-                  f'style="height:28px;width:auto;border-radius:0"></div>')
+                  f'style="height:28px;width:auto;border-radius:0"></div>'
+                  f'<img class="cn-print-logo" src="{PRINT_LOGO_URL}" alt="{BRAND_NAME}">')
     return _inject(page, style, header)
 
 

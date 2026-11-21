@@ -6,16 +6,16 @@ from fastapi.testclient import TestClient
 from autogpt.coaching.api import app
 
 NEW_ICON = "/static/cn-icon-192.png"
-NEW_WORDMARK = "/static/cn-wordmark-white.svg"
+NEW_WORDMARK = "/static/cn-logo-white.svg"
 OLD_ICON = "/static/android-chrome-192x192.png"
 
 
 def test_qualify_form_uses_new_brand_icon_in_header_and_favicon():
     html = TestClient(app).get("/qualify-form").text
-    # White wordmark in the injected header, aspect ratio preserved, and no
-    # duplicated "Change Navigator" text span next to it.
-    assert (f'<div class="cn-hdr"><img src="{NEW_WORDMARK}" alt="" '
-            'style="height:28px;width:auto;border-radius:0"></div>') in html
+    # White brand wordmark in the injected header and no duplicated
+    # "Change Navigator" text span next to it (the wordmark carries the name).
+    assert f'<div class="cn-hdr"><img src="{NEW_WORDMARK}" alt=""></div>' in html
+    assert "<span>Change Navigator</span>" not in html
     assert f'<link rel="icon" type="image/png" href="{NEW_ICON}">' in html
     # The old asset must not be referenced anywhere on this page.
     assert OLD_ICON not in html
@@ -36,20 +36,21 @@ def test_qualify_form_questions_and_submit_flow_untouched():
         assert marker in html
 
 
-def test_other_themed_pages_keep_default_logo():
+def test_other_themed_pages_use_default_brand_wordmark():
     client = TestClient(app)
     en = client.get("/qualify-form-en").text
-    assert (f'<div class="cn-hdr"><img src="{OLD_ICON}" alt="">'
-            "<span>Change Navigator</span></div>") in en
+    assert f'<div class="cn-hdr"><img src="{NEW_WORDMARK}" alt=""></div>' in en
+    assert OLD_ICON not in en
     assert NEW_ICON not in en
-    assert NEW_WORDMARK not in en
+    assert 'src="/static/cn-logo-black.svg"' in en  # print-only document logo
 
 
 def test_apply_theme_default_signature_unchanged_for_other_callers():
     from autogpt.coaching.theme import apply_theme
     page = apply_theme("<html><head></head><body><p>x</p></body></html>")
-    assert (f'<div class="cn-hdr"><img src="{OLD_ICON}" alt="">'
-            "<span>Change Navigator</span></div>") in page
+    assert f'<div class="cn-hdr"><img src="{NEW_WORDMARK}" alt=""></div>' in page
+    assert "<span>Change Navigator</span>" not in page
+    assert 'class="cn-print-logo"' in page
     page2 = apply_theme("<html><head></head><body><p>x</p></body></html>",
                         logo_url=NEW_WORDMARK)
     assert f'<img src="{NEW_WORDMARK}" alt=""' in page2

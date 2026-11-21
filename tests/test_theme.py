@@ -29,7 +29,8 @@ def test_idempotent():
 def test_screen_only_keeps_print_clean():
     out = apply_theme('<html><style>a{}</style><body></body></html>', screen_only=True)
     assert '@media screen{' in out
-    assert '@media print{.cn-hdr{display:none!important}}' in out
+    assert '@media print{.cn-hdr{display:none!important}' in out
+    assert '.cn-print-logo{display:block!important;height:40px' in out
 
 
 def test_script_and_ids_untouched():

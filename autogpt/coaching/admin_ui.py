@@ -203,7 +203,7 @@ def render_admin(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{t(lang, "admin_title")} – ABN Co-Navigator</title>
-<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" href="/static/cn-icon-site-192.png">
 {font_import}
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -249,8 +249,7 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 </head>
 <body>
 <div class="hdr">
-  <img src="/static/android-chrome-192x192.png" width="36" height="36"
-       style="border-radius:8px" alt="logo">
+  <img src="/static/cn-logo-white.svg" style="height:30px;width:auto" alt="Change Navigator logo">
   <div>
     <div class="hdr-title">{t(lang, "admin_title")}</div>
     <div style="font-size:12px;opacity:.7;margin-top:1px">{t(lang, "admin_subtitle")}</div>

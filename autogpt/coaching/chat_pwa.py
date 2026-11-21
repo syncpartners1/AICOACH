@@ -1,9 +1,9 @@
 """Public offline shell for /chat. Private chat HTML and API are always network-only."""
 CHAT_SW = r"""
-const CACHE = 'chat-shell-v1';
+const CACHE = 'chat-shell-v2';
 const OFFLINE = '/chat/offline';
-const PUBLIC = [OFFLINE, '/static/android-chrome-192x192.png',
-                '/static/android-chrome-512x512.png'];
+const PUBLIC = [OFFLINE, '/static/cn-icon-trainee-192.png',
+                '/static/cn-icon-trainee-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PUBLIC)));
 });
