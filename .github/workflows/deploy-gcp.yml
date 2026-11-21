@@ -165,6 +165,7 @@ jobs:
             PUBLIC_URL=PUBLIC_URL:latest
             SMTP_PASSWORD=BREVO_SMTP_PASSWORD:latest
             SMTP_USER=SMTP_USER:latest
+            CONTENT_REPO_GH_TOKEN=CONTENT_REPO_GH_TOKEN:latest
           env_vars: |
             TELEGRAM_WEBHOOK_MODE=true
             COACHING_LLM_MODEL=gemini-2.5-flash

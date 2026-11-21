@@ -21,3 +21,7 @@ APScheduler>=3.10.0
 weasyprint>=68,<69  # signed work-order PDF, supports Hebrew RTL
 
 google-auth[requests]==2.58.1  # OIDC ID-token signature/issuer/audience verification
+
+Pillow>=10.0.0  # cards upload: server-side image decode/dimension check
+google-cloud-storage>=3.0,<4  # cards upload: signed PUT URLs + guarded promotion
+httpx>=0.27  # site content: async GitHub API client
