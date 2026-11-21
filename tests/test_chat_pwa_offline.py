@@ -12,6 +12,11 @@ def test_public_offline_and_worker_without_private_data():
     assert offline.status_code == sw.status_code == 200
     assert 'אין חיבור' in offline.text
     assert 'cache.addAll(PUBLIC)' in sw.text
+    assert "chat-shell-v2" in sw.text and "chat-shell-v1" not in sw.text
+    # Precached public assets are the new trainee icons; old wheel files are gone.
+    assert '/static/cn-icon-trainee-192.png' in sw.text
+    assert '/static/cn-icon-trainee-512.png' in sw.text
+    assert 'android-chrome' not in sw.text
     assert "url.pathname !== '/chat'" in sw.text
     assert 'fetch(event.request).catch' in sw.text
     assert 'service-worker-allowed' in sw.headers
@@ -25,5 +30,5 @@ def test_authenticated_markup_registers_scoped_worker_and_logout_purges():
         page = TestClient(app).get('/chat').text
     assert "register('/chat/sw.js', { scope: '/chat' })" in page
     assert 'onclick="logoutChat(event)"' in page
-    assert "caches.delete('chat-shell-v1')" in page
+    assert "caches.delete('chat-shell-v2')" in page
     assert 'navigator.serviceWorker?.getRegistrations()' in page

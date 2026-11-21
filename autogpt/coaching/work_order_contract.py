@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import hmac
+from pathlib import Path
 import hashlib
 import html
 import io
@@ -20,6 +21,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 from weasyprint import HTML
+
+
+def _logo_data_uri() -> str:
+    png = (Path(__file__).resolve().parent.parent / "static" / "cn-logo-navy-858.png").read_bytes()
+    return "data:image/png;base64," + base64.b64encode(png).decode()
 
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.db import execute_query, get_db_cursor
@@ -127,7 +133,7 @@ def contract_html(row: dict, *, signer_name: str = "", signer_role: str = "",
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>הזמנת עבודה | Change Navigator</title>
 <style>@page{{size:A4;margin:17mm}}body{{font:15px/1.55 "Noto Sans Hebrew",Arial,sans-serif;color:#251f21;max-width:760px;margin:auto;padding:18px}}
 h1{{font-size:24px}}h2{{font-size:18px;margin:22px 0 6px;border-bottom:1px solid #ddd}}p{{margin:7px 0}}.card{{padding:12px;background:#f4efec}}.signature{{width:230px;height:85px;object-fit:contain;border:1px solid #ccc}}a{{color:#167263}}.terms p{{break-inside:avoid}}canvas{{touch-action:none;border:1px solid #666;max-width:100%;background:white}}button,input{{font:inherit;padding:8px}}label{{display:block;margin:10px 0}}</style></head>
-<body><h1>הזמנת עבודה | Change Navigator</h1>
+<body><div style="text-align:center;margin-bottom:12px"><img src="{_logo_data_uri()}" style="height:40px" alt="Change Navigator"></div><h1>הזמנת עבודה | Change Navigator</h1>
 <p>מספר הזמנה: {order_id}</p><p>נותן השירות: עדי בן נשר | ע.מ. 038649679</p>
 <p>כתובת העסק: הדגל העברי 5, ראשון לציון. כתובת הקליניקה: קליניקה 103, קומה 1, ברשבסקי 33, ראשון לציון.</p>
 <h2>פרטי המזמין</h2><div class="card"><p>שם מלא או שם העסק: {customer} | מספר זיהוי/עוסק: {_safe(row['customer_identity'])}</p>

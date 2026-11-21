@@ -234,7 +234,7 @@ if _os.path.isdir(_static_dir):
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon() -> Response:
     """Redirect legacy /favicon.ico requests to the PNG app icon."""
-    return RedirectResponse(url="/static/android-chrome-192x192.png", status_code=301)
+    return RedirectResponse(url="/static/cn-icon-site-192.png", status_code=301)
 
 
 @app.get("/google33b061ce0c60767e.html", include_in_schema=False)
@@ -1115,7 +1115,7 @@ def _login_page(error: str = "", active_tab: str = "password") -> str:
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Admin Login – ABN Consulting</title>
-<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" href="/static/cn-icon-site-192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -1123,7 +1123,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:400px;width:100%;
   box-shadow:0 4px 20px rgba(0,0,0,.1)}}
 .logo{{display:flex;align-items:center;gap:10px;margin-bottom:24px}}
-.logo img{{width:36px;height:36px;border-radius:8px}}
+.logo img{{height:32px;width:auto}}
 .logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
 h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:4px}}
 p{{color:#6b7280;font-size:13px;margin-bottom:20px}}
@@ -1154,7 +1154,7 @@ input:focus{{border-color:#1a2b4a}}
 </head><body>
 <div class="card">
   <div class="logo">
-    <img src="/static/android-chrome-192x192.png" alt="logo">
+    <img src="/static/cn-logo-navy.svg" alt="Change Navigator logo">
     <span class="logo-text">ABN Consulting</span>
   </div>
   <h1>Admin Login</h1>
@@ -2083,7 +2083,7 @@ def register_page(request: Request, token: Optional[str] = Query(default=None)) 
 <html lang="{lang}" {dir_attr}><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title} – ABN Consulting</title>
-<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" href="/static/cn-icon-trainee-192.png">
 {'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700&display=swap" rel="stylesheet">' if is_rtl else ''}
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -2092,7 +2092,7 @@ body{{font-family:{"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto" if not i
 .card{{background:#fff;border-radius:16px;padding:36px 32px;max-width:420px;width:100%;
       box-shadow:0 4px 20px rgba(0,0,0,.1)}}
 .logo{{display:flex;align-items:center;gap:10px;margin-bottom:24px}}
-.logo img{{border-radius:8px}}
+.logo img{{height:32px;width:auto}}
 .logo-text{{font-size:16px;font-weight:700;color:#1a2b4a}}
 h1{{font-size:20px;font-weight:700;color:#1a2b4a;margin-bottom:6px}}
 p{{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.5}}
@@ -2116,7 +2116,7 @@ input:focus{{border-color:#1a2b4a}}
 <body>
 <div class="card">
   <div class="logo">
-    <img src="/static/android-chrome-192x192.png" width="36" height="36" alt="logo">
+    <img src="/static/cn-logo-navy.svg" alt="Change Navigator logo">
     <div class="logo-text">ABN Consulting</div>
   </div>
   <h1>{title}</h1>
@@ -2261,7 +2261,7 @@ def login_page(
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign In – ABN Consulting</title>
-<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" href="/static/cn-icon-trainee-192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -2293,8 +2293,7 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
 <body>
 <div class="card">
   <div class="logo">
-    <img src="/static/android-chrome-192x192.png" width="36" height="36"
-         style="border-radius:8px" alt="logo">
+    <img src="/static/cn-logo-navy.svg" style="height:32px;width:auto" alt="Change Navigator logo">
     <div class="logo-text">ABN Consulting</div>
   </div>
   <h1>Welcome back</h1>
@@ -2323,7 +2322,7 @@ def pending_page(request: Request) -> HTMLResponse:
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Registration Pending – ABN Consulting</title>
-<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" href="/static/cn-icon-trainee-192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -2628,8 +2627,12 @@ def chat_manifest() -> Response:
         "background_color": "#f0f4f8",
         "theme_color": "#1a2b4a",
         "icons": [
-            {"src": "/static/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png"},
-            {"src": "/static/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/static/cn-icon-trainee-192.png", "sizes": "192x192",
+             "type": "image/png", "purpose": "any"},
+            {"src": "/static/cn-icon-trainee-512.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "any"},
+            {"src": "/static/cn-icon-trainee-maskable-512.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "maskable"},
         ],
     }
     return JSONResponse(content=manifest, media_type="application/manifest+json",
@@ -2690,10 +2693,10 @@ def chat_page(request: Request) -> Response:
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Change Navigator">
 <link rel="manifest" href="/chat/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/static/android-chrome-192x192.png">
+<link rel="apple-touch-icon" href="/static/cn-icon-trainee-apple-180.png">
 <title>AI Coaching Session – ABN Consulting</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
-<link rel="shortcut icon" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/cn-icon-trainee-192.png">
+<link rel="shortcut icon" href="/static/cn-icon-trainee-192.png">
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -2762,7 +2765,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 </style></head>
 <body>
 <div class="hdr">
-  <img src="/static/android-chrome-192x192.png" width="32" height="32" alt="logo">
+  <img src="/static/cn-logo-white.svg" style="height:24px;width:auto" alt="Change Navigator logo">
   <div>
     <div class="hdr-title">AI Co-Navigator</div>
     <div class="hdr-sub">Welcome, {user.name}</div>
@@ -3101,7 +3104,7 @@ async function logoutChat(event) {{
     const registrations = await navigator.serviceWorker?.getRegistrations();
     await Promise.all((registrations || []).filter(r => new URL(r.scope).pathname === '/chat')
       .map(r => r.unregister()));
-    await caches.delete('chat-shell-v1');
+    await caches.delete('chat-shell-v2');
   }} catch(e) {{ /* Logout must proceed even if storage is unavailable. */ }}
   location.assign('/user/logout');
 }}
@@ -3740,7 +3743,7 @@ function submitForm(){
 }
 </script>
 </body></html>"""
-    return HTMLResponse(content=apply_theme(html, logo_url="/static/cn-wordmark-white.svg"))
+    return HTMLResponse(content=apply_theme(html, logo_url="/static/cn-logo-white.svg"))
 
 
 @app.get("/qualify-form-en", response_class=HTMLResponse, include_in_schema=False)

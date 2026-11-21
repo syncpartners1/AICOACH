@@ -392,14 +392,14 @@ def render_dashboard(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{t(lang, "db_title")} – {user.name}</title>
-<link rel="icon" type="image/png" href="/static/android-chrome-192x192.png">
+<link rel="icon" type="image/png" href="/static/cn-icon-trainee-192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
      {'Noto Sans Hebrew,' if is_rtl else ''}'Arial',sans-serif;
      background:#f0f4f8;color:#111827;direction:{'rtl' if is_rtl else 'ltr'}}}
 .hdr{{background:#1a2b4a;color:#fff;padding:14px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:12px}}
-.hdr-logo{{flex:0 0 auto;border-radius:8px}}
+.hdr-logo{{flex:0 0 auto;height:30px;width:auto}}
 .hdr-main{{flex:1 1 150px;min-width:0}}
 .hdr-title{{font-size:17px;font-weight:700}}
 .hdr-sub{{font-size:12px;margin-top:4px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}}
@@ -415,8 +415,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,
 <body>
 {admin_banner}
 <div class="hdr">
-  <img class="hdr-logo" src="/static/android-chrome-192x192.png" width="36" height="36"
-       alt="logo">
+  <img class="hdr-logo" src="/static/cn-logo-white.svg" alt="Change Navigator logo">
   <div class="hdr-main">
     <div class="hdr-title">{t(lang, "db_title")}</div>
     <div class="hdr-sub"><span style="opacity:.7">{user.name}</span>{status_badge}{status_action}</div>
