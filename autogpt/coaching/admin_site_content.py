@@ -35,6 +35,8 @@ from typing import Optional, Tuple
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
+
+from autogpt.coaching.theme import apply_admin_bar
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/admin/site-content", tags=["admin site content"])
@@ -193,7 +195,7 @@ def _client() -> GitHubContent:
 
 @router.get("", response_class=HTMLResponse, include_in_schema=False, dependencies=[Depends(_admin)])
 async def page() -> HTMLResponse:
-    return HTMLResponse(_page_html())
+    return HTMLResponse(apply_admin_bar(_page_html()))
 
 
 @router.get("/data", dependencies=[Depends(_admin)])
@@ -306,7 +308,6 @@ button.primary{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
 a.back{font-size:12px;color:#6b7280}
 </style></head><body>
 <div class="card">
-<a class="back" href="/admin">&#8592; חזרה למסך הניהול</a>
 <h1>ניהול תוכן האתר</h1>
 <p class="sub">עריכה שומרת <b>טיוטה</b> במאגר התוכן. מיזוג מעדכן את <b>מאגר התוכן</b> בלבד.
 העלאת התוכן <b>לאתר החי</b> מתבצעת בנפרד, באישור שלך.<br>

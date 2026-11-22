@@ -49,6 +49,8 @@ from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
+
+from autogpt.coaching.theme import apply_admin_bar
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/admin/cards-images", tags=["admin cards images"])
@@ -368,7 +370,7 @@ class _PromoteRequest(BaseModel):
 
 @router.get("", response_class=HTMLResponse, include_in_schema=False, dependencies=[Depends(_admin)])
 def cards_images_page() -> HTMLResponse:
-    return HTMLResponse(_render_page())
+    return HTMLResponse(apply_admin_bar(_render_page()))
 
 
 @router.post("/sign", dependencies=[Depends(_admin), Depends(_origin_guard)])
@@ -423,7 +425,6 @@ _PAGE = """<!DOCTYPE html>
 </head>
 <body>
 <div class="card">
-  <a class="back" href="/admin">&#8592; חזרה למסך הניהול</a>
   <h1>החלפת תמונת קלף</h1>
   <p class="sub">התמונה נבדקת (סוג וגודל מדויק) ורק אחר כך מחליפה את הקיימת. שימו לב: בגלל מטמון, אחרי ההחלפה עלולה עדיין להופיע אצל מבקרים קיימים התמונה הקודמת, ויכול להיות שיידרש רענון נוסף כדי לראות את החדשה. מבקרים חדשים רואים את התמונה החדשה מיד.</p>
   <div class="row">

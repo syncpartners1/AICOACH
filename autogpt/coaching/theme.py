@@ -47,6 +47,16 @@ _ADMIN_CSS = (
     ".cn-admin a{color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.4);"
     "padding:5px 12px;border-radius:8px;font-size:13px}"
     ".cn-admin-badge{background:#ef4444;font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700}"
+    ".cn-admin .cn-print-logo{display:none}"
+    ".cn-admin-menu{position:relative}"
+    ".cn-admin-menu summary{list-style:none;cursor:pointer;color:#fff;border:1px solid rgba(255,255,255,.4);"
+    "padding:5px 12px;border-radius:8px;font-size:13px;user-select:none}"
+    ".cn-admin-menu summary::-webkit-details-marker{display:none}"
+    ".cn-admin-menu nav{position:absolute;inset-inline-start:0;top:calc(100% + 6px);background:#1a2b4a;"
+    "border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:8px;display:flex;flex-direction:column;"
+    "min-width:220px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.3)}"
+    ".cn-admin-menu nav a{color:#fff;text-decoration:none;border:none;padding:12px 14px;border-radius:8px;font-size:15px}"
+    ".cn-admin-menu nav a:hover{background:rgba(255,255,255,.12)}"
     "@media print{.cn-admin{display:none!important}}"
 )
 
@@ -57,6 +67,17 @@ _ADMIN_BAR = (
     f'<div class="cn-admin" id="cn-admin"><img src="{LOGO_URL}" alt="">'
     f'<span class="cn-admin-title">{BRAND_NAME}</span>'
     f'<img class="cn-print-logo" src="{PRINT_LOGO_URL}" alt="{BRAND_NAME}">'
+    '<details class="cn-admin-menu"><summary>☰ תפריט</summary><nav>'
+    '<a href="/admin/booking-notifications">פגישות חדשות</a>'
+    '<a href="/admin/messages">הודעות למאמן</a>'
+    '<a href="/admin/coaching-leads">פניות אימון</a>'
+    '<a href="/admin/work-orders">הזמנות עבודה</a>'
+    '<a href="/admin/funnel">משפך לקוחות</a>'
+    '<a href="/admin/join-invites">הזמנות להצטרפות</a>'
+    '<a href="/admin/cards-images">תמונות קלפים</a>'
+    '<a href="/admin/site-content">ניהול תוכן האתר</a>'
+    '<a href="/admin/session-maps">מפות מפגש</a>'
+    '</nav></details>'
     '<a href="/admin?lang=he">ראשי</a>'
     '<a href="/admin?lang=en">🇬🇧 EN</a>'
     '<span class="cn-admin-badge">מנהל</span>'

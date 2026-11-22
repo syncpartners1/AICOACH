@@ -94,7 +94,7 @@ def render_admin(
                        f'{t(lang, "admin_btn_reactivate")}</button>')
         user_rows += f"""
 <tr>
-  <td style="padding:10px 12px;font-weight:600;white-space:nowrap">
+  <td class="col-name" style="padding:10px 12px;font-weight:600;white-space:nowrap">
     <a href="{dashboard_url}" style="color:#1a2b4a;text-decoration:none">{u.name}</a>
   </td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
@@ -139,7 +139,7 @@ def render_admin(
         ) if u.telegram_user_id else ""
         pending_rows += f"""
 <tr>
-  <td style="padding:10px 12px;font-weight:600">{u.name}{tg_badge}</td>
+  <td class="col-name" style="padding:10px 12px;font-weight:600">{u.name}{tg_badge}</td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
   <td style="padding:10px 12px;white-space:nowrap">
     <button onclick="approveUser('{u.user_id}')"
@@ -164,7 +164,7 @@ def render_admin(
         who = inv.name or inv.email or inv.phone or "—"
         invite_rows += f"""
 <tr>
-  <td style="padding:8px 12px;font-size:13px">{who}</td>
+  <td class="col-name" style="padding:8px 12px;font-size:13px">{who}</td>
   <td style="padding:8px 12px;font-size:12px;color:#6b7280">{inv.note or "—"}</td>
   <td style="padding:8px 12px">
     <input type="text" readonly class="invite-link" aria-label="{t(lang, 'admin_col_link')}"
@@ -245,6 +245,35 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 .btn{{background:#1a2b4a;color:#fff;border:none;padding:9px 18px;border-radius:8px;
      font-size:13px;font-weight:600;cursor:pointer}}
 .btn:hover{{background:#243d6b}}
+.col-name{{position:sticky;inset-inline-start:0;background:#fff;z-index:1;border-inline-end:1px solid #e5e7eb}}
+thead th.col-name{{background:#f9fafb}}
+tbody tr:hover td.col-name{{background:#f9fafb}}
+.tbl-hint{{display:none;font-size:11px;color:#6b7280;padding:8px 12px 0;text-align:center}}
+.hdr-menu{{display:none;position:relative}}
+.hdr-menu summary{{list-style:none;cursor:pointer;font-size:13px;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 12px;border-radius:8px;user-select:none;white-space:nowrap}}
+.hdr-menu summary::-webkit-details-marker{{display:none}}
+.hdr-menu nav{{position:absolute;inset-inline-end:0;top:calc(100% + 8px);background:#1a2b4a;border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:8px;display:flex;flex-direction:column;min-width:220px;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.3)}}
+.hdr-menu nav a{{color:#fff;text-decoration:none;padding:12px 14px;border-radius:8px;font-size:15px}}
+.hdr-menu nav a:hover{{background:rgba(255,255,255,.12)}}
+.hdr-menu nav .menu-sep{{border-top:1px solid rgba(255,255,255,.25);margin:4px 0}}
+@media (max-width:600px){{
+  .hdr{{padding:10px 14px}}
+  .hdr-title{{font-size:15px;white-space:nowrap}}
+  .hdr-sub{{font-size:11px;white-space:nowrap}}
+  @media (max-width:480px){{
+    .hdr-sub{{display:none}}
+  }}
+  .hdr-extra{{display:none}}
+  .hdr-menu{{display:block;margin-left:auto}}
+  .admin-nav{{display:none}}
+  .tbl-hint{{display:block}}
+  .col-actions a,.col-actions button{{display:block;width:fit-content;margin:3px 0 !important}}
+  .col-name{{z-index:2}}
+}}
+@media (max-width:480px){{
+  .form-row{{flex-direction:column}}
+  .form-row input,.form-row textarea{{min-width:0;width:100%}}
+}}
 </style>
 </head>
 <body>
@@ -252,13 +281,27 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
   <img src="/static/cn-logo-white.svg" style="height:30px;width:auto" alt="Change Navigator logo">
   <div>
     <div class="hdr-title">{t(lang, "admin_title")}</div>
-    <div style="font-size:12px;opacity:.7;margin-top:1px">{t(lang, "admin_subtitle")}</div>
+    <div class="hdr-sub" style="font-size:12px;opacity:.7;margin-top:1px">{t(lang, "admin_subtitle")}</div>
   </div>
-  <div class="hdr-badge">{t(lang, "admin_badge")}</div>
-  <a href="{lang_toggle_href}" style="margin-left:8px;color:rgba(255,255,255,.8);font-size:12px;
+  <details class="hdr-menu"><summary>☰ תפריט</summary><nav>
+    <a href="/admin/booking-notifications">פגישות חדשות ({booking_unread if booking_unread is not None else "מונה לא זמין"} לא נקראו)</a>
+    <a href="/admin/messages">הודעות למאמן ({inbox_unread if inbox_unread is not None else "מונה לא זמין"} לא נקראו)</a>
+    <a href="/admin/coaching-leads">פניות אימון</a>
+    <a href="/admin/work-orders">הזמנות עבודה</a>
+    <a href="/admin/funnel">משפך לקוחות</a>
+    <a href="/admin/join-invites">הזמנות להצטרפות</a>
+    <a href="/admin/cards-images">תמונות קלפים</a>
+    <a href="/admin/site-content">ניהול תוכן האתר</a>
+    <a href="/admin/session-maps">מפות מפגש</a>
+    <div class="menu-sep"></div>
+    <a href="{lang_toggle_href}">{lang_toggle_label}</a>
+    <a href="/admin/logout">{t(lang, "admin_signout")}</a>
+  </nav></details>
+  <div class="hdr-badge hdr-extra">{t(lang, "admin_badge")}</div>
+  <a href="{lang_toggle_href}" class="hdr-extra" style="margin-left:8px;color:rgba(255,255,255,.8);font-size:12px;
      text-decoration:none;border:1px solid rgba(255,255,255,.35);padding:5px 12px;
      border-radius:8px;">{lang_toggle_label}</a>
-  <a href="/admin/logout" style="color:rgba(255,255,255,.65);font-size:12px;
+  <a href="/admin/logout" class="hdr-extra" style="color:rgba(255,255,255,.65);font-size:12px;
      text-decoration:none;border:1px solid rgba(255,255,255,.25);padding:5px 12px;
      border-radius:8px;">{t(lang, "admin_signout")}</a>
 </div>
@@ -266,21 +309,23 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 
   <div class="section-title">{t(lang, "admin_section_pending")} ({len(pending_users)})</div>
   <div class="card">
+    <div class="tbl-hint">{t(lang, "admin_scroll_hint")}</div>
     <div class="tbl-wrap">
     <table>
-      <thead><tr><th>{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th><th>{t(lang, "admin_col_actions")}</th></tr></thead>
+      <thead><tr><th class="col-name">{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th><th>{t(lang, "admin_col_actions")}</th></tr></thead>
       <tbody>{pending_rows}</tbody>
     </table>
     </div>
   </div>
 
-  <p style="margin:12px 0"><a href="/admin/booking-notifications">פגישות חדשות ({booking_unread if booking_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/messages">הודעות למאמן ({inbox_unread if inbox_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a> | <a href="/admin/funnel">משפך לקוחות</a> | <a href="/admin/join-invites">הזמנות להצטרפות</a> | <a href="/admin/cards-images">תמונות קלפים</a> | <a href="/admin/site-content">ניהול תוכן האתר</a> | <a href="/admin/session-maps">מפות מפגש</a></p>
+  <p class="admin-nav" style="margin:12px 0"><a href="/admin/booking-notifications">פגישות חדשות ({booking_unread if booking_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/messages">הודעות למאמן ({inbox_unread if inbox_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a> | <a href="/admin/funnel">משפך לקוחות</a> | <a href="/admin/join-invites">הזמנות להצטרפות</a> | <a href="/admin/cards-images">תמונות קלפים</a> | <a href="/admin/site-content">ניהול תוכן האתר</a> | <a href="/admin/session-maps">מפות מפגש</a></p>
   <div class="section-title">{t(lang, "admin_section_members")} ({len(users)})</div>
   <div class="card">
+    <div class="tbl-hint">{t(lang, "admin_scroll_hint")}</div>
     <div class="tbl-wrap">
     <table>
       <thead><tr>
-        <th>{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th>
+        <th class="col-name">{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th>
         <th>{t(lang, "admin_col_email")}</th>
         <th>{t(lang, "admin_col_status")}</th><th>מסלול</th><th>שלב</th><th>תוכנית הצלחה</th><th>{t(lang, "admin_col_okrs")}</th>
         <th>{t(lang, "admin_col_progress")}</th><th>{t(lang, "admin_col_last_session")}</th>
@@ -345,9 +390,10 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 
   <div class="section-title">{t(lang, "admin_section_invites")}</div>
   <div class="card">
+    <div class="tbl-hint">{t(lang, "admin_scroll_hint")}</div>
     <div class="tbl-wrap">
     <table>
-      <thead><tr><th>{t(lang, "admin_col_for")}</th><th>{t(lang, "admin_col_note")}</th><th>{t(lang, "admin_col_link")}</th><th>{t(lang, "admin_col_actions")}</th></tr></thead>
+      <thead><tr><th class="col-name">{t(lang, "admin_col_for")}</th><th>{t(lang, "admin_col_note")}</th><th>{t(lang, "admin_col_link")}</th><th>{t(lang, "admin_col_actions")}</th></tr></thead>
       <tbody>{invite_rows}</tbody>
     </table>
     </div>

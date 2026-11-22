@@ -439,6 +439,7 @@ S_EN = {
     # ── Admin dashboard ───────────────────────────────────────────────────
     "admin_title": "Admin Dashboard",
     "admin_subtitle": "Change Navigator · Adi Ben Nesher",
+    "admin_scroll_hint": "⇦ Scroll sideways for more columns ⇨",
     "admin_badge": "ADMIN",
     "admin_signout": "Sign out",
     "admin_section_pending": "Pending Approval",

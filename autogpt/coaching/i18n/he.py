@@ -439,6 +439,7 @@ S_HE = {
     # ── Admin dashboard ───────────────────────────────────────────────────
     "admin_title": "לוח בקרה למנהל",
     "admin_subtitle": "Change Navigator · עדי בן נשר",
+    "admin_scroll_hint": "⇦ גלילה לצדדים לעוד עמודות ⇨",
     "admin_badge": "מנהל",
     "admin_signout": "יציאה",
     "admin_section_pending": "ממתינים לאישור",
