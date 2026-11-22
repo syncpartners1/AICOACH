@@ -9,12 +9,12 @@ S_EN = {
     "opener_welcome_back": "Hello {name}! Welcome back to your weekly Navigator Log. Let's start by reviewing your current objectives.",
     "opener_new_user": "Hello {name}! Welcome to the coaching program. Since this is your first session, let's begin by setting up your objectives and key results.",
     "opener_neutral": "Hello {name}! I'm ready for our weekly Navigator Log check-in.",
-    "welcome_title": "ABN Co-Navigator — AI Coaching",
+    "welcome_title": "Change Navigator — AI Coaching",
     "welcome_name": "Welcome, {name}! Ready to start your coaching session?",
     "welcome_back": "Welcome back to the Co-Navigator, <b>{name}</b>! 👋\n\nPreparing your weekly Navigator Log…",
     "ready_to_begin": "Ready to begin? Use /new_session to start your coaching check-in.",
     "welcome_new": (
-        "👋 <b>Welcome to the ABN Consulting Co-Navigator!</b>\n\n"
+        "👋 <b>Welcome to Change Navigator!</b>\n\n"
         "I'm your digital coaching assistant, designed to help you navigate "
         "through professional and personal change while keeping your strategic goals on track.\n\n"
         "What is your name?"
@@ -264,7 +264,7 @@ S_EN = {
     ),
     # ── Dashboard: section titles ─────────────────────────────────────────
     "db_title": "My Coaching Dashboard",
-    "db_subtitle": "ABN Co-Navigator · Adi Ben Nesher",
+    "db_subtitle": "Change Navigator · Adi Ben Nesher",
     "db_section_week": "This Week",
     "db_section_okr": "Objectives &amp; Key Results",
     "db_section_highlights": "Daily Highlights",
@@ -387,7 +387,7 @@ S_EN = {
     "admin_invite_no_email": "No email on this invite",
     # ── WhatsApp bot ──────────────────────────────────────────────────────
     "wa_help": (
-        "👋 *ABN Co-Navigator — WhatsApp commands*\n\n"
+        "👋 *Change Navigator — WhatsApp commands*\n\n"
         "• Type *start* or *hi* — begin a new coaching session\n"
         "• Send any message   — chat with the Navigator\n"
         "• Type *done* or *end* — close session and receive summary\n"
@@ -438,7 +438,8 @@ S_EN = {
     "reg_status_error": "Registration failed. Please try again.",
     # ── Admin dashboard ───────────────────────────────────────────────────
     "admin_title": "Admin Dashboard",
-    "admin_subtitle": "ABN Co-Navigator · Adi Ben Nesher",
+    "admin_subtitle": "Change Navigator · Adi Ben Nesher",
+    "admin_scroll_hint": "⇦ Scroll sideways for more columns ⇨",
     "admin_badge": "ADMIN",
     "admin_signout": "Sign out",
     "admin_section_pending": "Pending Approval",

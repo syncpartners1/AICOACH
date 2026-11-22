@@ -47,8 +47,7 @@ label.check{{display:flex;align-items:center;gap:10px;font-weight:bold;margin:24
 label.check input{{width:20px;height:20px}}
 #status{{min-height:26px;margin-top:12px}}.hint{{font-size:14px}}
 </style></head><body>
-<header>ABN Consulting · ניהול תוכנית האימון</header>
-<main><a href="/admin?lang=he">חזרה למסך הניהול</a>
+<main>
 <section class="card"><h1>{name}</h1>
 <p class="hint">המסלול והמפגש נקבעים על ידי המאמן בלבד. שינוי כאן לא מקדם שלב אוטומטית ולא משנה את תוכנית ההצלחה של המתאמן.</p>
 <form id="program" data-user-id="{user_id}">
