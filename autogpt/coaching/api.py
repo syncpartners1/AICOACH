@@ -6,6 +6,7 @@ from datetime import date
 
 import asyncio
 import base64
+import functools
 import hashlib
 import hmac
 import json
@@ -1319,6 +1320,21 @@ def admin_dashboard(request: Request, lang: str = Query(default="he")) -> HTMLRe
                         public_url=coaching_config.public_url, pending_users=pending_users,
                         lang=lang, inbox_unread=inbox_unread, booking_unread=booking_unread)
     return HTMLResponse(content=html)
+
+
+@functools.lru_cache(maxsize=1)
+def _session_maps_html() -> str:
+    path = _os.path.join(_os.path.dirname(__file__), "session_maps.html")
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+@app.get("/admin/session-maps", response_class=HTMLResponse, include_in_schema=False)
+def admin_session_maps(request: Request) -> HTMLResponse:
+    """Coach-only session-maps tool (static reference content) - requires admin login."""
+    if not _is_admin_authenticated(request):
+        return HTMLResponse(content=_login_page(), status_code=200)
+    return HTMLResponse(content=_session_maps_html())
 
 
 @app.get("/admin/messages", response_class=HTMLResponse, include_in_schema=False)
