@@ -13,7 +13,7 @@ PRODUCTION_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ABN Consulting – Co-Navigator Coaching</title>
+<title>Change Navigator – Co-Navigator Coaching</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/static/android-chrome-192x192.png">
 <link rel="apple-touch-icon" sizes="192x192" href="/static/android-chrome-192x192.png">
@@ -83,7 +83,7 @@ footer a{{color:#6b7280;text-decoration:none}}
 
 <header class="hdr">
   <div>
-    <div class="hdr-logo">ABN Consulting</div>
+    <div class="hdr-logo">Change Navigator</div>
     <div class="hdr-sub">Co-Navigator AI Coaching</div>
   </div>
   <a href="/demo" class="hdr-demo-link">Try Demo</a>
@@ -142,7 +142,7 @@ footer a{{color:#6b7280;text-decoration:none}}
 </section>
 
 <footer>
-  &copy; 2026 ABN Consulting &nbsp;·&nbsp;
+  &copy; 2026 Change Navigator &nbsp;·&nbsp;
   <a href="/demo">Try the demo</a> &nbsp;·&nbsp;
   <a href="/docs">API docs</a>
 </footer>

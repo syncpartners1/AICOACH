@@ -9,12 +9,12 @@ S_HE = {
     "opener_welcome_back": "שלום {name}! ברוך שובך ליומן הנווט האסטרטגי שלך. בוא נתחיל בסקירת היעדים הנוכחיים שלך.",
     "opener_new_user": "שלום {name}! ברוכים הבאים לתוכנית האימון. מכיוון שזו הפגישה הראשונה שלך, בוא נתחיל בהגדרת היעדים ותוצאות המפתח שלך.",
     "opener_neutral": "שלום {name}! אני מוכן לצ׳ק-אין של יומן הנווט האסטרטגי השבועי שלך.",
-    "welcome_title": "ABN Co-Navigator — אימון AI",
+    "welcome_title": "Change Navigator — אימון AI",
     "welcome_name": "ברוך הבא, {name}! מוכן להתחיל את פגישת האימון שלך?",
     "welcome_back": "ברוך שובך ל-Co-Navigator, <b>{name}</b>! 👋\n\nמכין את יומן הנווט (Navigator Log) השבועי שלך…",
     "ready_to_begin": "מוכן להתחיל? השתמש ב-/new_session כדי להתחיל את הצ'ק-אין השבועי שלך.",
     "welcome_new": (
-        "👋 <b>ברוכים הבאים ל-ABN Consulting Co-Navigator!</b>\n\n"
+        "👋 <b>ברוכים הבאים ל-Change Navigator!</b>\n\n"
         "אני עוזר האימון הדיגיטלי שלך, שנועד לעזור לך לנווט "
         "דרך שינויים מקצועיים ואישיים תוך שמירה על היעדים האסטרטגיים שלך.\n\n"
         "מה שמך?"
@@ -235,7 +235,7 @@ S_HE = {
     "cancelled": "הפעולה בוטלה. השתמש ב-/start או ב-/help בכל עת.",
     # ── Bot: /help ────────────────────────────────────────────────────────
     "help_text": (
-        "🎯 <b>ABN Co-Navigator — פקודות</b>\n\n"
+        "🎯 <b>Change Navigator — פקודות</b>\n\n"
         "/start — התחל או חדש פגישת אימון\n"
         "/link — קשר את הטלגרם לחשבון הרשום שלך\n"
         "/plan — מלא את התכנית השבועית (לכל תוצאת מפתח)\n"
@@ -264,7 +264,7 @@ S_HE = {
     ),
     # ── Dashboard: section titles ─────────────────────────────────────────
     "db_title": "לוח הבקרה שלי",
-    "db_subtitle": "ABN Co-Navigator · עדי בן נשר",
+    "db_subtitle": "Change Navigator · עדי בן נשר",
     "db_section_week": "השבוע",
     "db_section_okr": "יעדים ותוצאות מפתח",
     "db_section_highlights": "הדגשות יומיות",
@@ -387,7 +387,7 @@ S_HE = {
     "admin_invite_no_email": "אין כתובת מייל להזמנה הזו",
     # ── WhatsApp bot ──────────────────────────────────────────────────────
     "wa_help": (
-        "👋 <b>ABN Co-Navigator — פקודות WhatsApp</b>\n\n"
+        "👋 <b>Change Navigator — פקודות WhatsApp</b>\n\n"
         "• שלח <b>start</b> או <b>hi</b> — פתח פגישת אימון חדשה\n"
         "• שלח כל הודעה       — שוחח עם הנווטן\n"
         "• שלח <b>done</b> או <b>end</b>  — סיים פגישה וקבל סיכום\n"
@@ -438,7 +438,7 @@ S_HE = {
     "reg_status_error": "הרישום נכשל. אנא נסה שוב.",
     # ── Admin dashboard ───────────────────────────────────────────────────
     "admin_title": "לוח בקרה למנהל",
-    "admin_subtitle": "ABN Co-Navigator · עדי בן נשר",
+    "admin_subtitle": "Change Navigator · עדי בן נשר",
     "admin_badge": "מנהל",
     "admin_signout": "יציאה",
     "admin_section_pending": "ממתינים לאישור",

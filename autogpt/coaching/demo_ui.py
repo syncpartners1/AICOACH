@@ -14,7 +14,7 @@ DEMO_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ABN Consulting – AI Co-Navigator</title>
+<title>Change Navigator – AI Co-Navigator</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/android-chrome-192x192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/static/android-chrome-192x192.png">
 <link rel="apple-touch-icon" sizes="192x192" href="/static/android-chrome-192x192.png">
@@ -115,7 +115,7 @@ input[type=text]:focus{{border-color:#1a2b4a}}
 
 <div class="hdr">
   <div>
-    <div class="hdr-logo">ABN Consulting</div>
+    <div class="hdr-logo">Change Navigator</div>
     <div class="hdr-sub">AI Co-Navigator</div>
   </div>
   <span class="hdr-badge">DEMO</span>

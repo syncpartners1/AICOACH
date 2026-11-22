@@ -202,7 +202,7 @@ def render_admin(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{t(lang, "admin_title")} – ABN Co-Navigator</title>
+<title>{t(lang, "admin_title")} – Change Navigator</title>
 <link rel="icon" type="image/png" href="/static/cn-icon-site-192.png">
 {font_import}
 <style>

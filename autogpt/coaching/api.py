@@ -1115,7 +1115,7 @@ def _login_page(error: str = "", active_tab: str = "password") -> str:
     return f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin Login – ABN Consulting</title>
+<title>Admin Login – Change Navigator</title>
 <link rel="icon" type="image/png" href="/static/cn-icon-site-192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1156,7 +1156,6 @@ input:focus{{border-color:#1a2b4a}}
 <div class="card">
   <div class="logo">
     <img src="/static/cn-logo-navy.svg" alt="Change Navigator logo">
-    <span class="logo-text">ABN Consulting</span>
   </div>
   <h1>Admin Login</h1>
   <p>Sign in to the coaching dashboard.</p>
@@ -1467,7 +1466,7 @@ def admin_wa_send_otp(body: _WaOtpRequest) -> JSONResponse:
     _otp_store[phone] = (otp, time.time() + 300)
 
     from autogpt.coaching.whatsapp_bot import _send_whatsapp_text
-    _send_whatsapp_text(to=phone, body=f"Your ABN Consulting admin OTP is: *{otp}*\nExpires in 5 minutes.")
+    _send_whatsapp_text(to=phone, body=f"Your Change Navigator admin OTP is: *{otp}*\nExpires in 5 minutes.")
     return JSONResponse({"ok": True})
 
 
@@ -2043,7 +2042,7 @@ def _register_link_notice(request: Request, invite_lang: Optional[str], title_ke
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="{lang}" {dir_attr}><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} – ABN Consulting</title>
+<title>{title} – Change Navigator</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -2098,7 +2097,7 @@ def register_page(request: Request, token: Optional[str] = Query(default=None)) 
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="{lang}" {dir_attr}><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} – ABN Consulting</title>
+<title>{title} – Change Navigator</title>
 <link rel="icon" type="image/png" href="/static/cn-icon-trainee-192.png">
 {'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700&display=swap" rel="stylesheet">' if is_rtl else ''}
 <style>
@@ -2133,7 +2132,6 @@ input:focus{{border-color:#1a2b4a}}
 <div class="card">
   <div class="logo">
     <img src="/static/cn-logo-navy.svg" alt="Change Navigator logo">
-    <div class="logo-text">ABN Consulting</div>
   </div>
   <h1>{title}</h1>
   <p>{subtitle}</p>
@@ -2276,7 +2274,7 @@ def login_page(
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign In – ABN Consulting</title>
+<title>Sign In – Change Navigator</title>
 <link rel="icon" type="image/png" href="/static/cn-icon-trainee-192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -2310,7 +2308,6 @@ p{{color:#6b7280;font-size:14px;margin-bottom:28px;line-height:1.5}}
 <div class="card">
   <div class="logo">
     <img src="/static/cn-logo-navy.svg" style="height:32px;width:auto" alt="Change Navigator logo">
-    <div class="logo-text">ABN Consulting</div>
   </div>
   <h1>Welcome back</h1>
   <p>Sign in to access your coaching dashboard and track your progress.</p>
@@ -2337,7 +2334,7 @@ def pending_page(request: Request) -> HTMLResponse:
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Registration Pending – ABN Consulting</title>
+<title>Registration Pending – Change Navigator</title>
 <link rel="icon" type="image/png" href="/static/cn-icon-trainee-192.png">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -2710,7 +2707,7 @@ def chat_page(request: Request) -> Response:
 <meta name="apple-mobile-web-app-title" content="Change Navigator">
 <link rel="manifest" href="/chat/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/static/cn-icon-trainee-apple-180.png">
-<title>AI Coaching Session – ABN Consulting</title>
+<title>AI Coaching Session – Change Navigator</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/cn-icon-trainee-192.png">
 <link rel="shortcut icon" href="/static/cn-icon-trainee-192.png">
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
