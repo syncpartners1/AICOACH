@@ -518,6 +518,8 @@
     }
   }
 
+  .lanes-grid.single-lane { max-width: 980px; margin-inline: auto; }
+  .save-log-btn { background: #16a34a !important; margin-inline-start: 10px; }
   .lane-card {
     background: #fff;
     border-radius: var(--radius-lg);
@@ -754,7 +756,7 @@
     color: var(--slate-700);
   }
 
-  .input-group input, .input-group textarea {
+  .input-group input, .input-group textarea, .input-group select {
     font-family: inherit;
     font-size: 13.5px;
     padding: 8px 12px;
@@ -765,7 +767,7 @@
     transition: border-color 0.15s;
   }
 
-  .input-group input:focus, .input-group textarea:focus {
+  .input-group input:focus, .input-group textarea:focus, .input-group select:focus {
     outline: none;
     border-color: var(--cyan-500);
     background: #fff;
@@ -1129,8 +1131,23 @@
       </div>
       <div class="log-grid">
         <div class="input-group">
+          <label>בחירת מתאמן פעיל מהמערכת</label>
+          <select id="logTraineeSelect" onchange="onTraineePicked(this)">
+            <option value="">בחר מתאמן פעיל</option>
+          </select>
+          <div id="logLinkStatus" style="font-size:11.5px;color:#b45309;margin-top:2px;">השם אינו מקושר לתיק מעקב, ניתן להעתיק בלבד</div>
+        </div>
+        <div class="input-group">
           <label>שם המתאמן / הזוג / היזם</label>
-          <input type="text" id="logClientName" placeholder="לדוגמה: דניאל / משפחת כהן">
+          <input type="text" id="logClientName" placeholder="לדוגמה: דניאל / משפחת כהן" oninput="onLogNameEdited()">
+        </div>
+        <div class="input-group">
+          <label>תאריך המפגש</label>
+          <input type="date" id="logSessionDate">
+        </div>
+        <div class="input-group">
+          <label>מספר מפגש (1-10)</label>
+          <input type="number" id="logMeetingNumber" min="1" max="10" placeholder="לדוגמה: 7" oninput="clearLogResult();updateLogSaveState()">
         </div>
         <div class="input-group">
           <label>מדד הצלחה (Key Result / יעד מספרי)</label>
@@ -1148,6 +1165,10 @@
       <button class="copy-btn" id="copyLogBtn" onclick="copyCaptainsLog()">
         <span>📋</span> העתק סיכום מפגש מוכן לשליחה
       </button>
+      <button class="copy-btn save-log-btn" id="saveLogBtn" onclick="saveLogToFile()" title="שמירה כתיעוד בתיק המעקב של המתאמן שנבחר">
+        <span>💾</span> שמור סיכום לתיק המעקב
+      </button>
+      <span id="saveLogMsg" style="font-size:12px;margin-inline-start:10px;color:var(--slate-600);"></span>
     </div>
 
     <div class="framework-card">
@@ -8012,6 +8033,10 @@ function renderTrackTabs() {
   const sel = document.getElementById("trackSelect");
   const meta = document.getElementById("trackMeta");
   sel.innerHTML = "";
+  const logDate = document.getElementById('logSessionDate');
+  if (logDate && !logDate.value) logDate.value = new Date().toISOString().slice(0, 10);
+  if (typeof updateLogSaveState === "function") updateLogSaveState();
+  if (typeof loadLogTrainees === "function") loadLogTrainees();
   COACHING_TRACKS.forEach(track => {
     const opt = document.createElement("option");
     opt.value = track.id;
@@ -8066,6 +8091,13 @@ function renderCurrentMap() {
 
   const lanesGrid = document.getElementById("lanesGrid");
   lanesGrid.innerHTML = "";
+  const laneCount = session.lanes.length;
+  if (window.matchMedia("(min-width: 1221px)").matches) {
+    lanesGrid.style.gridTemplateColumns = "repeat(" + Math.min(laneCount, 5) + ", 1fr)";
+  } else {
+    lanesGrid.style.gridTemplateColumns = "";
+  }
+  lanesGrid.classList.toggle("single-lane", laneCount === 1);
 
   session.lanes.forEach((lane, idx) => {
     const isActive = idx === activeLaneIdx;
@@ -8263,6 +8295,122 @@ function closeModalOnBackdrop(e, id) {
 // ============================================================================
 // CAPTAIN'S LOG & JSON EXPORT
 // ============================================================================
+
+let logLinkedUserId = null;
+let logLinkedName = "";
+let logSaveInFlight = false;
+function clearLogResult() {
+  const msg = document.getElementById('saveLogMsg');
+  delete msg.dataset.result;
+  msg.style.color = "var(--slate-600)";
+}
+function onTraineePicked(sel) {
+  clearLogResult();
+  const parts = sel.value ? sel.value.split("|") : [];
+  logLinkedUserId = parts.length === 2 ? parts[0] : null;
+  logLinkedName = parts.length === 2 ? parts[1] : "";
+  if (logLinkedUserId) document.getElementById('logClientName').value = logLinkedName;
+  updateLogSaveState();
+}
+function onLogNameEdited() {
+  clearLogResult();
+  if (document.getElementById('logClientName').value !== logLinkedName) {
+    logLinkedUserId = null;
+    document.getElementById('logTraineeSelect').selectedIndex = 0;
+  }
+  updateLogSaveState();
+}
+function updateLogSaveState() {
+  const linked = !!logLinkedUserId;
+  const meetingEl = document.getElementById('logMeetingNumber');
+  const meeting = meetingEl ? parseInt(meetingEl.value, 10) : NaN;
+  const hasMeeting = Number.isInteger(meeting) && meeting >= 1 && meeting <= 10;
+  const st = document.getElementById('logLinkStatus');
+  const btn = document.getElementById('saveLogBtn');
+  const msg = document.getElementById('saveLogMsg');
+  if (linked) {
+    st.textContent = "✔ מקושר לתיק המעקב של: " + logLinkedName;
+    st.style.color = "#15803d";
+  } else {
+    st.textContent = "השם אינו מקושר לתיק מעקב, ניתן להעתיק בלבד";
+    st.style.color = "#b45309";
+  }
+  const canSave = linked && hasMeeting && !logSaveInFlight;
+  btn.disabled = !canSave;
+  btn.style.opacity = canSave ? "1" : ".55";
+  if (!msg.dataset.result) {
+    if (!linked) msg.textContent = "בחירת מתאמן מהרשימה ומספר מפגש נדרשים לשמירה";
+    else if (!hasMeeting) msg.textContent = "יש להזין מספר מפגש (1-10) לשמירה";
+    else msg.textContent = "יישמר כתיעוד מפגש " + meeting + "; מספר גבוה מהנוכחי מקדם את שלב המתאמן.";
+  }
+}
+function loadLogTrainees() {
+  const sel = document.getElementById('logTraineeSelect');
+  if (!sel) return;
+  fetch('/admin/active-trainees').then(r => r.ok ? r.json() : []).then(users => {
+    (users || [])
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he'))
+      .forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.user_id + '|' + (u.name || '');
+        opt.textContent = u.name || u.user_id;
+        sel.appendChild(opt);
+      });
+  }).catch(() => {});
+}
+function saveLogToFile() {
+  if (logSaveInFlight || !logLinkedUserId) return;
+  const btn = document.getElementById('saveLogBtn');
+  const msg = document.getElementById('saveLogMsg');
+  const meeting = parseInt(document.getElementById('logMeetingNumber').value, 10);
+  const metric = document.getElementById('logMetric').value.trim();
+  const insight = document.getElementById('logInsight').value.trim();
+  const action = document.getElementById('logAction').value.trim();
+  const sessionDate = document.getElementById('logSessionDate').value || new Date().toISOString().slice(0, 10);
+  const payload = {
+    session_date: sessionDate,
+    meeting_number: meeting,
+    summary_for_coach: insight,
+    focus_goal: metric,
+    assignments: action ? [{description: action}] : [],
+    skip_okr_extraction: true
+  };
+  logSaveInFlight = true;
+  btn.disabled = true; btn.style.opacity = ".55";
+  msg.textContent = "שומר...";
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  fetch('/admin/users/' + encodeURIComponent(logLinkedUserId) + '/sessions', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+    signal: ctrl.signal
+  }).then(r => {
+    clearTimeout(timer);
+    logSaveInFlight = false;
+    if (r.ok) {
+      r.json().then(data => {
+        const pu = (data && data.phase_update) || {};
+        const phaseTxt = pu.changed ? " שלב המתאמן עודכן." : " שלב המתאמן לא השתנה.";
+        msg.dataset.result = "1";
+        msg.style.color = "#15803d";
+        msg.textContent = "✔ נשמר בתיק המעקב של " + logLinkedName + " כמפגש " + meeting + "." + phaseTxt;
+        btn.disabled = false; btn.style.opacity = "1";
+      });
+    } else {
+      msg.dataset.result = "1";
+      msg.style.color = "#b91c1c";
+      msg.textContent = "השמירה נכשלה (שגיאה " + r.status + "). הנתונים נשארו, ניתן לנסות שוב.";
+      btn.disabled = false; btn.style.opacity = "1";
+      updateLogSaveState();
+    }
+  }).catch(() => {
+    clearTimeout(timer);
+    msg.dataset.result = "1";
+    msg.style.color = "#b45309";
+    msg.textContent = "תוצאת השמירה לא ידועה. בדוק בתיק המעקב לפני ניסיון חוזר כדי למנוע כפילות.";
+  });
+}
 
 function copyCaptainsLog() {
   const track = COACHING_TRACKS.find(t => t.id === currentTrackId);

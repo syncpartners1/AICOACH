@@ -209,6 +209,7 @@ app.include_router(_work_order_contract_router)
 from autogpt.coaching.work_order_mail import router as _work_order_mail_router  # noqa: E402
 app.include_router(_work_order_mail_router)
 from autogpt.coaching.funnel import router as _funnel_router  # noqa: E402
+from autogpt.coaching.work_orders import _admin as _work_orders_admin  # noqa: E402
 app.include_router(_funnel_router)
 from autogpt.coaching.join_invites import router as _join_invites_router  # noqa: E402
 app.include_router(_join_invites_router)
@@ -1499,6 +1500,14 @@ def admin_list_users(
     return get_all_users_progress(limit=limit, offset=offset)
 
 
+@app.get("/admin/active-trainees", include_in_schema=False)
+def admin_active_trainees(_: None = Depends(_work_orders_admin)) -> List[Dict[str, str]]:
+    """Cookie-authed id+name list of active trainees for the Captain's Log save UI."""
+    return [{"user_id": u.user_id, "name": u.name}
+            for u in get_all_users_progress(limit=500)
+            if u.account_status == AccountStatus.ACTIVE]
+
+
 @app.put("/admin/users/{user_id}/status", response_model=dict,
          summary="Admin: set a user's account status (active / suspended / archived)")
 def admin_set_user_status(
@@ -1731,6 +1740,9 @@ class _ManualSessionBody(BaseModel):
     assignments: List[_AssignmentInput] = Field(default_factory=list, max_length=10)
     leading_value_snapshot: str = Field(default="", max_length=500)
     focus_goal: str = Field(default="", max_length=500)
+    # When true, saves the record without running the paid OKR extraction call.
+    # Default False preserves the existing dashboard 1:1 behavior exactly.
+    skip_okr_extraction: bool = False
 
 
 @app.put("/admin/sessions/{session_id}/notes", summary="Admin: add/update coach notes on a session")
@@ -1810,7 +1822,7 @@ def admin_create_manual_session(
     # Propose OKR mutations from the coach's summary for dashboard approval.
     # Extraction must never fail the session save - empty means "no proposals".
     proposed: List[Dict[str, Any]] = []
-    if body.summary_for_coach.strip():
+    if body.summary_for_coach.strip() and not body.skip_okr_extraction:
         try:
             from autogpt.coaching.session import extract_okr_changes_from_summary_text
             objectives = get_user_objectives(user_id)
