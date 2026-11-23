@@ -45,8 +45,14 @@ def test_session_maps_has_no_external_references(monkeypatch):
     r = c.get("/admin/session-maps")
     assert r.status_code == 200
     for marker in ("fonts.googleapis.com", "fonts.gstatic.com", "<iframe", "<img",
-                   "localStorage", "sessionStorage", "XMLHttpRequest", "fetch("):
+                   "localStorage", "sessionStorage", "XMLHttpRequest"):
         assert marker not in r.text, marker
+    # The Captain's Log save calls the admin API; every call must stay same-origin.
+    import re
+    calls = re.findall(r"""fetch\(['\"]([^'\"]+)""", r.text)
+    assert calls, "expected same-origin admin API calls"
+    for url in calls:
+        assert url.startswith("/admin/"), url
 
 
 def test_session_maps_file_outside_public_static():
@@ -66,3 +72,29 @@ def test_default_track_id_exists_in_tracks():
     m = re.search(r'let currentTrackId = "([^"]+)"', html)
     assert m, "default track id not found"
     assert f'"id": "{m.group(1)}"' in html, f"default track {m.group(1)} not a real track"
+
+
+def test_captains_log_save_ui_and_wide_layout(monkeypatch):
+    c = _client(monkeypatch)
+    r = c.get("/admin/session-maps")
+    assert r.status_code == 200
+    page = r.text
+    # Active-trainee select fed from the live admin users list, no hardcoded names.
+    assert 'id="logTraineeSelect"' in page
+    assert "fetch('/admin/active-trainees')" in page
+    assert "u-demo" not in page
+    # Numbered meeting input and the inline phase notice.
+    assert 'id="logMeetingNumber"' in page
+    assert "מקדם את שלב המתאמן" in page
+    # Save posts a manual session with the paid extraction explicitly skipped.
+    assert "function saveLogToFile()" in page
+    assert "'/admin/users/' + encodeURIComponent(logLinkedUserId) + '/sessions'" in page
+    assert "skip_okr_extraction: true" in page
+    # Stale-target protection: manual name edit breaks the link and disables save.
+    assert "function onLogNameEdited()" in page
+    assert "logLinkedUserId = null" in page
+    # Unknown-result state warns to check the tracking file before retrying.
+    assert "תוצאת השמירה לא ידועה" in page
+    # Wide desktop layout: single-lane tools render centered, not in 1/5 column.
+    assert ".lanes-grid.single-lane" in page
+    assert "single-lane" in page

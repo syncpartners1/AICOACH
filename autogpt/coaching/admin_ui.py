@@ -249,7 +249,7 @@ tbody tr{{border-bottom:1px solid #f3f4f6}}
 thead th.col-name{{background:#f9fafb}}
 tbody tr:hover td.col-name{{background:#f9fafb}}
 .tbl-hint{{display:none;font-size:11px;color:#6b7280;padding:8px 12px 0;text-align:center}}
-.hdr-menu{{display:none;position:relative}}
+.hdr-menu{{position:relative}}
 .hdr-menu summary{{list-style:none;cursor:pointer;font-size:13px;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 12px;border-radius:8px;user-select:none;white-space:nowrap}}
 .hdr-menu summary::-webkit-details-marker{{display:none}}
 .hdr-menu nav{{position:absolute;inset-inline-end:0;top:calc(100% + 8px);background:#1a2b4a;border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:8px;display:flex;flex-direction:column;min-width:220px;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.3)}}
