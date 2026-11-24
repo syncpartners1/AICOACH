@@ -15,7 +15,9 @@ NAME = "מירית דגן"
 def test_lead_link_defaults_to_public_booking_page():
     assert coaching_config.booking_page_url == "https://meet.changenavigator.co.il"
     assert mail.BOOKING_URL == coaching_config.booking_page_url
-    assert wq.BOOKING_URL == mail.BOOKING_URL
+    assert wq.DIAGNOSTIC_BOOKING_URL == mail.DIAGNOSTIC_BOOKING_URL
+    assert coaching_config.diagnostic_booking_page_url == "https://meet.changenavigator.co.il/?type=diagnostic_60"
+    assert mail.DIAGNOSTIC_BOOKING_URL == coaching_config.diagnostic_booking_page_url
 
 
 def test_no_raw_cloud_run_host_in_lead_modules():
@@ -45,7 +47,7 @@ def test_background_notification_gets_the_public_url():
             patch.object(mail, "send_lead_response", return_value=True), \
             patch.object(mail, "send_qualify_notification", return_value=True) as notify:
         wq._process_coaching_qualify_background(payload, "PASS", "11111111-1111-4111-8111-111111111111")
-    assert notify.call_args.kwargs["booking_url"] == "https://meet.changenavigator.co.il"
+    assert notify.call_args.kwargs["booking_url"] == "https://meet.changenavigator.co.il/?type=diagnostic_60"
 
 
 def test_bot_pass_message_uses_encoded_public_link():

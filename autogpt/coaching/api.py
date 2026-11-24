@@ -3710,9 +3710,14 @@ body .cn-hdr{background:#032b7d}
   <button class="btn-submit" id="submitBtn" onclick="submitForm()">שליחת השאלון ←</button>
   <div class="err" id="errMsg"></div>
 </div>
-<div class="thanks" id="thanksMsg">
-  <h2>תודה! ✓</h2>
-  <p>השאלון התקבל. עדי יבדוק את הפנייה ויחזור אליך לגבי השלב הבא.</p>
+<div class="thanks" id="thanksPass" style="display:none">
+  <h2>הפרטים נשלחו ✓</h2>
+  <p>התשובות שלך עומדות בתנאי השאלון. מומלץ ללחוץ על הקישור לקביעת פגישת אבחון ללא עלות וללא התחייבות.</p>
+  <p><a class="btn-submit" id="passLink" href="#" style="display:inline-block;text-decoration:none;margin-top:8px">לקביעת פגישת אבחון ←</a></p>
+</div>
+<div class="thanks" id="thanksOther" style="display:none">
+  <h2>הפרטים נשלחו ✓</h2>
+  <p>השאלון התקבל. ההמלצה היא לקיים שיחה מקדימה קצרה כדי להבין יחד את הצורך ואת הכיוון המתאים.</p>
 </div>
 <script>
 function normPhone(raw){
@@ -3759,15 +3764,27 @@ function submitForm(){
   fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
   .then(function(r){
     if(r.ok){
-      window.scrollTo(0,0);
-      document.getElementById('form-wrap').style.display='none';
-      document.getElementById('thanksMsg').style.display='block';
+      return r.json().then(function(d){
+        var v=d&&d.verdict;
+        if(!d||d.status!=='ok'||['PASS','BORDERLINE','FAIL'].indexOf(v)<0){
+          throw new Error('Invalid submission acknowledgement');
+        }
+        if(v==='PASS'){
+          var link=new URL(__DIAG_URL__);
+          link.searchParams.set('name',q8);
+          document.getElementById('passLink').href=link.toString();
+        }
+        window.scrollTo(0,0);
+        document.getElementById('form-wrap').style.display='none';
+        document.getElementById(v==='PASS'?'thanksPass':'thanksOther').style.display='block';
+      });
     }
     else{r.text().then(function(t){err.textContent=r.status===422&&t.indexOf('phone')>=0?'מספר הטלפון אינו תקין':'שגיאה: '+t;err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});}
   }).catch(function(){err.textContent='בעיית תקשורת. נסה/י שוב.';err.style.display='block';btn.disabled=false;btn.textContent='שליחת השאלון ←';});
 }
 </script>
 </body></html>"""
+    html = html.replace("__DIAG_URL__", json.dumps(coaching_config.diagnostic_booking_page_url).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
     return HTMLResponse(content=apply_theme(html, logo_url="/static/cn-logo-white.svg"))
 
 
@@ -3817,8 +3834,8 @@ textarea{resize:vertical;min-height:70px}
 .hint{font-size:12px;color:#64748b;margin-top:4px}
 </style></head>
 <body>
-<h2>Coaching Program Readiness Evaluation</h2>
-<p class="sub">4 minutes. 7 questions. So we can get to know you before the discovery call.</p>
+<h2>Questionnaire before a free, no-obligation diagnostic meeting</h2>
+<p class="sub">4 minutes. 7 questions. So we can get to know you before the diagnostic meeting.</p>
 <div id="form-wrap">
   <div class="section">
     <h3>Context</h3>
@@ -3879,9 +3896,14 @@ textarea{resize:vertical;min-height:70px}
   <button class="btn-submit" id="submitBtn" onclick="submitForm()">Submit Questionnaire &rarr;</button>
   <div class="err" id="errMsg"></div>
 </div>
-<div class="thanks" id="thanksMsg">
-  <h2>Thank you! &#10003;</h2>
-  <p>Your questionnaire has been received.<br>Adi will be in touch within 24 hours with the next step.</p>
+<div class="thanks" id="thanksPass" style="display:none">
+  <h2>Details sent &#10003;</h2>
+  <p>Your answers meet the questionnaire conditions. We recommend clicking the link to book a free, no-obligation diagnostic meeting.</p>
+  <p><a class="btn-submit" id="passLink" href="#" style="display:inline-block;text-decoration:none;margin-top:8px">Book your diagnostic meeting &larr;</a></p>
+</div>
+<div class="thanks" id="thanksOther" style="display:none">
+  <h2>Details sent &#10003;</h2>
+  <p>The questionnaire was received. The recommendation is to hold a short preliminary conversation to understand the need and the right direction together.</p>
 </div>
 <script>
 function normPhone(raw){
@@ -3928,15 +3950,27 @@ function submitForm(){
   fetch('/coaching-qualify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
   .then(function(r){
     if(r.ok){
-      window.scrollTo(0,0);
-      document.getElementById('form-wrap').style.display='none';
-      document.getElementById('thanksMsg').style.display='block';
+      return r.json().then(function(d){
+        var v=d&&d.verdict;
+        if(!d||d.status!=='ok'||['PASS','BORDERLINE','FAIL'].indexOf(v)<0){
+          throw new Error('Invalid submission acknowledgement');
+        }
+        if(v==='PASS'){
+          var link=new URL(__DIAG_URL__);
+          link.searchParams.set('name',q8);
+          document.getElementById('passLink').href=link.toString();
+        }
+        window.scrollTo(0,0);
+        document.getElementById('form-wrap').style.display='none';
+        document.getElementById(v==='PASS'?'thanksPass':'thanksOther').style.display='block';
+      });
     }
     else{r.text().then(function(t){err.textContent=r.status===422&&t.indexOf('phone')>=0?'Please enter a valid phone number':'Error: '+t;err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});}
   }).catch(function(){err.textContent='Connection error. Please try again.';err.style.display='block';btn.disabled=false;btn.textContent='Submit Questionnaire \u2192';});
 }
 </script>
 </body></html>"""
+    html = html.replace("__DIAG_URL__", json.dumps(coaching_config.diagnostic_booking_page_url).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
     return HTMLResponse(content=apply_theme(html))
 
 
