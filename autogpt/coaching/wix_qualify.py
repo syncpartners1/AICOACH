@@ -12,7 +12,7 @@ from typing import Optional, Tuple
 
 import requests
 from pydantic import BaseModel, field_validator
-from autogpt.coaching.gmail_service import BOOKING_URL, send_qualify_notification, send_lead_response
+from autogpt.coaching.gmail_service import DIAGNOSTIC_BOOKING_URL, send_qualify_notification, send_lead_response
 from autogpt.coaching.phone import normalize_phone
 
 logger = logging.getLogger(__name__)
@@ -249,7 +249,7 @@ def _process_coaching_qualify_background(payload: CoachingQualPayload, verdict: 
                                if str(v).strip().lower() in ("yes", "כן", "true", "1")),
             verdict      = verdict,
             clickup_url  = clickup or "",
-            booking_url  = BOOKING_URL,
+            booking_url  = DIAGNOSTIC_BOOKING_URL,
         )
     except Exception as exc:
         logger.error('Coach notification failed for submission %s (%s)',

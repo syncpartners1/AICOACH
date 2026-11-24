@@ -32,9 +32,9 @@ def test_booking_name_query_is_encoded_without_losing_existing_params():
 
 
 def test_pass_link_uses_configured_booking_url():
-    with patch.object(mail,'BOOKING_URL','https://meet.test/?type=intro'),patch.object(mail,'_send') as send:
+    with patch.object(mail,'DIAGNOSTIC_BOOKING_URL','https://meet.test/?type=diagnostic_60'),patch.object(mail,'_send') as send:
         assert mail.send_lead_response('A & B','person@example.test','PASS')
-    text=body(send.call_args.args[0]);assert 'https://meet.test/?type=intro&name=A+%26+B' in text
+    text=body(send.call_args.args[0]);assert 'https://meet.test/?type=diagnostic_60&name=A+%26+B' in text
 
 
 @pytest.mark.parametrize('verdict',['PASS','BORDERLINE','FAIL'])
@@ -46,7 +46,7 @@ def test_coach_destination_and_copy(verdict):
     assert 'abn@ben-nesher.com' not in msg.as_string()
     assert 'Change Navigator' in msg['Subject'] and 'ליד חדש' in text
     assert '???' not in text and 'יצירת המשימה לא אושרה' in text
-    assert ('קישור לשיחה ראשונית:' in text)==(verdict=='PASS')
+    assert ('קישור לפגישת אבחון:' in text)==(verdict=='PASS')
 
 
 def test_lead_failure_reports_false_without_resend():
@@ -60,3 +60,35 @@ def test_invalid_input_no_send(email,verdict):
     with patch.object(mail,'_send') as send:
         assert mail.send_lead_response('Name',email,verdict) is False
     send.assert_not_called()
+
+
+def test_pass_invites_direct_diagnostic_booking():
+    with patch.object(mail,'_send') as send:
+        assert mail.send_lead_response('דוגמה פלונית','person@example.test','PASS')
+    msg=send.call_args.args[0];text=body(msg)
+    assert 'הזמנה לפגישת אבחון' in msg['Subject']
+    assert 'מוכנות לפגישת אבחון' in text and 'ללא עלות וללא התחייבות' in text
+    assert 'לקביעת פגישת האבחון:' in text
+    link=next(w for w in text.split() if w.startswith('https://'))
+    q=parse_qs(urlsplit(link).query)
+    assert urlsplit(link).netloc=='meet.changenavigator.co.il'
+    assert q.get('type')==['diagnostic_60'] and q.get('name')==['דוגמה פלונית']
+
+
+@pytest.mark.parametrize('verdict',['PASS','BORDERLINE','FAIL'])
+def test_no_initial_call_stage_in_any_copy(verdict):
+    with patch.object(mail,'_send') as send:
+        assert mail.send_lead_response('שם','person@example.test',verdict)
+    text=body(send.call_args.args[0])
+    assert 'שיחה ראשונית' not in text and 'שיחת היכרות' not in text
+
+
+@pytest.mark.parametrize("verdict", ["BORDERLINE", "FAIL"])
+def test_nonpass_recommends_preliminary_conversation_without_link_or_decline(verdict):
+    with patch.object(mail,'_send') as send:
+        assert mail.send_lead_response('שם','person@example.test',verdict)
+    msg=send.call_args.args[0];text=body(msg)
+    assert 'השאלון שלך התקבל' in msg['Subject']
+    assert 'הפרטים שלך נשלחו והתקבלו' in text and 'שיחה מקדימה' in text
+    assert 'http' not in text
+    assert 'לא הזמן המתאים' not in text and 'לחזור לשאלון' not in text

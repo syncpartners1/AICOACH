@@ -65,6 +65,8 @@ class CoachingConfig(metaclass=Singleton):
         # Scheduler (GCP Cloud Run calendar booking service)
         # Public booking page opened from the leads screen (not the scheduler API host).
         self.booking_page_url: str = os.getenv("BOOKING_PAGE_URL", "https://meet.changenavigator.co.il")
+        # Diagnostic-funnel booking page: deep link that preselects the hidden free diagnostic meeting
+        self.diagnostic_booking_page_url: str = os.getenv("DIAGNOSTIC_BOOKING_PAGE_URL", "https://meet.changenavigator.co.il/?type=diagnostic_60")
         self.scheduler_url: str = os.getenv("SCHEDULER_URL", "https://change-navigator-scheduler-972564781508.me-west1.run.app")
         self.scheduler_api_key: str = os.getenv("SCHEDULER_API_KEY", "")
         self.scheduler_timezone: str = os.getenv("SCHEDULER_TIMEZONE", "Asia/Jerusalem")

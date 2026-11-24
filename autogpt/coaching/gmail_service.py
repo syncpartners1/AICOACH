@@ -17,6 +17,8 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
 # Public booking page for leads (BOOKING_PAGE_URL, default https://meet.changenavigator.co.il).
 # SCHEDULER_URL is the scheduler API base, not a page a person can open.
 BOOKING_URL = coaching_config.booking_page_url
+# Qualify PASS leads get the diagnostic deep link (preselects the hidden diagnostic meeting type)
+DIAGNOSTIC_BOOKING_URL = coaching_config.diagnostic_booking_page_url
 
 
 def _send(msg: MIMEMultipart) -> None:
@@ -54,11 +56,11 @@ def send_qualify_notification(
 ) -> bool:
     """Notify Adi of a saved lead; True means SMTP acceptance, not inbox delivery."""
     label = {
-        "PASS": "5 תשובות כן - אפשר להזמין לשיחה ראשונית",
-        "BORDERLINE": "3-4 תשובות כן - נדרשת בדיקה שלך",
-        "FAIL": "0-2 תשובות כן - לא בשל כרגע",
+        "PASS": "5 תשובות כן - אפשר להזמין לפגישת אבחון",
+        "BORDERLINE": "3-4 תשובות כן - מומלצת שיחה מקדימה",
+        "FAIL": "0-2 תשובות כן - מומלצת שיחה מקדימה",
     }.get(verdict, verdict)
-    booking_line = ("\nקישור לשיחה ראשונית: " + _booking_link(booking_url, lead_name)
+    booking_line = ("\nקישור לפגישת אבחון: " + _booking_link(booking_url, lead_name)
                     if verdict == "PASS" else "")
     body = _coaching_body(f"""ליד חדש - Change Navigator
 
@@ -116,20 +118,16 @@ def send_lead_response(lead_name: str, lead_email: str, verdict: str) -> bool:
         return False
     greeting = f"שלום {lead_name},\n\nתודה שמילאת את שאלון המוכנות של Change Navigator.\n\n"
     if verdict == "PASS":
-        subject = f"Change Navigator | הזמנה לשיחה ראשונית - {lead_name}"
-        text = ("התשובות שלך מצביעות על מוכנות לשיחה ראשונית.\n"
-                "אני מזמין אותך לשיחה של 30 דקות כדי להכיר, להבין את הצורך שלך ולבדוק התאמה.\n"
-                "השיחה אינה הרשמה לתוכנית האימון.\n\n"
-                "לקביעת השיחה:\n" + _booking_link(BOOKING_URL, lead_name))
-    elif verdict == "BORDERLINE":
+        subject = f"Change Navigator | הזמנה לפגישת אבחון - {lead_name}"
+        text = ("הפרטים שלך נשלחו והתקבלו.\n"
+                "התשובות שלך מצביעות על מוכנות לפגישת אבחון.\n"
+                "אני מזמין אותך לפגישת אבחון מקוונת, ללא עלות וללא התחייבות.\n"
+                "הפגישה אינה הרשמה לתוכנית האימון.\n\n"
+                "לקביעת פגישת האבחון:\n" + _booking_link(DIAGNOSTIC_BOOKING_URL, lead_name))
+    elif verdict in ("BORDERLINE", "FAIL"):
         subject = f"Change Navigator | השאלון שלך התקבל - {lead_name}"
-        text = ("השאלון שלך התקבל לבדיקה שלי.\n"
-                "נדרשת בדיקה נוספת של ההתאמה לפני הזמנה לשיחה ראשונית.\n"
-                "מילוי השאלון אינו הרשמה לתוכנית האימון.")
-    elif verdict == "FAIL":
-        subject = f"Change Navigator | תודה על מילוי השאלון - {lead_name}"
-        text = ("לפי התשובות שלך, ייתכן שזה עדיין לא הזמן המתאים לתהליך אימון.\n"
-                "אפשר לחזור לשאלון כשהצורך והאפשרות להתחייב לתהליך יהיו ברורים יותר.\n"
+        text = ("הפרטים שלך נשלחו והתקבלו.\n"
+                "ההמלצה שלי היא לקיים שיחה מקדימה קצרה כדי להבין יחד את הצורך ואת הכיוון המתאים.\n"
                 "מילוי השאלון אינו הרשמה לתוכנית האימון.")
     else:
         logger.error("Lead response skipped: unsupported verdict")
