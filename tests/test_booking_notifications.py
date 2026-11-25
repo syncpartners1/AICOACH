@@ -96,7 +96,7 @@ def test_ui_escaped_read_status_and_warning():
     html=b.render_bookings([row],1,2,True)
     assert '&lt;script&gt;' in html and '&lt;img' in html
     assert 'אין שליחה חוזרת אוטומטית' in html and '?page=1' in html and '?page=3' in html
-    assert 'שינוי או ביטול בהמשך אינו משתקף כאן' in html
+    assert 'שינוי או ביטול ביומן אינו מסתנכרן לכאן אוטומטית' in html
     assert '15:00' in html and 'סימון כנקרא' in html
 
 
@@ -181,3 +181,73 @@ def test_booking_mark_read_accepts_public_origin_and_logs_rejection(caplog):
         for bad in ('null','','https://app.changenavigator.co.il.evil.example','http://app.changenavigator.co.il'):
             assert client.post('/admin/booking-notifications/evt_1/read',headers={'Origin':bad} if bad else {}).status_code==403
     assert 'origin guard rejected' in caplog.text
+
+@pytest.mark.parametrize('value',['held','cancelled','needs_booking','unset'])
+def test_status_all_values(value):
+    assert b.MeetingStatusChange(meeting_status=value,expected_revision=0).meeting_status==value
+
+@pytest.mark.parametrize('value',['read','accepted','<script>',None])
+def test_status_invalid_values(value):
+    with pytest.raises(ValueError):b.MeetingStatusChange(meeting_status=value,expected_revision=0)
+
+
+def test_status_saved_with_audit_in_one_transaction():
+    cur=MagicMock();cur.fetchone.return_value={'meeting_status':'unset','status_revision':2};events=[]
+    with patch.object(b,'get_db_cursor',side_effect=lambda **kw:cursor(cur,events,**kw)):
+        result=b.save_meeting_status('evt_1',b.MeetingStatusChange(meeting_status='held',expected_revision=2))
+    assert result=={'ok':True,'changed':True,'revision':3}
+    assert events==['commit']
+    assert 'FOR UPDATE' in cur.execute.call_args_list[0].args[0]
+    assert cur.execute.call_args_list[1].args[1]==('held',3,'evt_1')
+    assert cur.execute.call_args_list[2].args[1]==('evt_1','unset','held',3)
+    all_sql=' '.join(c.args[0] for c in cur.execute.call_args_list)
+    for forbidden in ['coaching_sessions','coaching_lead_stage','email_state=','read_at=','user_profiles']:assert forbidden not in all_sql
+
+
+def test_status_stale_conflict_no_write():
+    cur=MagicMock();cur.fetchone.return_value={'meeting_status':'cancelled','status_revision':3}
+    with patch.object(b,'get_db_cursor',side_effect=lambda **kw:cursor(cur,**kw)):
+        with pytest.raises(HTTPException) as e:b.save_meeting_status('evt_1',b.MeetingStatusChange(meeting_status='held',expected_revision=2))
+    assert e.value.status_code==409 and cur.execute.call_count==1
+
+
+def test_status_idempotent_current_value_no_audit():
+    cur=MagicMock();cur.fetchone.return_value={'meeting_status':'held','status_revision':3}
+    with patch.object(b,'get_db_cursor',side_effect=lambda **kw:cursor(cur,**kw)):
+        assert b.save_meeting_status('evt_1',b.MeetingStatusChange(meeting_status='held',expected_revision=3))['changed'] is False
+    assert cur.execute.call_count==1
+
+
+def test_status_missing_no_write():
+    cur=MagicMock();cur.fetchone.return_value=None
+    with patch.object(b,'get_db_cursor',side_effect=lambda **kw:cursor(cur,**kw)):
+        with pytest.raises(HTTPException) as e:b.save_meeting_status('missing',b.MeetingStatusChange(meeting_status='held',expected_revision=0))
+    assert e.value.status_code==404 and cur.execute.call_count==1
+
+
+def test_status_route_auth_origin_validation_and_failure():
+    from autogpt.coaching import api
+    client=TestClient(api.app);url='/admin/booking-notifications/evt_1/meeting-status'
+    data={'meeting_status':'held','expected_revision':0};headers={'Origin':'https://app.changenavigator.co.il'}
+    with patch.object(api,'_is_admin_authenticated',return_value=False),patch.object(b,'save_meeting_status') as save:
+        assert client.post(url,json=data,headers=headers).status_code==403;save.assert_not_called()
+    with patch.object(api,'_is_admin_authenticated',return_value=True),patch.object(b,'save_meeting_status',return_value={'ok':True}) as save:
+        assert client.post(url,json=data).status_code==403
+        assert client.post(url,json=data,headers={'Origin':'https://evil.invalid'}).status_code==403
+        assert client.post(url,json={**data,'meeting_status':'bad'},headers=headers).status_code==422
+        assert client.post(url,json={**data,'expected_revision':-1},headers=headers).status_code==422
+        assert client.post(url,json=data,headers=headers).status_code==200
+        assert save.call_count==1
+    with patch.object(api,'_is_admin_authenticated',return_value=True),patch.object(b,'save_meeting_status',side_effect=RuntimeError):
+        assert client.post(url,json=data,headers=headers).status_code==503
+
+
+def test_status_ui_b_rule_and_separate_read_email_state():
+    row=dict(event_id='evt_1',payload=booking().model_dump(mode='json'),read_at=None,email_state='accepted',meeting_status='cancelled',status_revision=7)
+    html=b.render_bookings([row],1)
+    assert 'ClickUp' not in html
+    assert 'value="cancelled" selected' in html and 'data-revision="7"' in html
+    assert 'ספירה דורשת סיכום 1:1' in html
+    assert 'אינו משנה או מבטל אירוע ביומן ואינו שולח הודעות' in html
+    assert 'סימון כנקרא' in html and 'המייל התקבל בשרת השליחה' in html
+    assert 'מצב המפגש לא נשמר' in html and 'המצב השתנה בחלון אחר' in html
