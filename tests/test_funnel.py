@@ -1,5 +1,6 @@
 """Funnel screen: read-only, admin only, stages derived from linked rows."""
 import re
+import pytest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,12 @@ from autogpt.coaching.api import app, coaching_config, _admin_token
 from autogpt.coaching.funnel import EMPTY, FULL, PARTIAL, derive_stages
 
 PID = "11111111-1111-4111-8111-111111111111"
+
+
+@pytest.fixture(autouse=True)
+def source_read_stubs(monkeypatch):
+    monkeypatch.setattr(funnel.invite_safety, 'list_sources', lambda: {})
+    monkeypatch.setattr(funnel.invite_safety, 'invitation_options', lambda pid: {'source':'unset','revision':'r','existing':None})
 
 
 def st(facts, n):
@@ -130,7 +137,7 @@ def test_page_has_search_stage_filter_and_no_write_controls(monkeypatch):
 def test_module_writes_only_to_the_marks_and_notes_tables_and_the_sync_call():
     src = Path(funnel.__file__).read_text()
     assert not re.search(r"\b(DELETE FROM|DROP|ALTER|TRUNCATE)\b", src)
-    assert re.findall(r"INSERT INTO (\w+)", src) == ["person_marks", "person_notes", "join_invites_pending"]
+    assert re.findall(r"INSERT INTO (\w+)", src) == ["person_marks", "person_notes"]
     assert re.findall(r"UPDATE (\w+) SET (\w+)", src) == [("person_notes", "hidden")]  # a note is hidden, never deleted
     assert src.count("sync_people()") >= 1
 
@@ -394,37 +401,30 @@ def invite_db(calls, order=None, status=None, created=1):
 ORDER = {"customer_name": "דנה כהן", "customer_email": "dana@client.co.il", "customer_phone": "+972501234567"}
 
 
-def test_prepare_invite_needs_admin_and_origin_and_a_work_order_email(monkeypatch):
+def test_prepare_requires_admin_origin_and_explicit_body(monkeypatch):
     c = client(monkeypatch)
-    url = "/admin/funnel/person/%s/prepare-invite" % PID
-    calls = []
-    assert TestClient(app).post(url).status_code == 403
-    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db(calls, order=ORDER)):
-        assert c.post(url).status_code == 403  # no origin header
-    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db(calls, order=None)):
-        assert c.post(url, headers=ORIGIN).status_code == 400  # no work order, nothing is guessed
-    bad = dict(ORDER, customer_email="x@example.com")
-    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db(calls, order=bad)):
-        assert c.post(url, headers=ORIGIN).status_code == 400  # reserved test domain
-    assert calls == []
+    url = '/admin/funnel/person/%s/prepare-invite' % PID
+    body = {'email':'dana@client.co.il','confirmed':True,'revision':'r'}
+    with patch.object(funnel.invite_safety, 'prepare', return_value={'ok':True,'created':True}) as prepare:
+        assert TestClient(app).post(url,json=body).status_code == 403
+        assert c.post(url,json=body).status_code == 403
+        assert c.post(url,headers=ORIGIN).status_code == 422
+        assert prepare.call_count == 0
+        assert c.post(url,json=body,headers=ORIGIN).status_code == 200
+        prepare.assert_called_once_with(PID,'dana@client.co.il',True,'r')
 
 
-def test_prepare_invite_inserts_one_pending_row_with_the_work_order_email_and_sends_nothing(monkeypatch):
+def test_source_change_needs_admin_origin_and_valid_person(monkeypatch):
     c = client(monkeypatch)
-    calls = []
-    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db(calls, order=ORDER)), \
-         patch("autogpt.coaching.email_service.send_invite_email") as send, \
-         patch("autogpt.coaching.storage.create_invite") as create:
-        r = c.post("/admin/funnel/person/%s/prepare-invite" % PID, headers=ORIGIN)
-        assert r.status_code == 200 and r.json()["created"] is True and r.json()["email"] == "dana@client.co.il"
-        assert send.call_count == 0 and create.call_count == 0  # approving and sending is the next change
-    sql, params, commit = calls[0]
-    assert commit is True and "ON CONFLICT (person_id) WHERE status IN ('pending', 'sending') DO NOTHING" in " ".join(sql.split())
-    assert params == (PID, "+972501234567", "דנה כהן", "dana@client.co.il", "+972501234567")
-    src = Path(funnel.__file__).read_text()
-    assert "send_invite_email(" not in src and "create_invite(" not in src
-    with patch("autogpt.coaching.funnel.execute_query", side_effect=invite_db([], order=ORDER, created=0)):
-        assert c.post("/admin/funnel/person/%s/prepare-invite" % PID, headers=ORIGIN).json()["created"] is False
+    url = '/admin/funnel/person/%s/source' % PID
+    body = {'source':'tut','revision':'r'}
+    with patch.object(funnel.invite_safety, 'save_source',return_value={'ok':True}) as save:
+        assert TestClient(app).post(url,json=body).status_code == 403
+        assert c.post(url,json=body).status_code == 403
+        assert c.post('/admin/funnel/person/not-uuid/source',json=body,headers=ORIGIN).status_code == 404
+        assert save.call_count == 0
+        assert c.post(url,json=body,headers=ORIGIN).status_code == 200
+        save.assert_called_once_with(PID,'tut','r')
 
 
 def test_card_shows_the_invite_status(monkeypatch):

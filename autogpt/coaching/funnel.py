@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-from autogpt.coaching import lead_stage, people
+from autogpt.coaching import invite_safety, lead_stage, people
 from autogpt.coaching.db import execute_query
 from autogpt.coaching.theme import apply_theme
 from autogpt.coaching.work_orders import _admin, _origin_guard
@@ -170,6 +170,7 @@ def build_rows() -> dict:
         for pid in ids:
             review.setdefault(str(pid), []).append(r["value"])
     facts = load_facts()
+    sources = invite_safety.list_sources()
     rows = []
     for p in ppl:
         pid = str(p["person_id"])
@@ -180,7 +181,7 @@ def build_rows() -> dict:
             "phones": [v for k, v in ids if k == "phone"], "emails": [v for k, v in ids if k == "email"],
             "stages": {str(n): {"state": v["state"], "at": _iso(v["at"]), "no_show": v["no_show"]}
                        for n, v in d["stages"].items()},
-            "hidden": d["not_lead"],
+            "hidden": d["not_lead"], "arrival_source": sources.get(pid, "unset"),
             "furthest": d["furthest"], "furthest_at": _iso(d["furthest_at"]), "review": review.get(pid, []),
         })
     last = max((p["updated_at"] for p in ppl), default=None)
@@ -216,7 +217,7 @@ def person(person_id: str):
     links = execute_query("SELECT source_table, source_key FROM person_links WHERE person_id=%s ORDER BY 1,2",
                           (person_id,), fetch_all=True) or []
     return JSONResponse({**rows[0], "links": [dict(l) for l in links], "notes": _notes(person_id),
-                         "join_invite": _join_invite_status(person_id)})
+                         "join_invite": _join_invite_status(person_id), "invitation_options": invite_safety.invitation_options(person_id)})
 
 
 class MarkBody(BaseModel):
@@ -303,32 +304,28 @@ def hide_note(person_id: str, note_id: int):
     return JSONResponse({"ok": True, "notes": _notes(person_id)})
 
 
+class SourceBody(BaseModel):
+    source: str
+    revision: str
+
+
+class PrepareBody(BaseModel):
+    email: str
+    confirmed: bool = False
+    revision: str
+
+
+@router.post("/person/{person_id}/source", dependencies=[Depends(_admin), Depends(_origin_guard)],
+             include_in_schema=False)
+def set_source(person_id: str, body: SourceBody):
+    return JSONResponse(invite_safety.save_source(_uuid_or_404(person_id), body.source, body.revision))
+
+
 @router.post("/person/{person_id}/prepare-invite", dependencies=[Depends(_admin), Depends(_origin_guard)],
              include_in_schema=False)
-def prepare_invite(person_id: str):
-    """Prepare an invitation to join the app. It only waits for the coach to approve it on the join-invites
-    screen: nothing is created in invites and nothing is sent here. The email is the one the person's work order
-    was sent to for signing."""
-    from autogpt.coaching.email_service import validate_recipient_address
-    person_id = _uuid_or_404(person_id)
-    stable_key = _existing_person(person_id)
-    order = execute_query("""SELECT d.customer_name, d.customer_email, d.customer_phone
-        FROM person_links pl JOIN work_order_drafts d
-          ON pl.source_table = 'work_order_drafts' AND d.order_id::text = pl.source_key
-        WHERE pl.person_id = %s ORDER BY d.created_at DESC LIMIT 1""", (person_id,), fetch_one=True)
-    email = ((order or {}).get("customer_email") or "").strip()
-    if not email:
-        raise HTTPException(400, "אין הזמנת עבודה עם אימייל לאדם הזה")
-    try:
-        validate_recipient_address(email)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    # one open request per person (partial unique index); a second click changes nothing
-    created = execute_query("""INSERT INTO join_invites_pending (person_id, stable_key, name, email, phone, language)
-        VALUES (%s::uuid, %s, %s, %s, %s, 'he') ON CONFLICT (person_id) WHERE status IN ('pending', 'sending')
-        DO NOTHING""", (person_id, stable_key, order.get("customer_name") or "", email,
-                        order.get("customer_phone") or None), commit=True)
-    return JSONResponse({"ok": True, "created": bool(created), "email": email})
+def prepare_invite(person_id: str, body: PrepareBody):
+    """Explicit recipient confirmation prepares only; it never sends or enrolls."""
+    return JSONResponse(invite_safety.prepare(_uuid_or_404(person_id), body.email, body.confirmed, body.revision))
 
 
 @router.post("/sync", dependencies=[Depends(_admin), Depends(_origin_guard)], include_in_schema=False)
@@ -360,6 +357,7 @@ tr.p{cursor:pointer}tr.p:hover{background:#f0f5ff}
 textarea{font:inherit;width:100%;box-sizing:border-box;border:1px solid #c9d0da;border-radius:8px;padding:6px;margin:6px 0}
 .badge{background:#fde7c8;color:#8a5200;border-radius:10px;padding:1px 8px;font-size:12px}
 #card{background:#fff;border-radius:10px;padding:12px;margin:12px 0;display:none}
+[hidden]{display:none!important}.invite-box{overflow-wrap:anywhere;border:1px solid #d6dde6;border-radius:8px;padding:12px;margin:12px 0}.invite-box h4{margin:0 0 8px}.invite-box label{display:block;margin:8px 0}.invite-box input[type=email],.invite-box select{max-width:100%;box-sizing:border-box}.invite-box input[type=email]{width:100%}.invite-box input[type=checkbox]{width:auto} @media(max-width:480px){body{padding:10px}#card{padding:10px}.invite-box{padding:10px}td,th{padding:6px}table{display:block;overflow-x:auto}.invite-box select{width:100%}}
 .muted{color:#6b7686;font-size:13px}
 </style></head><body>
 <h1>משפך לקוחות</h1>
@@ -382,14 +380,14 @@ function draw(){var q=document.getElementById('q').value.trim().toLowerCase(),fs
 DATA.filter(function(p){if(p.hidden&&!q)return false;if(fs&&p.stages[fs].state==='empty')return false;
 return !q||(p.name+' '+p.phones.join(' ')+' '+p.emails.join(' ')).toLowerCase().indexOf(q)>=0}).forEach(function(p){
 h+='<tr class="p" data-id="'+E(p.person_id)+'"><td>'+E(p.name)+'</td><td>'+circles(p)+'</td><td>'+(p.furthest?E(NAMES[p.furthest-1]):'')+
-'</td><td>'+fmt(p.furthest_at)+'</td><td>'+mkbtns(p.person_id,'intro','הכרות')+' '+mkbtns(p.person_id,'diagnostic','איבחון')+'</td><td>'+(p.hidden?'<span class="badge">לא ליד</span> ':'')+(p.review.length?'<span class="badge">לבדיקה</span>':'')+'</td></tr>'});
+'</td><td>'+fmt(p.furthest_at)+'</td><td>'+mkbtns(p.person_id,'intro','הכרות')+' '+mkbtns(p.person_id,'diagnostic','איבחון')+'</td><td>'+(p.arrival_source==='tut'?'<span class="badge">תות</span> ':'')+(p.hidden?'<span class="badge">לא ליד</span> ':'')+(p.review.length?'<span class="badge">לבדיקה</span>':'')+'</td></tr>'});
 document.getElementById('b').innerHTML=h||'<tr><td colspan="6" class="muted">אין תוצאות</td></tr>'}
 function load(){return fetch('/admin/funnel/data',{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(d){
 DATA=d.people;document.getElementById('sync').textContent=d.synced_at?'סנכרון אחרון: '+new Date(d.synced_at).toLocaleString('he-IL'):'טרם סונכרן';draw();return d})}
 function sync(){return post('/admin/funnel/sync').then(function(){return load()})}
 document.getElementById('r').onclick=sync;document.getElementById('q').oninput=draw;f.onchange=draw;
 function openCard(id){fetch('/admin/funnel/person/'+id,{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(p){
-var c=document.getElementById('card');c.style.display='block';c.dataset.id=p.person_id;
+var c=document.getElementById('card');c.style.display='block';c.dataset.id=p.person_id;c._person=p;
 function btns(kind,n){return '<span class="mkg"><button class="mk ok" data-mk="'+kind+'" data-st="held" data-id="'+E(p.person_id)+'">התקיימה</button>'+
 '<button class="mk no" data-mk="'+kind+'" data-st="no_show" data-id="'+E(p.person_id)+'">לא הגיע</button>'+
 '<button class="mk" data-mk="'+kind+'" data-st="cleared" data-id="'+E(p.person_id)+'">בטל סימון</button></span>'}
@@ -399,15 +397,39 @@ c.innerHTML='<b>'+E(p.name)+'</b><div class="muted">'+E(p.phones.join(' , '))+' 
 (p.review.length?'<div><span class="badge">לבדיקה</span> אימייל משותף לכמה אנשים עם טלפונים שונים: '+E(p.review.join(' , '))+'</div>':'')+
 '<ul>'+NAMES.map(function(n,i){var s=p.stages[i+1];return '<li>'+E(n)+': '+(s.state==='full'?'בוצע':s.no_show?'לא הגיע':s.state==='partial'?'בתהליך':'אין')+(s.at?' ('+fmt(s.at)+')':'')+
 (i===2?' '+btns('intro'):'')+(i===3?' '+btns('diagnostic'):'')+'</li>'}).join('')+'</ul>'+
-'<div>'+(p.join_invite==='pending'||p.join_invite==='sending'?'<span class="badge">הזמנה להצטרפות ממתינה לאישור</span> <a href="/admin/join-invites">למסך ההזמנות</a>':
+sourceControls(p)+'<div>'+(p.join_invite==='pending'||p.join_invite==='sending'?'<span class="badge">הזמנה להצטרפות ממתינה לאישור</span> <a href="/admin/join-invites">למסך ההזמנות</a>':
 p.join_invite==='sent'?'<span class="badge">הזמנה להצטרפות נשלחה</span>':
-'<button class="mk" id="pi" data-id="'+E(p.person_id)+'">הכן הזמנה להצטרפות</button>')+'</div>'+'<h4>הערות</h4><textarea id="nb" maxlength="2000" rows="2" placeholder="הערה חדשה"></textarea><button class="mk" id="ns" data-id="'+E(p.person_id)+'">שמור הערה</button>'+
+inviteControls(p))+'</div>'+'<h4>הערות</h4><textarea id="nb" maxlength="2000" rows="2" placeholder="הערה חדשה"></textarea><button class="mk" id="ns" data-id="'+E(p.person_id)+'">שמור הערה</button>'+
 '<div id="nl">'+(p.notes||[]).map(function(n){return '<div class="nt">'+E(n.body)+'<div class="muted">'+fmt(n.created_at)+' <button class="mk" data-hide="'+n.note_id+'" data-id="'+E(p.person_id)+'">הסתר</button></div></div>'}).join('')+'</div>'+
 '<div class="muted">מקורות: '+p.links.length+'</div>'})}
+var SOURCE_LABELS={unset:'לא סומן',tut:'תות',non_tut:'לא מתות'};
+var EXISTING_LABELS={identity_review:'קישור האדם דורש בדיקה',joined:'קיים חשבון מתאמן מקושר',invite_review:'נמצאו הזמנות או זהויות הדורשות בדיקה',used:'ההזמנה כבר מומשה',existing:'קיימת הזמנה לא ממומשת',expired:'קיימת הזמנה שפג תוקפה. אפשר לבדוק ולחדש אותה',pending:'הזמנה ממתינה לאישור',sending:'הזמנה בטיפול'};
+function sourceControls(p){var o=p.invitation_options||{};return '<section class="invite-box"><h4>מקור הגעה</h4>'+
+(o.needs_review?'<p class="badge">קישור המקור דורש בדיקה. אין פטור מהזמנת עבודה.</p>':'')+
+'<label>מקור שאושר על ידי המאמן <select id="src">'+Object.keys(SOURCE_LABELS).map(function(k){return '<option value="'+k+'"'+(o.source===k?' selected':'')+'>'+SOURCE_LABELS[k]+'</option>'}).join('')+'</select></label> '+
+'<button class="mk" id="ss" data-id="'+E(p.person_id)+'">שמור מקור</button><p id="source-unsaved" hidden>המקור שונה אך טרם נשמר. שמור ורענן לפני הכנת הזמנה.</p>'+
+'<p class="muted">סימון תות פוטר מהזמנת עבודה מקומית בלבד. הוא לא מצרף לתוכנית ולא שולח הודעה.</p>'+
+(o.reported_sources&&o.reported_sources.length?'<p class="muted">מקור כפי שנכתב בשאלון (לא סימון מאומת): '+E(o.reported_sources.join(' , '))+'</p>':'')+'</section>'}
+function inviteControls(p){var o=p.invitation_options||{},ex=o.existing;
+if(ex)return '<div class="invite-box"><p>'+E(EXISTING_LABELS[ex.status]||'נדרשת בדיקה')+'</p><a href="'+(ex.status==='expired'?E(ex.url):ex.url==='/admin/join-invites'?'/admin/join-invites':'/admin')+'">לבדיקת ההזמנה או החשבון הקיימים</a><p class="muted">לא תיווצר הזמנה נוספת. לא נשלח דבר.</p></div>';
+if(o.needs_review)return '<p>יש לבדוק ולשמור מקור לפני הכנת הזמנה.</p>';
+if(o.source!=='tut'&&!o.order_email)return '<p class="invite-box">אין הזמנת עבודה מקושרת עם מייל. למתאמן מתות יש לבחור ולשמור מקור במפורש; לאחרים נדרשת הזמנת עבודה.</p>';
+var fields=o.source==='tut'?'<label>בחר כתובת להזמנה <select id="recipient"><option value="">בחר כתובת</option>'+p.emails.map(function(e){return '<option value="'+E(e)+'">'+E(e)+'</option>'}).join('')+'<option value="__other__">כתובת אחרת</option></select></label><label id="other-wrap" hidden>כתובת אחרת <input id="other-email" type="email" dir="ltr" autocomplete="off"></label>':'<p>המייל מהזמנת העבודה: <b dir="ltr">'+E(o.order_email)+'</b></p>';
+return '<section class="invite-box"><h4>הכנת הזמנה להצטרפות</h4>'+fields+'<p>נמען להזמנה: <b id="recipient-preview" dir="ltr">'+(o.source==='tut'?'טרם נבחר':E(o.order_email))+'</b></p><label><input id="recipient-confirm" type="checkbox"> בדקתי שזו הכתובת של המתאמן ומאשר הכנה לכתובת זו</label><p class="muted">הכנה בלבד. תצוגת המייל ואישור שליחה במסך ההזמנות.</p><button class="mk" id="pi" data-id="'+E(p.person_id)+'">הכן הזמנה להצטרפות</button></section>'}
+function selectedEmail(p){var o=p.invitation_options||{},s=document.getElementById('recipient');return o.source==='tut'?(s.value==='__other__'?document.getElementById('other-email').value.trim():s.value):o.order_email}
+function writeResult(r){return r.json().then(function(d){if(!r.ok)throw typeof d.detail==='string'?d.detail:'הפעולה לא אושרה. רענן ובדוק את הכרטיס.';return d})}
+function sourceSave(id){var p=document.getElementById('card')._person;return post('/admin/funnel/person/'+id+'/source',{source:document.getElementById('src').value,revision:p.invitation_options.revision}).then(writeResult).then(function(){return load()}).then(function(){openCard(id)}).catch(function(e){alert(typeof e==='string'?e:'לא ניתן לאמת אם המקור נשמר. רענן ובדוק לפני ניסיון נוסף.')})}
+function prepareInvite(id){var p=document.getElementById('card')._person,email=selectedEmail(p),confirmed=document.getElementById('recipient-confirm').checked;
+if(!email||!confirmed){alert('בחר כתובת ובדוק את אישור הנמען לפני ההכנה. לא נשלחה בקשה.');return}
+var b=document.getElementById('pi');b.disabled=true;
+return post('/admin/funnel/person/'+id+'/prepare-invite',{email:email,confirmed:confirmed,revision:p.invitation_options.revision}).then(writeResult).then(function(d){if(d.existing)alert(EXISTING_LABELS[d.existing.status]||'יש לבדוק את ההזמנה הקיימת');return openCard(id)}).catch(function(e){alert(typeof e==='string'?e:'לא ניתן לאמת אם הוכנה הזמנה. בדוק במסך ההזמנות לפני ניסיון נוסף.');b.disabled=false})}
+document.body.addEventListener('change',function(e){if(e.target.id==='src'){var pi=document.getElementById('pi'),cf=document.getElementById('recipient-confirm');if(pi)pi.disabled=true;if(cf)cf.checked=false;document.getElementById('source-unsaved').hidden=false}if(e.target.id==='recipient'||e.target.id==='other-email'){var p=document.getElementById('card')._person,s=document.getElementById('recipient');document.getElementById('other-wrap').hidden=s.value!=='__other__';document.getElementById('recipient-preview').textContent=selectedEmail(p)||'טרם נבחר';document.getElementById('recipient-confirm').checked=false}});
+document.body.addEventListener('input',function(e){if(e.target.id==='other-email'){var p=document.getElementById('card')._person;document.getElementById('recipient-preview').textContent=selectedEmail(p)||'טרם נבחר';document.getElementById('recipient-confirm').checked=false}});
 function noteCall(url,body,id){return post(url,body).then(function(r){if(!r.ok)throw 0;return openCard(id)}).catch(function(){alert('הפעולה נכשלה')})}
 document.body.addEventListener('click',function(e){var b=e.target.closest('button.mk');
 if(b&&b.id==='ns'){var v=document.getElementById('nb').value.trim();if(v)noteCall('/admin/funnel/person/'+b.dataset.id+'/note',{body:v},b.dataset.id);return}
-if(b&&b.id==='pi'){noteCall('/admin/funnel/person/'+b.dataset.id+'/prepare-invite',null,b.dataset.id);return}
+if(b&&b.id==='pi'){prepareInvite(b.dataset.id);return}
+if(b&&b.id==='ss'){sourceSave(b.dataset.id);return}
 if(b&&b.dataset.hide){noteCall('/admin/funnel/person/'+b.dataset.id+'/note/'+b.dataset.hide+'/hide',null,b.dataset.id);return}
 if(b){e.stopPropagation();mark(b.dataset.id,b.dataset.mk,b.dataset.st);return}
 var tr=e.target.closest('tr.p');if(tr)openCard(tr.dataset.id)});
