@@ -223,6 +223,8 @@ from autogpt.coaching.work_orders import _admin as _work_orders_admin  # noqa: E
 app.include_router(_funnel_router)
 from autogpt.coaching.join_invites import router as _join_invites_router  # noqa: E402
 app.include_router(_join_invites_router)
+from autogpt.coaching.invite_renewal import router as _invite_renewal_router
+app.include_router(_invite_renewal_router)
 from autogpt.coaching.interest import router as _interest_router  # noqa: E402
 app.include_router(_interest_router)
 from autogpt.coaching.interest_page import router as _interest_page_router  # noqa: E402

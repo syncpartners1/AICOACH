@@ -1087,7 +1087,6 @@ def create_invite(
     public_url: str = "",
 ) -> Invite:
     """Create a new program invite token. Returns the Invite with the registration URL."""
-    db = _get_client()
     invite_id = str(uuid.uuid4())
     import secrets
     token = secrets.token_hex(16)
@@ -1107,7 +1106,18 @@ def create_invite(
     if note:
         row["note"] = note
     row["language"] = language if language in ("en", "he") else "en"
-    db.table("invites").insert(row).execute()
+    from autogpt.coaching.invite_safety import invitation_lock
+    from autogpt.coaching.db import get_db_cursor
+    from fastapi import HTTPException
+    with invitation_lock():
+        with get_db_cursor(commit=True) as cur:
+            if email:
+                cur.execute("SELECT 1 FROM invites WHERE lower(btrim(email))=lower(btrim(%s)) LIMIT 1", (email,))
+                if cur.fetchone():
+                    raise HTTPException(409, "קיימת הזמנה לכתובת זו. יש לבדוק אותה לפני יצירת הזמנה נוספת.")
+            columns = list(row)
+            cur.execute("INSERT INTO invites (" + ",".join(columns) + ") VALUES (" +
+                        ",".join(["%s"] * len(columns)) + ")", tuple(row[c] for c in columns))
     register_url = f"{public_url}/register?token={token}" if public_url else f"/register?token={token}"
     return Invite(
         invite_id=invite_id,

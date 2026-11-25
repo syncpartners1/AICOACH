@@ -1,5 +1,9 @@
 """Approving a pending join invite: preview, edit, one send, and no way to send twice."""
 from types import SimpleNamespace
+from contextlib import nullcontext
+import pytest
+
+from autogpt.coaching import invite_safety
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -7,6 +11,13 @@ from fastapi.testclient import TestClient
 from autogpt.coaching import join_invites as ji
 from autogpt.coaching.api import app
 from tests.test_funnel import client, ORIGIN, PID
+
+@pytest.fixture(autouse=True)
+def lock_stubs(monkeypatch):
+    monkeypatch.setattr(invite_safety, 'invitation_lock', lambda: nullcontext(None))
+    monkeypatch.setattr(invite_safety, 'existing_invitation', lambda *a, **kw: None)
+    monkeypatch.setattr(invite_safety, 'validate_prepared_source', lambda *a: None)
+
 
 ROW = {"pending_id": 5, "person_id": PID, "name": "דנה כהן", "email": "dana@client.co.il",
        "phone": "+972501234567", "status": "pending"}

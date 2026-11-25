@@ -42,7 +42,7 @@ def _clean(body: Edit) -> tuple[str, str | None]:
 
 
 def _open_row(pending_id: int) -> dict:
-    row = execute_query("""SELECT pending_id, person_id, name, email, phone, status FROM join_invites_pending
+    row = execute_query("""SELECT pending_id, person_id, name, email, phone, status, source_revision FROM join_invites_pending
         WHERE pending_id = %s""", (pending_id,), fetch_one=True)
     if not row:
         raise HTTPException(404, "Request not found")
@@ -76,6 +76,12 @@ def preview(pending_id: int, body: Edit):
 
 @router.post("/{pending_id}/approve", dependencies=[Depends(_admin), Depends(_origin_guard)], include_in_schema=False)
 def approve(pending_id: int, body: Approve):
+    from autogpt.coaching.invite_safety import invitation_lock
+    with invitation_lock():
+        return _approve_locked(pending_id, body)
+
+
+def _approve_locked(pending_id: int, body: Approve):
     """Approve and send, once. The request is claimed (pending -> sending) in one statement, so a second click or a
     second tab cannot send twice. A failed send puts it back to pending and removes the invite it created."""
     from autogpt.coaching.email_service import send_invite_email, validate_recipient_address
@@ -92,6 +98,12 @@ def approve(pending_id: int, body: Approve):
     public_url = (coaching_config.public_url or "").rstrip("/")
     if not public_url.startswith("http"):
         raise HTTPException(503, "PUBLIC_URL is not configured; cannot build the invite link")
+    from autogpt.coaching.invite_safety import existing_invitation, invitation_lock, validate_prepared_source
+    with invitation_lock() as cur:
+        validate_prepared_source(cur, row)
+        existing = existing_invitation(cur, str(row['person_id']), row['email'].strip().lower(), pending_id)
+    if existing:
+        raise HTTPException(409, "נמצאה הזמנה או זהות קיימת. בדוק במסך הראשי לפני השליחה.")
     claimed = execute_query("""UPDATE join_invites_pending SET status = 'sending', language = %s, note = %s
         WHERE pending_id = %s AND status = 'pending' RETURNING pending_id""",
                             (language, note, pending_id), fetch_one=True, commit=True)
