@@ -47,7 +47,7 @@
     background-color: var(--slate-100);
     color: var(--slate-900);
     line-height: 1.5;
-    padding-bottom: 84px;
+    padding-bottom: 24px;
   }
 
   /* ── TOP COCKPIT HEADER ── */
@@ -199,6 +199,22 @@
     background: var(--emerald-600);
   }
 
+  .rx-palette-btn {
+    background: linear-gradient(135deg, #e11d48, #be123c) !important;
+    box-shadow: 0 2px 8px rgba(190, 18, 60, 0.35) !important;
+  }
+  .rx-result-btn {
+    text-align: start;
+    font-family: inherit;
+    font-size: 13.5px;
+    padding: 10px 14px;
+    border: 1.5px solid var(--slate-200);
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    line-height: 1.5;
+  }
+  .rx-result-btn:hover { border-color: var(--rose-500, #f43f5e); background: #fff1f2; }
   .routing-btn {
     background: linear-gradient(135deg, var(--gold-500), var(--gold-400));
     color: #fff;
@@ -1083,6 +1099,10 @@
       <button class="routing-btn" onclick="openRoutingModal()">
         <span>🗺️</span> מפת ניתוב מהיר (2 דק' ראשונות)
       </button>
+
+      <button class="routing-btn rx-palette-btn" onclick="openRxPalette()">
+        <span>⚡</span> מפות תגובה
+      </button>
     </div>
   </div>
   <div class="progress-track">
@@ -1180,13 +1200,23 @@
   </section>
 </main>
 
-<!-- ── STICKY REACTION MAPS DOCK ── -->
-<footer class="reaction-dock">
-  <div class="dock-inner">
-    <span class="dock-title">⚡ מפות תגובה (מצבי קצה):</span>
-    <div id="reactionDockButtons" style="display:flex;gap:8px;"></div>
+
+
+<!-- ── REACTION SEARCH PALETTE ── -->
+<div class="modal-backdrop" id="rxPalette" onclick="closeModalOnBackdrop(event, 'rxPalette')">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="modal-head" style="background:var(--navy-900);">
+      <h3>⚡ מפות תגובה: חיפוש מהיר</h3>
+      <button class="close-modal" onclick="closeModal('rxPalette')">×</button>
+    </div>
+    <div style="padding:16px 20px;">
+      <input type="text" id="rxPaletteSearch" placeholder="חפש לפי קוד, שם או מצב (למשל: לופ, פחד, R-08)…"
+        oninput="renderRxPaletteResults()"
+        style="width:100%;box-sizing:border-box;font-family:inherit;font-size:15px;padding:10px 14px;border:1.5px solid var(--slate-300);border-radius:10px;">
+      <div id="rxPaletteResults" style="margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
+    </div>
   </div>
-</footer>
+</div>
 
 <!-- ── REACTION MODAL ── -->
 <div class="modal-backdrop" id="reactionModal" onclick="closeModalOnBackdrop(event, 'reactionModal')">
@@ -8237,11 +8267,32 @@ function updateTimerUI() {
 
 function renderReactionDock() {
   const dock = document.getElementById("reactionDockButtons");
+  if (!dock) return;
   dock.innerHTML = Object.values(REACTION_MAPS).map(rx => `
     <button class="rx-pill" onclick="openReactionModal('${rx.code}')">
       ${rx.code}: ${rx.title.split('(')[0].trim()}
     </button>
   `).join("");
+}
+
+function openRxPalette() {
+  document.getElementById('rxPalette').classList.add('open');
+  const inp = document.getElementById('rxPaletteSearch');
+  inp.value = '';
+  renderRxPaletteResults();
+  setTimeout(() => inp.focus(), 50);
+}
+
+function renderRxPaletteResults() {
+  const q = (document.getElementById('rxPaletteSearch').value || '').trim();
+  const box = document.getElementById('rxPaletteResults');
+  const items = Object.values(REACTION_MAPS).filter(rx =>
+    !q || rx.code.includes(q) || rx.title.includes(q) || (rx.trigger || '').includes(q));
+  box.innerHTML = items.length ? items.map(rx =>
+    `<button class="rx-result-btn" onclick="closeModal('rxPalette');openReactionModal('${rx.code}')">
+       <strong>${rx.code}</strong> · ${rx.title}
+     </button>`).join('')
+    : '<div style="color:var(--slate-500);font-size:13px;">לא נמצאו מפות תגובה תואמות</div>';
 }
 
 function openReactionModal(code) {
