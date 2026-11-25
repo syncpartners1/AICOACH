@@ -137,14 +137,24 @@ async def lifespan(app: FastAPI):
                 await telegram_app.initialize()
             except InvalidToken:
                 logger.error("Telegram bot token rejected; continuing without the legacy bot")
+            except Exception as exc:
+                # Telegram is optional for HTTP availability. Do not log exception
+                # text: transport errors may contain the Bot API token in a URL.
+                logger.error("Telegram initialization failed (%s); continuing without the legacy bot", type(exc).__name__)
             else:
                 app.state.telegram_app = telegram_app
-                await register_command_menu(telegram_app)
+                try:
+                    await register_command_menu(telegram_app)
+                except Exception as exc:
+                    logger.error("Telegram command menu unavailable (%s); continuing web startup", type(exc).__name__)
                 if coaching_config.public_url:
-                    _register_telegram_webhook(
-                        coaching_config.telegram_bot_token,
-                        coaching_config.public_url,
-                    )
+                    try:
+                        _register_telegram_webhook(
+                            coaching_config.telegram_bot_token,
+                            coaching_config.public_url,
+                        )
+                    except Exception as exc:
+                        logger.error("Telegram webhook registration unavailable (%s); continuing web startup", type(exc).__name__)
                 else:
                     logger.warning(
                         "TELEGRAM_WEBHOOK_MODE=true but PUBLIC_URL is not set — "
