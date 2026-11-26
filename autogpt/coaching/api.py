@@ -1356,10 +1356,16 @@ def maps_local_redirect():
 
 @app.get("/maps-local/", response_class=HTMLResponse, include_in_schema=False)
 def maps_local_app(request: Request):
+    from autogpt.coaching.maps_invitations import effective_host, MAPS_HOST, guest_authorized, landing
+    if effective_host(request) == MAPS_HOST:
+        if guest_authorized(request):
+            from autogpt.coaching.maps_local import library_html
+            return HTMLResponse(library_html()[0].replace('<a href="/admin/session-maps" style=', '<a href="/maps-local/" style=').replace('למפות המקוונות (נדרש חיבור)', 'דף פתיח'), headers={'Cache-Control':'no-store, private'})
+        return landing()
     if not _is_admin_authenticated(request):
         return HTMLResponse(_login_page(), status_code=401, headers={'Cache-Control':'no-store'})
     from autogpt.coaching.maps_local import library_html
-    return HTMLResponse(library_html()[0], headers={'Cache-Control':'no-store, private'})
+    return HTMLResponse(library_html()[0].replace('<a href="/admin/session-maps" style=', '<a href="/maps-local/" style=').replace('למפות המקוונות (נדרש חיבור)', 'דף פתיח'), headers={'Cache-Control':'no-store, private'})
 
 
 @app.get("/maps-local/manifest.json", include_in_schema=False)
@@ -4186,3 +4192,8 @@ def _mount_identity_routes():
     app.include_router(build_router(_USER_COOKIE,_is_admin_authenticated,_send_message))
 
 _mount_identity_routes()
+
+# Maps guest role is separate from administrator and trainee identity.
+from autogpt.coaching.maps_invitations import build_router as build_maps_router, MapsHostBoundary
+app.include_router(build_maps_router(_is_admin_authenticated))
+app.add_middleware(MapsHostBoundary)
