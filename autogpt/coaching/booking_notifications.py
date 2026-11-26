@@ -179,6 +179,22 @@ def list_bookings(page):
     return rows[:PAGE_SIZE],unread,len(rows)>PAGE_SIZE
 
 
+def booking_person_links(event_ids):
+    """Read existing exact source links only. Never infer identity from a name/email."""
+    if not event_ids:
+        return set()
+    try:
+        with get_db_cursor() as cur:
+            cur.execute("""SELECT pl.source_key FROM person_links pl JOIN people p USING (person_id)
+                WHERE pl.source_table='booking_notifications' AND pl.source_key=ANY(%s)
+                GROUP BY pl.source_key HAVING count(DISTINCT pl.person_id)=1
+                AND NOT bool_or(EXISTS (SELECT 1 FROM people_review r WHERE pl.person_id=ANY(r.person_ids)))""", (event_ids,))
+            return {r['source_key'] for r in cur.fetchall()}
+    except Exception:
+        logger.exception('Booking person links unavailable')
+        return set()
+
+
 def unread_count():
     with get_db_cursor() as cur:
         cur.execute('SELECT count(*) AS count FROM booking_notifications WHERE read_at IS NULL')
@@ -244,10 +260,16 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
         revision = int(row.get('status_revision', 0))
         options = ''.join('<option value="'+key+'"'+(' selected' if key == current else '')+'>'+escape(label)+'</option>'
                           for key, label in MEETING_STATUSES.items())
-        status_control = (f'<div class="meeting-status"><label>מצב מפגש ידני <select aria-label="מצב מפגש ידני">{options}</select></label> '
+        status_label = escape(MEETING_STATUSES.get(current, MEETING_STATUSES['unset']))
+        status_control = (f'<div class="meeting-status"><p class="current-status">מצב שמור: <strong class="status-badge" data-status="{escape(current, quote=True)}">{status_label}</strong></p><label>מצב מפגש ידני <select aria-label="מצב מפגש ידני" onchange="statusEdited(this)">{options}</select></label> '
                           f'<button data-id="{mid}" data-revision="{revision}" onclick="saveStatus(this)">שמירת מצב מפגש</button>'
-                          '<p class="state">הסימון אינו משנה את היומן ואינו סופר מפגש בתוכנית. ספירה דורשת סיכום 1:1 של המאמן לאותו מתאמן ולאותו תאריך.</p></div>')
-        cards.append(f'''<article><h2>{escape(b.name)}</h2><p>{escape(b.email)}</p>
+                          '<p class="save-feedback" role="status" aria-live="polite" hidden></p><p class="state">הסימון אינו משנה את היומן ואינו סופר מפגש בתוכנית. ספירה דורשת סיכום 1:1 של המאמן לאותו מתאמן ולאותו תאריך.</p></div>')
+        name = escape(b.name)
+        if row.get('has_person_link'):
+            name = f'<a href="/admin/funnel?booking={mid}">{name}</a>'
+        else:
+            name += '<span class="state"> · אין שיוך ודאי לכרטסת</span>'
+        cards.append(f'''<article><h2>{name}</h2><p>{escape(b.email)}</p>
         <p><strong>{stamp} (שעון ישראל)</strong></p><p>סוג: {escape(b.meeting_type or 'לא צוין')}</p>
         <p>נושא: {escape(b.subject or 'לא צוין')}</p><p>{escape(b.location)}</p>{meet}
         <p class="state">{escape(labels.get(row['email_state'],'מצב מייל לא זמין'))}</p>{action}{status_control}</article>''')
@@ -262,16 +284,23 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
     <style>body{font:16px/1.6 Arial,sans-serif;background:#f3f4f6;color:#1a2b4a;margin:0}main{max-width:900px;margin:30px auto;padding:0 18px}
     h1{font-size:28px}h2{font-size:20px;margin:0}article{padding:20px;background:white;border:1px solid #d1d5db;border-radius:12px;margin:18px 0;overflow-wrap:anywhere}
     .meeting-status{border-top:1px solid #d1d5db;margin-top:18px;padding-top:14px}select{font:inherit;max-width:100%;padding:8px;margin:4px}button{font:inherit;color:white;background:#1a2b4a;border:0;border-radius:7px;padding:9px 16px;cursor:pointer}
-    .state{color:#4b5563;font-size:14px}.error{color:#991b1b;background:#fee2e2;padding:16px}a{color:#1d4ed8}nav{display:flex;gap:24px}
+    .status-badge{display:inline-block;border:1px solid #64748b;border-radius:20px;padding:3px 12px;background:#e2e8f0}.status-badge[data-status="held"]{background:#dcfce7;color:#14532d;border-color:#15803d}.status-badge[data-status="cancelled"]{background:#fee2e2;color:#7f1d1d;border-color:#b91c1c}.status-badge[data-status="needs_booking"]{background:#fef3c7;color:#78350f;border-color:#b45309}.save-feedback{color:#14532d;background:#dcfce7;border:1px solid #15803d;padding:8px 12px;border-radius:6px}.current-status{margin:0 0 10px}.state{color:#4b5563;font-size:14px}.error{color:#991b1b;background:#fee2e2;padding:16px}a{color:#1d4ed8}nav{display:flex;gap:24px}
     @media(max-width:500px){main{margin:20px auto}article{padding:16px}h1{font-size:24px}}</style></head><body><main>
     <a href="/admin?lang=he">חזרה למסך האדמין</a><h1>פגישות חדשות</h1>'''+f'''
     <p>לא נקראו: {count}</p><p>התראות על זימונים חדשים וסימון ידני של מצב המפגש. זה אינו יומן עדכני או סטטוס ליד.
     שינוי או ביטול ביומן אינו מסתנכרן לכאן אוטומטית. הסימון כאן אינו משנה או מבטל אירוע ביומן ואינו שולח הודעות.</p>
     <p id="action-error" class="error" role="alert" hidden></p>{content}<nav>{prev}<span>עמוד {page_label}</span>{nxt}</nav>'''+'''
-    <script>async function saveStatus(b){b.disabled=true;const e=document.getElementById('action-error');e.hidden=true;
-    try{const r=await fetch('/admin/booking-notifications/'+b.dataset.id+'/meeting-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({meeting_status:b.closest('.meeting-status').querySelector('select').value,expected_revision:Number(b.dataset.revision)})});
-    if(!r.ok){e.textContent=r.status===409?'המצב השתנה בחלון אחר. רעננו לפני שמירה נוספת.':'מצב המפגש לא נשמר. נסו שוב.';e.hidden=false;b.disabled=false;return;}location.reload();}
-    catch(x){e.textContent='תוצאת השמירה לא ודאית. רעננו ובדקו את המצב לפני ניסיון נוסף.';e.hidden=false;b.disabled=false;}}
+    <script>function statusEdited(select){const feedback=select.closest('.meeting-status').querySelector('.save-feedback');feedback.hidden=true;}
+    async function saveStatus(b){const box=b.closest('.meeting-status'),select=box.querySelector('select'),feedback=box.querySelector('.save-feedback');
+    const value=select.value,label=select.options[select.selectedIndex].textContent;b.disabled=true;select.disabled=true;feedback.hidden=true;
+    const e=document.getElementById('action-error');e.hidden=true;
+    try{const r=await fetch('/admin/booking-notifications/'+b.dataset.id+'/meeting-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({meeting_status:value,expected_revision:Number(b.dataset.revision)})});
+    if(!r.ok){e.textContent=r.status===409?'המצב השתנה בחלון אחר. רעננו לפני שמירה נוספת.':'מצב המפגש לא נשמר. נסו שוב.';e.hidden=false;return;}
+    const result=await r.json();if(result.ok!==true||!Number.isInteger(result.revision))throw Error('invalid confirmation');
+    b.dataset.revision=String(result.revision);const badge=box.querySelector('.status-badge');badge.dataset.status=value;badge.textContent=label;
+    feedback.textContent=result.changed===false?'מצב המפגש כבר שמור ללא שינוי.':'מצב המפגש נשמר';feedback.hidden=false;}
+
+    catch(x){e.textContent='תוצאת השמירה לא ודאית. רעננו ובדקו את המצב לפני ניסיון נוסף.';e.hidden=false;}finally{b.disabled=false;select.disabled=false;}}
     async function markRead(b){b.disabled=true;const e=document.getElementById('action-error');e.hidden=true;
     try{const r=await fetch('/admin/booking-notifications/'+b.dataset.id+'/read',{method:'POST'});if(!r.ok)throw Error();location.reload();}
     catch(x){e.textContent='הסימון לא נשמר. נסו שוב.';e.hidden=false;b.disabled=false;}}</script></main></body></html>''')
@@ -287,6 +316,8 @@ def admin_bookings(request: Request, page: int=Query(default=1,ge=1,le=10000)):
         return HTMLResponse(content=_login_page(), status_code=401)
     try:
         rows,count,more=list_bookings(page)
+        linked=booking_person_links([r['event_id'] for r in rows])
+        for row in rows: row['has_person_link']=row['event_id'] in linked
         return HTMLResponse(render_bookings(rows,count,page,more),headers={'Cache-Control':'no-store, private'})
     except Exception:
         logger.exception('Admin booking notifications unavailable')

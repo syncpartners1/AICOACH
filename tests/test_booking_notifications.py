@@ -251,3 +251,31 @@ def test_status_ui_b_rule_and_separate_read_email_state():
     assert 'אינו משנה או מבטל אירוע ביומן ואינו שולח הודעות' in html
     assert 'סימון כנקרא' in html and 'המייל התקבל בשרת השליחה' in html
     assert 'מצב המפגש לא נשמר' in html and 'המצב השתנה בחלון אחר' in html
+
+
+def test_saved_status_badge_and_feedback_are_separate_from_selection():
+    row=dict(event_id='evt_1',payload=booking().model_dump(mode='json'),read_at=None,
+             email_state='accepted',meeting_status='held',status_revision=3,has_person_link=True)
+    html=b.render_bookings([row],1)
+    assert 'מצב שמור:' in html and 'data-status="held"' in html
+    assert 'מצב המפגש נשמר' in html and 'aria-live="polite"' in html
+    assert 'result.ok!==true' in html and 'Number.isInteger(result.revision)' in html
+    assert 'b.dataset.revision=String(result.revision)' in html
+    assert '/admin/funnel?booking=evt_1' in html
+    assert '<script></h2>' not in html
+    row['has_person_link']=False
+    html=b.render_bookings([row],1)
+    assert '/admin/funnel?booking=evt_1' not in html and 'אין שיוך ודאי' in html
+
+
+def test_booking_person_link_reads_exact_source_and_fails_closed():
+    cur=MagicMock();cur.fetchall.return_value=[{'source_key':'evt_1'}]
+    with patch.object(b,'get_db_cursor',side_effect=lambda **kw:cursor(cur,**kw)):
+        assert b.booking_person_links(['evt_1'])=={'evt_1'}
+    sql,params=cur.execute.call_args.args
+    assert params==(['evt_1'],) and "pl.source_table='booking_notifications'" in sql
+    assert 'count(DISTINCT pl.person_id)=1' in sql and 'people_review' in sql
+    assert 'payload' not in sql and 'INSERT' not in sql and 'UPDATE' not in sql
+    with patch.object(b,'get_db_cursor',side_effect=RuntimeError):
+        assert b.booking_person_links(['evt_1'])==set()
+    assert b.booking_person_links([])==set()

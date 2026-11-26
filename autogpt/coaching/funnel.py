@@ -208,6 +208,18 @@ def _uuid_or_404(person_id: str) -> str:
         raise HTTPException(404, "Person not found")
 
 
+@router.get("/booking-card", dependencies=[Depends(_admin)], include_in_schema=False)
+def booking_card(event_id: str):
+    rows = execute_query("""SELECT (array_agg(DISTINCT pl.person_id))[1] AS person_id FROM person_links pl JOIN people p USING (person_id)
+        WHERE pl.source_table='booking_notifications' AND pl.source_key=%s
+        GROUP BY pl.source_key HAVING count(DISTINCT pl.person_id)=1
+        AND NOT bool_or(EXISTS (SELECT 1 FROM people_review r WHERE pl.person_id=ANY(r.person_ids)))""",
+        (event_id,), fetch_all=True) or []
+    if len(rows) != 1:
+        raise HTTPException(409, 'Booking person link missing or ambiguous')
+    return {"person_id": str(rows[0]['person_id'])}
+
+
 @router.get("/person/{person_id}", dependencies=[Depends(_admin)], include_in_schema=False)
 def person(person_id: str):
     person_id = _uuid_or_404(person_id)
@@ -433,5 +445,9 @@ if(b&&b.id==='ss'){sourceSave(b.dataset.id);return}
 if(b&&b.dataset.hide){noteCall('/admin/funnel/person/'+b.dataset.id+'/note/'+b.dataset.hide+'/hide',null,b.dataset.id);return}
 if(b){e.stopPropagation();mark(b.dataset.id,b.dataset.mk,b.dataset.st);return}
 var tr=e.target.closest('tr.p');if(tr)openCard(tr.dataset.id)});
-load().then(function(d){if(d.stale)sync()});
+load().then(function(d){var booking=new URLSearchParams(location.search).get('booking');
+if(!booking){if(d.stale)sync();return}
+return fetch('/admin/funnel/booking-card?event_id='+encodeURIComponent(booking),{credentials:'same-origin'}).then(function(r){if(!r.ok)throw Error();return r.json()}).then(function(p){
+if(!DATA.some(function(row){return row.person_id===p.person_id}))throw Error();openCard(p.person_id);document.getElementById('card').scrollIntoView({block:'start'})
+}).catch(function(){var c=document.getElementById('card');c.style.display='block';c.textContent='לא ניתן לפתוח כרטסת בוודאות. השיוך חסר או דורש בדיקה. לא נפתח כרטיס של אדם אחר.'})});
 </script></body></html>"""
