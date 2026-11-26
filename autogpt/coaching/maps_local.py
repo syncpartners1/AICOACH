@@ -5,6 +5,8 @@ import json
 
 BASE = '/maps-local/'
 ICONS = ['/static/cn-icon-site-192.png', '/static/cn-icon-site-512.png']
+from autogpt.coaching.maps_opening import opening_html, opening_script, version_material, ASSETS as OPENING_ASSETS
+
 MARKER = '<meta name="maps-local-library" content="maps-only-v1">'
 
 
@@ -22,15 +24,16 @@ def library_html():
     source = source.replace('<a href="/admin" style=', '<a href="/admin/session-maps" style=')
     source = source.replace('⬅ לוח בקרה', 'למפות המקוונות (נדרש חיבור)')
     source = source.replace('<title>Navigator Session Maps | מפות קברניט — מערכת אימון מלאה</title>', '<title>מפות קברניט | מקומי</title>')
-    version = hashlib.sha256(source.encode()+Path(__file__).read_bytes()).hexdigest()[:12]
+    version = hashlib.sha256(source.encode()+Path(__file__).read_bytes()+version_material()).hexdigest()[:12]
     source = source.replace('</head>', MARKER + '<link rel="manifest" href="/maps-local/manifest.json"><meta name="theme-color" content="#0d2340"><link rel="apple-touch-icon" href="'+ICONS[0]+'"></head>')
+    source = source.replace('<body>', '<body>'+opening_html()+'<div id="maps-workspace" hidden>')
     banner = '''<aside class="offline-panel" style="padding:14px 20px;background:#e0f2fe;color:#0c4a6e;border-bottom:1px solid #0284c7">
 <strong>מפות בלבד · גרסה __VERSION__</strong><p id="offline-ready" role="status" aria-live="polite">מכין עותק מקומי. עדיין אין אישור לעבודה ללא אינטרנט.</p>
 <p>ללא שמירת סיכומים או מידע על מתאמנים. בחירות, סימוני מסלולים והטיימר זמניים ונמחקים בסגירה או ברענון. הטיימר אינו שעון מעורר ברקע.</p>
 <p>העותק זמין למי שמשתמש במכשיר גם ללא כניסה. ניקוי נתוני האתר עלול למחוק אותו. להתקנה: תפריט הדפדפן ← התקנת אפליקציה; באייפון: שיתוף ← הוספה למסך הבית.</p>
 <button id="check-update" type="button" style="padding:8px" onclick="checkMapsUpdate()">בדיקת עדכון (דורש אינטרנט)</button><span id="update-msg" role="status"></span></aside>'''.replace('__VERSION__', version)
     source = source.replace('<!-- ── TRACK & SESSION SELECTOR ── -->', banner+'<!-- ── TRACK & SESSION SELECTOR ── -->')
-    source = source.replace('</body>', '''<script>
+    source = source.replace('</body>', '</div><button id="maps-return-opening" class="maps-entry-return" type="button" hidden onclick="showMapsWorkspace(false)">דף פתיח ופרטי קשר</button>'+opening_script()+'''<script>
 window.addEventListener('resize',()=>renderCurrentMap());
 let mapsRegistration;let applyingMapsUpdate=false;
 async function checkMapsUpdate(){const msg=document.getElementById('update-msg');if(!navigator.onLine){msg.textContent=' אין חיבור. העותק המקומי נשאר זמין.';return;}
@@ -53,7 +56,7 @@ def manifest():
 def service_worker():
     _, version = library_html()
     return r"""const CACHE='maps-local-__VERSION__';
-const INDEX='/maps-local/';const ASSETS=['/maps-local/manifest.json','/static/cn-icon-site-192.png','/static/cn-icon-site-512.png'];
+const INDEX='/maps-local/';const ASSETS=__ASSETS__;
 self.addEventListener('install',event=>{event.waitUntil((async()=>{
  const response=await fetch(INDEX,{credentials:'same-origin',cache:'no-store'});
  if(!response.ok||response.redirected||!response.headers.get('content-type')?.includes('text/html')||!(await response.clone().text()).includes('<meta name="maps-local-library" content="maps-only-v1">'))throw Error('Authenticated maps library unavailable');
@@ -64,4 +67,4 @@ self.addEventListener('activate',event=>{event.waitUntil((async()=>{await self.c
 self.addEventListener('fetch',event=>{const u=new URL(event.request.url);if(event.request.method!=='GET'||u.origin!==self.location.origin)return;
  if(u.pathname===INDEX){event.respondWith(caches.open(CACHE).then(async c=>(await c.match(INDEX))||fetch(event.request)));return;}
  if(ASSETS.includes(u.pathname)){event.respondWith(caches.open(CACHE).then(async c=>(await c.match(u.pathname))||fetch(event.request)));}
-});""".replace('__VERSION__', version)
+});""".replace('__VERSION__', version).replace('__ASSETS__', json.dumps(['/maps-local/manifest.json']+ICONS+OPENING_ASSETS))

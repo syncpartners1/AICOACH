@@ -292,7 +292,7 @@ tbody tr:hover td.col-name{{background:#f9fafb}}
     <a href="/admin/join-invites">הזמנות להצטרפות</a>
     <a href="/admin/cards-images">תמונות קלפים</a>
     <a href="/admin/site-content">ניהול תוכן האתר</a>
-    <a href="/admin/session-maps">מפות מפגש</a>
+    <a href="/admin/session-maps">מפות מפגש</a> | <a href="/admin/maps-invitations">הזמנות למפות</a>
     <div class="menu-sep"></div>
     <a href="{lang_toggle_href}">{lang_toggle_label}</a>
     <a href="/admin/logout">{t(lang, "admin_signout")}</a>
@@ -318,7 +318,7 @@ tbody tr:hover td.col-name{{background:#f9fafb}}
     </div>
   </div>
 
-  <p class="admin-nav" style="margin:12px 0"><a href="/admin/booking-notifications">פגישות חדשות ({booking_unread if booking_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/messages">הודעות למאמן ({inbox_unread if inbox_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a> | <a href="/admin/funnel">משפך לקוחות</a> | <a href="/admin/join-invites">הזמנות להצטרפות</a> | <a href="/admin/cards-images">תמונות קלפים</a> | <a href="/admin/site-content">ניהול תוכן האתר</a> | <a href="/admin/session-maps">מפות מפגש</a></p>
+  <p class="admin-nav" style="margin:12px 0"><a href="/admin/booking-notifications">פגישות חדשות ({booking_unread if booking_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/messages">הודעות למאמן ({inbox_unread if inbox_unread is not None else "מונה לא זמין"} לא נקראו)</a> | <a href="/admin/coaching-leads">פניות אימון</a> | <a href="/admin/work-orders">הזמנות עבודה</a> | <a href="/admin/funnel">משפך לקוחות</a> | <a href="/admin/join-invites">הזמנות להצטרפות</a> | <a href="/admin/cards-images">תמונות קלפים</a> | <a href="/admin/site-content">ניהול תוכן האתר</a> | <a href="/admin/session-maps">מפות מפגש</a> | <a href="/admin/maps-invitations">הזמנות למפות</a></p>
   <div class="section-title">{t(lang, "admin_section_members")} ({len(users)})</div>
   <div class="card">
     <div class="tbl-hint">{t(lang, "admin_scroll_hint")}</div>
