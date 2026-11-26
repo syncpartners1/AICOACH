@@ -172,7 +172,7 @@ def list_bookings(page):
     with get_db_cursor() as cur:
         cur.execute('SELECT count(*) AS count FROM booking_notifications WHERE read_at IS NULL')
         unread = int(cur.fetchone()['count'])
-        cur.execute('''SELECT event_id,payload,created_at,read_at,email_state FROM booking_notifications
+        cur.execute('''SELECT event_id,payload,created_at,read_at,email_state,meeting_status,status_revision FROM booking_notifications
             ORDER BY created_at DESC,event_id DESC LIMIT %s OFFSET %s''',
             (PAGE_SIZE+1,(page-1)*PAGE_SIZE))
         rows = [dict(r) for r in cur.fetchall()]
@@ -183,6 +183,41 @@ def unread_count():
     with get_db_cursor() as cur:
         cur.execute('SELECT count(*) AS count FROM booking_notifications WHERE read_at IS NULL')
         return int(cur.fetchone()['count'])
+
+
+MEETING_STATUSES = {'unset': 'לא סומן', 'held': 'סומן שהתקיימה',
+                    'cancelled': 'בוטלה', 'needs_booking': 'צריך לתאם חדשה'}
+
+
+class MeetingStatusChange(BaseModel):
+    meeting_status: str
+    expected_revision: int = Field(ge=0)
+
+    @field_validator('meeting_status')
+    @classmethod
+    def status_valid(cls, value):
+        if value not in MEETING_STATUSES:
+            raise ValueError('Invalid meeting status')
+        return value
+
+
+def save_meeting_status(event_id: str, change: MeetingStatusChange):
+    # Manual bookkeeping only. Never touch calendars, SMTP or program/session counts.
+    with get_db_cursor(commit=True) as cur:
+        cur.execute('SELECT meeting_status,status_revision FROM booking_notifications WHERE event_id=%s FOR UPDATE', (event_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, 'Booking notification not found')
+        if row['status_revision'] != change.expected_revision:
+            raise HTTPException(409, 'Meeting status changed; refresh before saving')
+        if row['meeting_status'] == change.meeting_status:
+            return {'ok': True, 'changed': False, 'revision': row['status_revision']}
+        revision = row['status_revision'] + 1
+        cur.execute('UPDATE booking_notifications SET meeting_status=%s,status_revision=%s,status_updated_at=now() WHERE event_id=%s',
+                    (change.meeting_status, revision, event_id))
+        cur.execute('INSERT INTO booking_meeting_status_audit(event_id,previous_status,new_status,revision) VALUES (%s,%s,%s,%s)',
+                    (event_id, row['meeting_status'], change.meeting_status, revision))
+    return {'ok': True, 'changed': True, 'revision': revision}
 
 
 def render_bookings(rows, unread, page=1, more=False, error=False):
@@ -205,10 +240,17 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
         action=(f'<button data-id="{mid}" onclick="markRead(this)">סימון כנקרא</button>'
                 if row['read_at'] is None else '<span>נקראה</span>')
         meet=(f'<a href="{escape(b.meet_link,quote=True)}" target="_blank" rel="noopener noreferrer">Google Meet</a>' if b.meet_link else '')
+        current = row.get('meeting_status', 'unset')
+        revision = int(row.get('status_revision', 0))
+        options = ''.join('<option value="'+key+'"'+(' selected' if key == current else '')+'>'+escape(label)+'</option>'
+                          for key, label in MEETING_STATUSES.items())
+        status_control = (f'<div class="meeting-status"><label>מצב מפגש ידני <select aria-label="מצב מפגש ידני">{options}</select></label> '
+                          f'<button data-id="{mid}" data-revision="{revision}" onclick="saveStatus(this)">שמירת מצב מפגש</button>'
+                          '<p class="state">הסימון אינו משנה את היומן ואינו סופר מפגש בתוכנית. ספירה דורשת סיכום 1:1 של המאמן לאותו מתאמן ולאותו תאריך.</p></div>')
         cards.append(f'''<article><h2>{escape(b.name)}</h2><p>{escape(b.email)}</p>
         <p><strong>{stamp} (שעון ישראל)</strong></p><p>סוג: {escape(b.meeting_type or 'לא צוין')}</p>
         <p>נושא: {escape(b.subject or 'לא צוין')}</p><p>{escape(b.location)}</p>{meet}
-        <p class="state">{escape(labels.get(row['email_state'],'מצב מייל לא זמין'))}</p>{action}</article>''')
+        <p class="state">{escape(labels.get(row['email_state'],'מצב מייל לא זמין'))}</p>{action}{status_control}</article>''')
     content=''.join(cards) or '<p>אין התראות על פגישות חדשות.</p>'
     if error: content='<p class="error" role="alert">לא ניתן לטעון את ההתראות. אין להסיק שאין פגישות.</p>'
     prev=f'<a href="?page={previous_page}">הקודם</a>' if page>1 else ''
@@ -219,14 +261,18 @@ def render_bookings(rows, unread, page=1, more=False, error=False):
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>פגישות חדשות | Change Navigator</title>
     <style>body{font:16px/1.6 Arial,sans-serif;background:#f3f4f6;color:#1a2b4a;margin:0}main{max-width:900px;margin:30px auto;padding:0 18px}
     h1{font-size:28px}h2{font-size:20px;margin:0}article{padding:20px;background:white;border:1px solid #d1d5db;border-radius:12px;margin:18px 0;overflow-wrap:anywhere}
-    button{font:inherit;color:white;background:#1a2b4a;border:0;border-radius:7px;padding:9px 16px;cursor:pointer}
+    .meeting-status{border-top:1px solid #d1d5db;margin-top:18px;padding-top:14px}select{font:inherit;max-width:100%;padding:8px;margin:4px}button{font:inherit;color:white;background:#1a2b4a;border:0;border-radius:7px;padding:9px 16px;cursor:pointer}
     .state{color:#4b5563;font-size:14px}.error{color:#991b1b;background:#fee2e2;padding:16px}a{color:#1d4ed8}nav{display:flex;gap:24px}
     @media(max-width:500px){main{margin:20px auto}article{padding:16px}h1{font-size:24px}}</style></head><body><main>
     <a href="/admin?lang=he">חזרה למסך האדמין</a><h1>פגישות חדשות</h1>'''+f'''
-    <p>לא נקראו: {count}</p><p>התראות על זימונים חדשים בלבד. זה אינו יומן עדכני או סטטוס ליד.
-    תוצאות השיחה הראשונית מנוהלות ידנית ב-ClickUp. שינוי או ביטול בהמשך אינו משתקף כאן.</p>
+    <p>לא נקראו: {count}</p><p>התראות על זימונים חדשים וסימון ידני של מצב המפגש. זה אינו יומן עדכני או סטטוס ליד.
+    שינוי או ביטול ביומן אינו מסתנכרן לכאן אוטומטית. הסימון כאן אינו משנה או מבטל אירוע ביומן ואינו שולח הודעות.</p>
     <p id="action-error" class="error" role="alert" hidden></p>{content}<nav>{prev}<span>עמוד {page_label}</span>{nxt}</nav>'''+'''
-    <script>async function markRead(b){b.disabled=true;const e=document.getElementById('action-error');e.hidden=true;
+    <script>async function saveStatus(b){b.disabled=true;const e=document.getElementById('action-error');e.hidden=true;
+    try{const r=await fetch('/admin/booking-notifications/'+b.dataset.id+'/meeting-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({meeting_status:b.closest('.meeting-status').querySelector('select').value,expected_revision:Number(b.dataset.revision)})});
+    if(!r.ok){e.textContent=r.status===409?'המצב השתנה בחלון אחר. רעננו לפני שמירה נוספת.':'מצב המפגש לא נשמר. נסו שוב.';e.hidden=false;b.disabled=false;return;}location.reload();}
+    catch(x){e.textContent='תוצאת השמירה לא ודאית. רעננו ובדקו את המצב לפני ניסיון נוסף.';e.hidden=false;b.disabled=false;}}
+    async function markRead(b){b.disabled=true;const e=document.getElementById('action-error');e.hidden=true;
     try{const r=await fetch('/admin/booking-notifications/'+b.dataset.id+'/read',{method:'POST'});if(!r.ok)throw Error();location.reload();}
     catch(x){e.textContent='הסימון לא נשמר. נסו שוב.';e.hidden=false;b.disabled=false;}}</script></main></body></html>''')
 
@@ -259,3 +305,14 @@ def mark_booking_read(event_id: str):
         raise HTTPException(503,'Booking update unavailable')
     if not found: raise HTTPException(404,'Booking notification not found')
     return {'ok':True}
+
+
+@router.post('/admin/booking-notifications/{event_id}/meeting-status', dependencies=[Depends(_admin), Depends(_origin_guard)], include_in_schema=False)
+def update_meeting_status(event_id: str, change: MeetingStatusChange):
+    try:
+        return save_meeting_status(event_id, change)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception('Meeting status update unavailable')
+        raise HTTPException(503, 'Meeting status update unavailable')
