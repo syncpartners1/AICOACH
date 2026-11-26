@@ -1349,6 +1349,31 @@ def admin_session_maps(request: Request) -> HTMLResponse:
     return HTMLResponse(content=_session_maps_html())
 
 
+@app.get("/maps-local", include_in_schema=False)
+def maps_local_redirect():
+    return RedirectResponse('/maps-local/', status_code=307)
+
+
+@app.get("/maps-local/", response_class=HTMLResponse, include_in_schema=False)
+def maps_local_app(request: Request):
+    if not _is_admin_authenticated(request):
+        return HTMLResponse(_login_page(), status_code=401, headers={'Cache-Control':'no-store'})
+    from autogpt.coaching.maps_local import library_html
+    return HTMLResponse(library_html()[0], headers={'Cache-Control':'no-store, private'})
+
+
+@app.get("/maps-local/manifest.json", include_in_schema=False)
+def maps_local_manifest():
+    from autogpt.coaching.maps_local import manifest
+    return Response(manifest(), media_type='application/manifest+json', headers={'Cache-Control':'no-cache'})
+
+
+@app.get("/maps-local/sw.js", include_in_schema=False)
+def maps_local_sw():
+    from autogpt.coaching.maps_local import service_worker
+    return Response(service_worker(), media_type='application/javascript', headers={'Cache-Control':'no-cache','Service-Worker-Allowed':'/maps-local/'})
+
+
 @app.get("/admin/messages", response_class=HTMLResponse, include_in_schema=False)
 def admin_messages(request: Request, page: int = Query(default=1, ge=1, le=10000)):
     if not _is_admin_authenticated(request):
