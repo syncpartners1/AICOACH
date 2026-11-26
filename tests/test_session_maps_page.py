@@ -98,3 +98,29 @@ def test_captains_log_save_ui_and_wide_layout(monkeypatch):
     # Wide desktop layout: single-lane tools render centered, not in 1/5 column.
     assert ".lanes-grid.single-lane" in page
     assert "single-lane" in page
+
+
+def test_peak_map_five_source_stages_and_no_invented_timing():
+    import json,re
+    from pathlib import Path
+    text=Path(__file__).parents[1].joinpath('autogpt/coaching/session_maps.html').read_text()
+    tracks=json.loads(re.search(r'const COACHING_TRACKS = (\[.*?\]);\s*const ROUTING_ENTRIES',text,re.S).group(1))
+    aids=next(t for t in tracks if t['id']=='coach_aids')['sessions']
+    peak=aids[-1]
+    assert len(aids)==11 and peak['num']=='כלי 11'
+    assert peak['name']=='מחוויית שיא לצעד הבא'
+    assert len(peak['lanes'])==5
+    assert [x['title'] for x in peak['lanes']]==['פתיחה והסכמה','סיפור של שגשוג','רגע השיא','התנאים המאפשרים','מבט קדימה: שאלת Feedforward']
+    for lane in peak['lanes']:
+        assert set(lane['mins'].values())=={'—'} and lane['branch'] is None
+    assert 'תוספת יישום מוצעת, לא מהצילום' in peak['lanes'][4]['prompts'][2]
+    assert 'לפני שנודעו לך התוצאות' in peak['lanes'][1]['prompts'][0]
+    assert 'מה החמצתי' in peak['lanes'][1]['prompts'][3]
+    assert 'שם מחבר' not in peak['name']
+
+
+def test_peak_map_optional_branch_renderer_keeps_existing_branch_buttons():
+    from pathlib import Path
+    text=Path(__file__).parents[1].joinpath('autogpt/coaching/session_maps.html').read_text()
+    assert '${rxObj ? `<button class="branch-btn"' in text
+    assert "openReactionModal('${lane.branch}')" in text
