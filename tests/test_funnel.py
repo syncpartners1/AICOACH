@@ -473,3 +473,22 @@ def test_leads_list_hides_a_lead_whose_person_has_an_open_or_sent_join_invite(mo
 def test_admin_page_links_to_the_join_invites_screen(monkeypatch):
     html = client(monkeypatch).get("/admin?lang=he").text
     assert 'href="/admin/join-invites"' in html and 'href="/admin/funnel"' in html
+
+
+def test_booking_card_exact_link_and_ambiguity(monkeypatch):
+    with patch.object(funnel,'execute_query',return_value=[{'person_id':PID}]) as q:
+        assert funnel.booking_card('evt_1')=={'person_id':PID}
+    sql,params=q.call_args.args
+    assert params==('evt_1',) and 'source_key=%s' in sql
+    assert 'count(DISTINCT pl.person_id)=1' in sql and 'people_review' in sql
+    for rows in ([],[{'person_id':PID},{'person_id':'other'}]):
+        with patch.object(funnel,'execute_query',return_value=rows):
+            with pytest.raises(Exception) as e:funnel.booking_card('evt_1')
+            assert e.value.status_code==409
+
+
+def test_booking_deeplink_does_not_trigger_sync():
+    html=funnel._PAGE
+    assert "get('booking')" in html and '/admin/funnel/booking-card?event_id=' in html
+    assert "if(!booking){if(d.stale)sync();return}" in html
+    assert 'DATA.some' in html and 'לא נפתח כרטיס של אדם אחר' in html
