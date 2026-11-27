@@ -1291,6 +1291,7 @@ def get_all_users_progress(limit: int = 200, offset: int = 0) -> List[UserProgre
             last_session=last_session_dt,
             last_weekly_plan=last_plan_date,
             telegram_user_id=u.get("telegram_user_id"),
+            coaching_track=program.get("coaching_track"),
             program_type=program.get("program_type") or "base",
             phase=program.get("phase") or "unassigned",
             success_plan_active=success_plan_is_active(program),

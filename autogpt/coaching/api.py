@@ -3486,6 +3486,27 @@ def admin_get_program(user_id: str, _: None = Depends(verify_admin_or_api_key)) 
     return get_coaching_program(user_id)
 
 
+class ProfessionalTrackUpdate(BaseModel):
+    coaching_track: str
+    expected_track: Optional[str] = None
+
+
+@app.put("/admin/users/{user_id}/professional-track", summary="Admin: set professional map-track metadata")
+def admin_set_professional_track(user_id: str, body: ProfessionalTrackUpdate, request: Request,
+                                  _: None = Depends(verify_admin_or_api_key)) -> dict:
+    from autogpt.coaching.work_orders import _origin_guard
+    _origin_guard(request)
+    from autogpt.coaching.program_tracks import set_professional_track, TrackConflict
+    try:
+        return set_professional_track(user_id, body.coaching_track, body.expected_track)
+    except TrackConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.put("/admin/users/{user_id}/program", summary="Coach: set program and current phase")
 def admin_set_program(user_id: str, body: ProgramUpdate,
                       _: None = Depends(verify_admin_or_api_key)) -> dict:
