@@ -15,7 +15,7 @@ def test_stage_requires_known_proof_source():
 
 @pytest.mark.parametrize('binding',[{'user_id':OTHER,'revoked_at':None},{'user_id':UID,'revoked_at':'revoked'}])
 def test_other_profile_or_revocation_no_write(binding):
-    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID,'subject':'sub','source':'telegram_google_dual_proof'},{'account_status':'active'},binding]
+    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID,'subject':'sub','source':'telegram_google_dual_proof'},{'account_status':'active'},None,binding]
     @contextmanager
     def cursor(**kw):yield cur
     with patch.object(ie,'get_db_cursor',side_effect=cursor):
@@ -26,7 +26,7 @@ def test_other_profile_or_revocation_no_write(binding):
 
 @pytest.mark.parametrize('existing',[None,{'user_id':UID,'revoked_at':None}])
 def test_confirmation_preserves_history_and_notification(existing):
-    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID,'subject':'sub','source':'telegram_google_dual_proof','google_email':'g@example.com'},{'account_status':'active'},existing]
+    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID,'subject':'sub','source':'telegram_google_dual_proof','google_email':'g@example.com'},{'account_status':'active'},None,existing]
     @contextmanager
     def cursor(**kw):assert kw=={'commit':True};yield cur
     with patch.object(ie,'get_db_cursor',side_effect=cursor):
@@ -90,26 +90,26 @@ def test_unapproved_recovery_no_confirmation():
     @contextmanager
     def cursor(**kw):yield cur
     with patch.object(ie,'get_db_cursor',side_effect=cursor):
-        with pytest.raises(ie.EnrollmentConflict):ie.complete_recovery('t','b','sub')
+        with pytest.raises(ie.EnrollmentConflict):ie.complete_recovery('t','b','sub','verified@example.com')
     sql,args=cur.execute.call_args.args
     assert 'approved_at IS NOT NULL' in sql and 'approval_expires_at>now()' in sql and 'subject=%s' in sql
 
 
 def test_recovery_binding_and_consume_are_atomic_and_rollback_on_conflict():
-    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID},{'account_status':'active'},{'user_id':OTHER,'revoked_at':None}]
+    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID},{'account_status':'active'},None,{'user_id':OTHER,'revoked_at':None}]
     @contextmanager
     def cursor(**kw):assert kw=={'commit':True};yield cur
     with patch.object(ie,'get_db_cursor',side_effect=cursor) as g:
-        with pytest.raises(ie.EnrollmentConflict):ie.complete_recovery('t','b','sub')
+        with pytest.raises(ie.EnrollmentConflict):ie.complete_recovery('t','b','sub','verified@example.com')
     sql='\n'.join(c.args[0] for c in cur.execute.call_args_list)
     assert g.call_count==1 and 'SET consumed_at' not in sql and 'INSERT INTO google_login_credentials' not in sql
 
 def test_recovery_success_one_transaction():
-    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID},{'account_status':'active'},None]
+    cur=MagicMock();cur.fetchone.side_effect=[{'user_id':UID},{'account_status':'active'},None,None]
     @contextmanager
     def cursor(**kw):yield cur
     with patch.object(ie,'get_db_cursor',side_effect=cursor) as g:
-        assert ie.complete_recovery('t','b','sub')==UID
+        assert ie.complete_recovery('t','b','sub','verified@example.com')==UID
     sql='\n'.join(c.args[0] for c in cur.execute.call_args_list)
     assert g.call_count==1 and 'INSERT INTO google_login_credentials' in sql and 'SET consumed_at' in sql and 'UPDATE user_profiles' not in sql
 

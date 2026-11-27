@@ -28,7 +28,7 @@ def test_confirm_google_writes_the_address_to_the_credential_only():
     cur = MagicMock()
     cur.fetchone.side_effect = [
         {"user_id": "u1", "subject": "sub-1", "source": "telegram_google_dual_proof", "google_email": "izzy@gmail.com"},
-        {"account_status": "active"}, None]
+        {"account_status": "active"}, None, None]
 
     @contextmanager
     def fake(commit=False):
