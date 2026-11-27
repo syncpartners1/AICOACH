@@ -103,7 +103,7 @@ def render_admin(
         user_rows += f"""
 <tr>
   <td class="col-name" style="padding:10px 12px;font-weight:600;white-space:nowrap">
-    <a href="{dashboard_url}" style="color:#1a2b4a;text-decoration:none">{u.name}</a>
+    <a href="/admin/person-card/user/{u.user_id}" style="color:#1a2b4a;text-decoration:none">{escape(u.name)}</a>
   </td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{email_cell}</td>

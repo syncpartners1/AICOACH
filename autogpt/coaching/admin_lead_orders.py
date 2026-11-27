@@ -68,7 +68,7 @@ label{display:block;margin:7px 0}label input{display:block;width:100%}.item{disp
 <p>השאלון יוצר ליד בלבד. פרטי הקשר משמשים לשיחה מקדימה ולקביעת פגישת איבחון. הזמנת עבודה מכינים בנפרד ורק אחרי המפגש.</p>
 <div class="layout"><section><h2>פניות מהשאלון</h2><label>סינון לפי שלב<select id="stageFilter"><option value="">הכל</option></select></label><div id="list" role="list">טוען...</div></section>
 <section><h2>פרטי הפנייה</h2><p id="selection">בחר פנייה מהרשימה</p><div id="details" hidden>
-<p id="leadMeta"></p><h3>פגישת איבחון</h3><p id="stageLine"></p>
+<p><a id="personCard">פתיחת כרטיס אדם</a></p><p id="leadMeta"></p><h3>פגישת איבחון</h3><p id="stageLine"></p>
 <p><a id="diagLink" target="_blank" rel="noopener noreferrer" hidden>קבע פגישת איבחון</a></p>
 <div id="stageActions"></div><div id="linkBox"></div><h3>תשובות השאלון</h3><div id="answers"></div>
 <h3>פרטי קשר ראשוניים</h3><p>שם ואימייל מוצעים מהשאלון לעריכה. טלפון נייד מוזן ידנית. שאר הפרטים יושלמו לאחר שיחה אנושית.</p>
@@ -82,7 +82,7 @@ label{display:block;margin:7px 0}label input{display:block;width:100%}.item{disp
 const list=document.getElementById('list'),form=document.getElementById('contact'),result=document.getElementById('result');let selected=null,allLeads=[],labels={};const filter=document.getElementById('stageFilter');
 function render(){list.replaceChildren();const want=filter.value;for(const lead of allLeads){const st=lead.stage||'new';if(want&&st!==want)continue;
 const b=document.createElement('button');b.type='button';b.className='item';
-b.textContent=lead.name+' | '+lead.verdict+' | '+(labels[st]||st)+' | '+lead.email;b.onclick=()=>selectLead(lead.submission_id);list.append(b)}
+const name=document.createElement('a');name.href='/admin/person-card/lead/'+encodeURIComponent(lead.submission_id);name.textContent=lead.name;name.className='item';list.append(name);b.textContent='פרטי פנייה: '+lead.verdict+' | '+(labels[st]||st)+' | '+lead.email;b.onclick=()=>selectLead(lead.submission_id);list.append(b)}
 if(!list.children.length)list.textContent='אין פניות';}
 async function load(){try{const res=await fetch('/admin/coaching-leads/data');if(!res.ok)throw Error('טעינת פניות נכשלה');
 const data=await res.json();allLeads=data.leads;labels=data.stage_labels||{};
@@ -99,7 +99,7 @@ for(const it of items){const b=document.createElement('button');b.type='button';
 b.onclick=async()=>{const r=await fetch('/admin/coaching-leads/'+selected+'/link-booking',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event_id:it.event_id})});
 result.textContent=r.ok?'הפגישה קושרה לליד.':'הקישור נכשל';if(r.ok){await load();selectLead(selected)}};box.append(b)}}catch(e){}}
 async function selectLead(id){const res=await fetch('/admin/coaching-leads/'+id);if(!res.ok){result.textContent='לא ניתן לפתוח את הפנייה';return}
-const lead=await res.json();selected=lead.submission_id;document.getElementById('selection').textContent=lead.name+' | '+lead.email;
+const lead=await res.json();selected=lead.submission_id;document.getElementById('personCard').href='/admin/person-card/lead/'+encodeURIComponent(selected);document.getElementById('selection').textContent=lead.name+' | '+lead.email;
 document.getElementById('details').hidden=false;
 const st=lead.stage||'new';document.getElementById('stageLine').textContent='שלב: '+(labels[st]||st)+(lead.meeting_start?' | מועד: '+new Date(lead.meeting_start).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem'}):'');
 const dl=document.getElementById('diagLink');if(lead.diagnostic_url){dl.href=lead.diagnostic_url;dl.hidden=false}else{dl.hidden=true;dl.removeAttribute('href')}
@@ -117,8 +117,9 @@ load();</script></body></html>''', admin=True), headers={"Cache-Control": "no-st
 
 @router.get("/data", dependencies=[Depends(_admin)])
 def list_leads() -> dict:
-    rows = execute_query("""SELECT l.submission_id,l.name,l.email,l.source,l.verdict,l.clickup_state,
+    rows = execute_query("""SELECT l.submission_id,COALESCE(c.name,l.name) AS name,l.email,l.source,l.verdict,l.clickup_state,
         l.created_at,s.stage FROM coaching_lead_submissions l
+        LEFT JOIN coaching_lead_contacts c USING (submission_id)
         LEFT JOIN coaching_lead_stage s USING (submission_id)
         WHERE NOT EXISTS (SELECT 1 FROM person_links pl JOIN join_invites_pending jp ON jp.person_id = pl.person_id
           WHERE pl.source_table = 'coaching_lead_submissions' AND pl.source_key = l.submission_id::text
