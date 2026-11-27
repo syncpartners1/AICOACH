@@ -106,8 +106,8 @@ def test_peak_map_five_source_stages_and_no_invented_timing():
     text=Path(__file__).parents[1].joinpath('autogpt/coaching/session_maps.html').read_text()
     tracks=json.loads(re.search(r'const COACHING_TRACKS = (\[.*?\]);\s*const ROUTING_ENTRIES',text,re.S).group(1))
     aids=next(t for t in tracks if t['id']=='coach_aids')['sessions']
-    peak=aids[-1]
-    assert len(aids)==11 and peak['num']=='כלי 11'
+    peak=next(aid for aid in aids if aid['num']=='כלי 11')
+    assert len(aids)==12 and peak['num']=='כלי 11'
     assert peak['name']=='מחוויית שיא לצעד הבא'
     assert len(peak['lanes'])==5
     assert [x['title'] for x in peak['lanes']]==['פתיחה והסכמה','סיפור של שגשוג','רגע השיא','התנאים המאפשרים','מבט קדימה: שאלת Feedforward']
