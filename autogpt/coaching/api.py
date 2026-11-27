@@ -212,6 +212,8 @@ from autogpt.coaching.work_orders import router as _work_orders_router  # noqa: 
 app.include_router(_work_orders_router)
 from autogpt.coaching.admin_lead_orders import router as _admin_lead_orders_router  # noqa: E402
 app.include_router(_admin_lead_orders_router)
+from autogpt.coaching.person_card import router as _person_card_router  # noqa: E402
+app.include_router(_person_card_router)
 from autogpt.coaching.booking_notifications import router as _booking_notifications_router
 app.include_router(_booking_notifications_router)
 from autogpt.coaching.work_order_contract import router as _work_order_contract_router  # noqa: E402
