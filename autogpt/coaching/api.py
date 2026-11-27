@@ -547,7 +547,7 @@ def _google_callback_target(cookie, state, code, error):
         ie.attach_recovery_google(token,browser,claims['sub'])
         return "/identity/recover/status",None,True
     # recover_finish: fresh second proof; binding and grant consumption are atomic.
-    ie.complete_recovery(token,browser,claims['sub'])
+    ie.complete_recovery(token,browser,claims['sub'],claims['email'])
     return "/login",None,False
 
 

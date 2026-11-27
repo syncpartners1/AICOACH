@@ -33,6 +33,18 @@ def stage_google_confirmation(user_id,subject,google_email,browser,source):
             (hashed(token),hashed(browser),uid,subject,google_email,source))
     return token
 
+def _one_active_google(cur,user_id,subject):
+    """Caller holds the profile row lock, serializing distinct Google subjects.
+
+    Same-subject retry is safe. A second subject requires an explicit future
+    replacement flow, never automatic revocation or an email/phone match.
+    """
+    cur.execute("""SELECT subject FROM google_login_credentials
+        WHERE user_id=%s AND revoked_at IS NULL AND subject<>%s LIMIT 1""",
+        (user_id,subject))
+    if cur.fetchone():
+        raise EnrollmentConflict('An active Google login already exists; manual review required')
+
 def confirm_google(token,browser):
     if not token or not browser or len(token)>128 or len(browser)>128:
         raise EnrollmentConflict('Invalid confirmation')
@@ -49,6 +61,7 @@ def confirm_google(token,browser):
         profile=cur.fetchone()
         if not profile or profile['account_status']!='active':
             raise EnrollmentConflict('Account not active')
+        _one_active_google(cur,intent['user_id'],intent['subject'])
         cur.execute('SELECT user_id,revoked_at FROM google_login_credentials WHERE subject=%s FOR UPDATE',(intent['subject'],))
         credential=cur.fetchone()
         if credential and (str(credential['user_id'])!=str(intent['user_id']) or credential['revoked_at'] is not None):
@@ -139,13 +152,13 @@ def approve_recovery(request_hash,user_id,subject):
             RETURNING token_hash''',(uid,request_hash,subject))
         if not cur.fetchone(): raise EnrollmentConflict('Recovery approval unavailable')
 
-def complete_recovery(token,browser,subject):
+def complete_recovery(token,browser,subject,google_email):
     """Bind the credential and consume the approved grant in ONE transaction.
 
     Requires a SECOND fresh Google proof (subject) after admin approval.
     Any failure rolls back, leaving the grant unconsumed.
     """
-    if not token or not browser or not subject or len(token)>128 or len(browser)>128:
+    if not token or not browser or not subject or not isinstance(google_email,str) or not google_email.strip() or len(google_email)>254 or len(token)>128 or len(browser)>128:
         raise EnrollmentConflict('Invalid recovery')
     with get_db_cursor(commit=True) as cur:
         cur.execute('''SELECT user_id FROM identity_recovery_requests
@@ -160,13 +173,14 @@ def complete_recovery(token,browser,subject):
         profile=cur.fetchone()
         if not profile or profile['account_status']!='active':
             raise EnrollmentConflict('Account not active')
+        _one_active_google(cur,grant['user_id'],subject)
         cur.execute('SELECT user_id,revoked_at FROM google_login_credentials WHERE subject=%s FOR UPDATE',(subject,))
         credential=cur.fetchone()
         if credential and (str(credential['user_id'])!=str(grant['user_id']) or credential['revoked_at'] is not None):
             raise EnrollmentConflict('Google credential already claimed; manual review required')
         if not credential:
-            cur.execute('''INSERT INTO google_login_credentials(subject,user_id,verified_at,source)
-                VALUES (%s,%s,now(),'approved_recovery')''',(subject,grant['user_id']))
+            cur.execute('''INSERT INTO google_login_credentials(subject,user_id,verified_at,source,google_email)
+                VALUES (%s,%s,now(),'approved_recovery',%s)''',(subject,grant['user_id'],google_email))
         cur.execute('UPDATE identity_recovery_requests SET consumed_at=now() WHERE token_hash=%s',(hashed(token),))
     return str(grant['user_id'])
 

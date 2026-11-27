@@ -207,7 +207,7 @@ def test_recover_finish_requires_token_hash_match_and_is_atomic_call():
     intent['recovery_hash']=ie.hashed('tok')
     with patch.object(go,'proof',return_value=(intent,{'sub':'s','email':'e@x'})),patch.object(ie,'complete_recovery',return_value='u') as done:
         c.get('/auth/google/callback?state=s&code=x',follow_redirects=False)
-    assert done.call_args.args==('tok','browser','s')
+    assert done.call_args.args==('tok','browser','s','e@x')
 
 def test_identity_posts_need_same_origin_and_admin():
     c=TestClient(app)
