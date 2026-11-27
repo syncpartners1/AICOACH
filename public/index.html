@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script id="maps-root-entry">
+// Firebase serves this static page before its Cloud Run rewrite.
+// Navigation only. Invitation checks stay on the server at /maps-local/.
+if (window.location.hostname === 'maps.changenavigator.co.il' &&
+    (window.location.pathname === '/' || window.location.pathname === '/index.html')) {
+  window.location.replace('/maps-local/' + window.location.search + window.location.hash);
+}
+</script>
 <title>Change Navigator</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/cn-icon-site-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/static/cn-icon-site-192.png">
@@ -70,6 +78,10 @@ footer a{color:#6b7280;text-decoration:none}
 </style>
 </head>
 <body>
+<noscript><div dir="rtl" lang="he" style="padding:16px;text-align:center;background:#fff;border-bottom:1px solid #d1d5db">
+לספריית המפות למאמנים: <a href="https://maps.changenavigator.co.il/maps-local/">כניסה למפות</a>.
+הכניסה דורשת הזמנה פעילה. לשימוש באפליקציית האימון אפשר להמשיך בדף זה.
+</div></noscript>
 
 <header class="hdr">
   <img src="/static/cn-logo-white-858.png" alt="Change Navigator" style="height:28px;width:auto;display:block">
