@@ -1135,6 +1135,7 @@
       <p class="map-goal" id="mapGoal"></p>
     </div>
     <div class="hero-actions">
+      <button class="btn-outline" id="resultPurposeLink" hidden onclick="openResultPurposeTool()">תוצאה · משמעות · הצעד הבא</button>
       <button class="btn-outline" onclick="window.print()">🖨️ הדפסת מפה (A4)</button>
       <button class="btn-outline" onclick="exportJsonData()">📦 ייצוא מבנה נתונים (JSON)</button>
     </div>
@@ -1234,6 +1235,14 @@
       <button class="return-btn" onclick="closeModal('reactionModal')">🧭 חזור לנתיב הפעיל במפה</button>
     </div>
   </div>
+</div>
+
+<!-- Original RPM-inspired coach aid. Content only, no client fields or persistence. -->
+<div class="modal-backdrop" id="resultPurposeModal" onclick="closeModalOnBackdrop(event, 'resultPurposeModal')">
+  <div class="modal-box"><div class="modal-head"><h3>מתוצאה משמעותית לצעד הבא</h3>
+  <button class="close-modal" aria-label="סגירת כלי העזר" onclick="closeModal('resultPurposeModal')">×</button></div>
+  <div class="modal-body" id="resultPurposeBody"></div>
+  <div class="modal-footer"><button class="return-btn" onclick="closeModal('resultPurposeModal')">חזרה למפה הנוכחית</button></div></div>
 </div>
 
 <!-- ── MASTER ROUTING MODAL ── -->
@@ -1385,7 +1394,7 @@ const REACTION_MAPS = {
     "steps": [
       {
         "title": "1. שיקוף הוויזואליזציה של קרקס הפרעושים",
-        "say": "🗣️ 'זרקת עכשיו חמישה כיוונים מרתקים. אם ננסה לתפוס את כולם השבוע — נקפוץ במקום בלי להתקדם.'",
+        "say": "🗣️ 'זרקת עכשיו חמישה כיוונים מרתקים. אם ננסה לתפוס את כולם השבוע — נקפוץ במקום בלי להתקדם.' לפני הבחירה, נקבץ את הרעיונות לפי התוצאה שכל אחד מהם משרת ונבדוק למה התוצאה חשובה לך.",
         "watch": "👁️ חיוך של הכרה עצמית מצד היזם/המתאמן."
       },
       {
@@ -2142,7 +2151,8 @@ const COACHING_TRACKS = [
             },
             "prompts": [
               "אנחנו פותחים את 'תוכנית ההצלחה' הרשמית שלך: ערך מוביל, יעד כללי וכיוון פעולה.",
-              "איך תיראה המציאות שלך כשהערך הזה יבוא לידי ביטוי מלא?"
+              "איך תיראה המציאות שלך כשהערך הזה יבוא לידי ביטוי מלא?",
+              "מה התוצאה הזו תאפשר לך אישית, ולמה חשוב לך להתמיד בה? המשמעות האישית אינה מחליפה את הערך המוביל."
             ],
             "radar": "התלהבות ובהירות.",
             "branch": "R-06"
@@ -2196,7 +2206,8 @@ const COACHING_TRACKS = [
             },
             "prompts": [
               "יעד הוא הביטוי הפיזי של החזון. הוא חייב להיות מדיד ב-כמות, זמן ומרחב פעולה, ולהדוף את תקרת הזכוכית.",
-              "בוא נחדד את היעדים שלך למספרים ותאריכי יעד מדויקים."
+              "בוא נחדד את היעדים שלך למספרים ותאריכי יעד מדויקים.",
+              "למה דווקא התוצאה הזו חשובה לך עכשיו, ואיך נדע שהתקדמת?"
             ],
             "radar": "הפיכת יעדים כלליים ('להצליח יותר') למדידים.",
             "branch": "R-06"
@@ -2211,7 +2222,8 @@ const COACHING_TRACKS = [
             },
             "prompts": [
               "יעד הוא תוצאה (ולכן לא בשליטה מלאה). הגדרות עשייה הן פעולות מדידות שתלויות אך ורק בך.",
-              "אילו 3–5 פעולות שבועיות קבועות (כמות, זמן, מרחב) יובילו אותך בהכרח אל היעד?"
+              "אילו 3–5 פעולות שבועיות קבועות (כמות, זמן, מרחב) יקדמו אותך לעבר היעד?",
+              "איזו פעולה בשליטתך חשובה במיוחד השבוע, מתי תבצע אותה ואילו חלופות תוכל לנסות אם לא תקדם אותך?"
             ],
             "radar": "וידוא שכל הגדרת עשייה ניתנת לביצוע עצמאי.",
             "branch": "R-04"
@@ -2226,7 +2238,8 @@ const COACHING_TRACKS = [
             },
             "prompts": [
               "משבצים את הגדרות העשייה בתוך טבלת המעקב של תוכנית ההצלחה ובתוך היומן.",
-              "איפה ביומן השבועי משוריין הזמן לפעולות האלו?"
+              "איפה ביומן השבועי משוריין הזמן לפעולות האלו?",
+              "בבדיקה הבאה נפריד בין הפעולות שבוצעו לבין התוצאה: מה התקדם, מה למדנו ומה נשנה?"
             ],
             "radar": "סנכרון בין תוכנית ליומן.",
             "branch": "R-04"
@@ -8001,6 +8014,61 @@ const COACHING_TRACKS = [
             "branch": null
           }
         ]
+      },
+      {
+        "num": "כלי 12",
+        "name": "מתוצאה משמעותית לצעד הבא",
+        "phase": "כלי עזר חוצה־מפות, לא מפגש נוסף",
+        "tool": "תוצאה, משמעות אישית ועשייה ממוקדת",
+        "goal": "חידוד תוכנית ההצלחה הקיימת בלי ליצור תוכנית מקבילה. ניסוח מקורי של Change Navigator בהשראת עקרונות RPM של Tony Robbins. לא כלי רשמי או הסמכה מטעמו.",
+        "lanes": [
+          {
+            "title": "תוצאה: מה ייחשב התקדמות?",
+            "sub": "היעד ומדד ההצלחה שכבר קיימים",
+            "mins": {
+              "60": "—",
+              "45": "—",
+              "30": "—"
+            },
+            "prompts": [
+              "מה ישתנה בפועל, איך נדע ועד מתי?",
+              "נסח תוצאה אחת שנוכל לבחון במפגש הבא. תוצאה יכולה להיות מושפעת גם מאנשים ונסיבות שאינם בשליטתך."
+            ],
+            "radar": "מבחינים בין תוצאה רצויה לבין הפעולה שבשליטת המתאמן.",
+            "branch": null
+          },
+          {
+            "title": "משמעות אישית: למה זה חשוב לי?",
+            "sub": "הסיבה האישית לתוצאה המסוימת",
+            "mins": {
+              "60": "—",
+              "45": "—",
+              "30": "—"
+            },
+            "prompts": [
+              "מה התוצאה הזו תאפשר לך, ולמה כדאי לך להתמיד גם כשקשה?",
+              "ערך מוביל הוא המצפן; המשמעות היא הסיבה האישית להשגת התוצאה הזו. לדוגמה: עצמאות כערך, והרחבת אפשרויות הבחירה כמשמעות."
+            ],
+            "radar": "לא מחליפים ערך מוביל במשמעות ולא מדלגים על רגש או קושי.",
+            "branch": null
+          },
+          {
+            "title": "עשייה ממוקדת: מה אעשה השבוע?",
+            "sub": "פעולה בשליטתי, זמן ובדיקה",
+            "mins": {
+              "60": "—",
+              "45": "—",
+              "30": "—"
+            },
+            "prompts": [
+              "אילו פעולות בשליטתך יקדמו את התוצאה, ומה הצעד הראשון ומתי תעשה אותו?",
+              "בוחרים פעולה חשובה ואפשרויות נוספות לפי הצורך, לא חייבים לבצע כל רעיון. אפשר לאסוף רעיונות ולקבץ לפי התוצאה שהם משרתים.",
+              "במפגש הבא: מה התקדם, מה למדנו ואיזו פעולה כדאי לשנות? לא מודדים הצלחה רק לפי מספר המשימות שסומנו."
+            ],
+            "radar": "מתאימים את גודל הצעד למשאבים ולמוכנות. במצוקה מתחילים בייצוב ובהקשבה, לא בלחץ לעשייה.",
+            "branch": null
+          }
+        ]
       }
     ]
   }
@@ -8212,6 +8280,8 @@ function renderCurrentMap() {
   document.getElementById("mapTitle").textContent = `מפה ${session.num} | ${session.name}`;
   document.getElementById("mapGoal").innerHTML = `<strong>מטרת העל של המפגש:</strong> ${session.goal}`;
 
+  document.getElementById("resultPurposeLink").hidden = !["P-07", "P-08", "F-07", "C-07", "S-07", "B-07"].includes(session.num);
+
   const lanesGrid = document.getElementById("lanesGrid");
   lanesGrid.innerHTML = "";
   const laneCount = session.lanes.length;
@@ -8358,6 +8428,13 @@ function updateTimerUI() {
 // REACTION MAPS & MODALS
 // ============================================================================
 
+function openResultPurposeTool() {
+  const tool = COACHING_TRACKS.find(t => t.id === 'coach_aids').sessions.find(s => s.num === 'כלי 12');
+  document.getElementById('resultPurposeBody').innerHTML = `<p>${tool.goal}</p>` + tool.lanes.map(lane =>
+    `<section class="lane-section"><h4>${lane.title}</h4><ul class="prompts-list">${lane.prompts.map(p => `<li>${p}</li>`).join('')}</ul><p class="radar-box">${lane.radar}</p></section>`).join('');
+  document.getElementById('resultPurposeModal').classList.add('open');
+}
+
 function renderReactionDock() {
   const dock = document.getElementById("reactionDockButtons");
   if (!dock) return;
@@ -8400,6 +8477,8 @@ function openReactionModal(code) {
       <div class="rx-step-watch">${s.watch}</div>
     </div>
   `).join("");
+  if (code === 'R-06') document.getElementById('rxModalSteps').insertAdjacentHTML('beforeend',
+    `<button class="return-btn" onclick="closeModal('reactionModal');openResultPurposeTool()">תוצאה · משמעות · הצעד הבא</button>`);
   document.getElementById("reactionModal").classList.add("open");
 }
 
