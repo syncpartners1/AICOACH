@@ -61,6 +61,14 @@ def render_admin(
         track_label = t(lang, track_key)
         if track_label == track_key:  # unknown program type -> "not set yet"
             track_label = t(lang, "admin_track_undefined")
+        from autogpt.coaching.program_tracks import track_label as professional_label
+        professional_text = professional_label(getattr(u, "coaching_track", None), lang)
+        professional_caption = "מסלול מקצועי" if lang == "he" else "Professional track"
+        curriculum_caption = "תוכנית הבוט" if lang == "he" else "Bot curriculum"
+        track_cell = (
+            f'<div><strong>{professional_caption}:</strong> {escape(professional_text)}</div>'
+            f'<div style="margin-top:6px;color:#6b7280"><strong>{curriculum_caption}:</strong> {escape(track_label)}</div>'
+        )
         phase_txt = phase_label(lang, u.phase)
         st = u.account_status.value if hasattr(u.account_status, "value") else str(u.account_status)
         fg, bg = _status_colors.get(st, ("#6b7280", "#f3f4f6"))
@@ -100,7 +108,7 @@ def render_admin(
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{contact}</td>
   <td style="padding:10px 12px;font-size:12px;color:#6b7280">{email_cell}</td>
   <td style="padding:10px 12px;text-align:center">{status_pill}</td>
-  <td style="padding:10px 12px;font-size:12px">{track_label}</td>
+  <td class="col-tracks" style="padding:10px 12px;font-size:12px;min-width:210px">{track_cell}</td>
   <td style="padding:10px 12px;font-size:12px">{phase_txt}</td>
   <td style="padding:10px 12px;text-align:center">
     <input type="checkbox" aria-label="Success plan" style="width:18px;height:18px;cursor:pointer"
@@ -269,6 +277,7 @@ tbody tr:hover td.col-name{{background:#f9fafb}}
   .tbl-hint{{display:block}}
   .col-actions a,.col-actions button{{display:block;width:fit-content;margin:3px 0 !important}}
   .col-name{{z-index:2}}
+  .members-table .col-name,.members-table .col-actions{{position:static}}
 }}
 @media (max-width:480px){{
   .form-row{{flex-direction:column}}
@@ -323,11 +332,11 @@ tbody tr:hover td.col-name{{background:#f9fafb}}
   <div class="card">
     <div class="tbl-hint">{t(lang, "admin_scroll_hint")}</div>
     <div class="tbl-wrap">
-    <table>
+    <table class="members-table">
       <thead><tr>
         <th class="col-name">{t(lang, "admin_col_name")}</th><th>{t(lang, "admin_col_contact")}</th>
         <th>{t(lang, "admin_col_email")}</th>
-        <th>{t(lang, "admin_col_status")}</th><th>מסלול</th><th>שלב</th><th>תוכנית הצלחה</th><th>{t(lang, "admin_col_okrs")}</th>
+        <th>{t(lang, "admin_col_status")}</th><th>{"מסלול מקצועי ותוכנית בוט" if lang == "he" else "Professional track and bot curriculum"}</th><th>שלב</th><th>תוכנית הצלחה</th><th>{t(lang, "admin_col_okrs")}</th>
         <th>{t(lang, "admin_col_progress")}</th><th>{t(lang, "admin_col_last_session")}</th>
         <th>{t(lang, "admin_col_last_plan")}</th><th class="col-actions">{t(lang, "admin_col_actions")}</th>
       </tr></thead>

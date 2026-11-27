@@ -4,6 +4,7 @@ from __future__ import annotations
 from html import escape
 
 from autogpt.coaching.storage import PROGRAM_PHASES
+from autogpt.coaching.program_tracks import TRACKS
 
 PHASE_LABELS = {
     "unassigned": "טרם הוגדר", "qmark": "פגישת איבחון",
@@ -21,6 +22,11 @@ def render_program_editor(user, program: dict) -> str:
         f'<option value="{value}"{" selected" if current_track == value else ""}>{label}</option>'
         for value, label in (("base", "תוכנית בסיס"), ("base_financial", "בסיס + מעטפת כלכלית"))
     )
+    professional_options = '<option value="">בחר מסלול מקצועי</option>' + "".join(
+        f'<option value="{key}"{" selected" if program.get("coaching_track") == key else ""}>{he}</option>'
+        for key, he, _ in TRACKS
+    )
+    current_professional = escape(program.get("coaching_track") or "", quote=True)
     phase_options = "".join(
         f'<option value="{value}"{" selected" if current_phase == value else ""}>{PHASE_LABELS[value]}</option>'
         for value in PROGRAM_PHASES
@@ -50,6 +56,12 @@ label.check input{{width:20px;height:20px}}
 <main>
 <section class="card"><h1>{name}</h1>
 <p class="hint">המסלול והמפגש נקבעים על ידי המאמן בלבד. שינוי כאן לא מקדם שלב אוטומטית ולא משנה את תוכנית ההצלחה של המתאמן.</p>
+<section aria-labelledby="professional-title"><h2 id="professional-title">מסלול מקצועי לפי המפות</h2>
+<p class="hint">בחירה זו נשמרת בנפרד מתוכנית הבוט ומהחוזה. היא לא משנה מפגשים קודמים, יתרת מפגשים, שלב או תוכנית הצלחה. מעבר תוכנית והארכה יוגדרו בחבילה נפרדת.</p>
+<form id="professional" data-user-id="{user_id}" data-current="{current_professional}">
+<label for="professional-track">מסלול מקצועי</label><select id="professional-track" required>{professional_options}</select>
+<button type="submit">שמירת מסלול מקצועי</button><p id="professional-status" role="status" aria-live="polite"></p></form></section>
+<h2>הגדרות תוכנית הבוט הקיימות</h2>
 <form id="program" data-user-id="{user_id}">
 <label for="track">מסלול אימון</label><select id="track" name="program_type">{track_options}</select>
 <label for="phase">שלב נוכחי</label><select id="phase" name="phase">{phase_options}</select>
@@ -58,6 +70,28 @@ label.check input{{width:20px;height:20px}}
 <button type="submit">שמירת מסלול ושלב</button><p id="status" role="status" aria-live="polite"></p>
 </form></section></main>
 <script>
+const professional = document.getElementById('professional');
+professional.addEventListener('submit', async event => {{
+  event.preventDefault();
+  const button = professional.querySelector('button');
+  const message = document.getElementById('professional-status');
+  const selected = document.getElementById('professional-track').value;
+  if (!selected) return;
+  button.disabled = true;
+  message.textContent = 'שומר...';
+  try {{
+    const path = '/admin/users/' + encodeURIComponent(professional.dataset.userId) + '/professional-track';
+    const response = await fetch(path, {{method:'PUT', credentials:'same-origin',headers:{{'Content-Type':'application/json'}},
+      body:JSON.stringify({{coaching_track:selected,expected_track:professional.dataset.current || null}})}});
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const result = await response.json();
+    if (result.coaching_track !== selected) throw new Error('המענה לא תואם לבחירה');
+    professional.dataset.current = selected;
+    message.textContent = 'נשמר המסלול המקצועי. פתח מחדש כדי לבדוק את הבחירה.';
+  }} catch (error) {{
+    message.textContent = 'לא ניתן לאמת שמירה. פתח מחדש ובדוק לפני ניסיון נוסף. (' + error.message + ')';
+  }} finally {{button.disabled = false;}}
+}});
 const form = document.getElementById('program');
 form.addEventListener('submit', async event => {{
   event.preventDefault();
